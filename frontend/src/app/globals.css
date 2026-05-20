@@ -1,0 +1,63 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
+  --color-brand: #f59e0b;
+  --color-brand-light: #fbbf24;
+  --color-brand-dark: #d97706;
+  --color-accent: #f97316;
+  --color-surface: #111111;
+  --color-surface-2: #1a1a1a;
+  --color-surface-3: #222222;
+  --color-border: #2a2a2a;
+}
+
+@layer base {
+  * {
+    @apply border-neutral-800;
+    font-family: var(--font-roboto), sans-serif;
+  }
+  body {
+    @apply bg-neutral-950 text-neutral-50;
+    font-family: var(--font-roboto), sans-serif;
+  }
+  html {
+    @apply font-sans;
+    font-family: var(--font-roboto), sans-serif;
+  }
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 99px;
+  }
+}
+
+@layer utilities {
+  .glass {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.07);
+    backdrop-filter: blur(12px);
+  }
+  .surface {
+    background: #111111;
+    border: 1px solid #222222;
+  }
+  .brand-gradient {
+    background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
+  }
+  .text-brand {
+    color: #f59e0b;
+  }
+  .border-brand {
+    border-color: #f59e0b;
+  }
+}
