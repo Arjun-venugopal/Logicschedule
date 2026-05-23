@@ -18,7 +18,12 @@ const io = new Server(httpServer, {
 });
 
 app.use(helmet());
-app.use(cors());
+app.use(cors({
+  origin: ['https://logicschedule-5829.vercel.app', 'http://localhost:3000'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-CSRF-Token', 'Accept-Version', 'Content-Length', 'Content-MD5', 'Date', 'X-Api-Version']
+}));
 app.use(express.json());
 
 import authRoutes from './routes/authRoutes';
@@ -66,3 +71,5 @@ connectDB().then(() => {
     console.log(`⚠️  Server running on port ${PORT} — MongoDB not connected. Update MONGO_URI in .env`);
   });
 });
+
+export default app;
