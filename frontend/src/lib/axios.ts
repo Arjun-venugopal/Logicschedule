@@ -3,9 +3,12 @@ import axios from 'axios';
 const getBaseUrl = () => {
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window !== 'undefined') {
-    return `${window.location.protocol}//${window.location.hostname}:5000`;
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      return 'http://localhost:5000';
+    }
+    return 'https://logicschedule.vercel.app';
   }
-  return 'http://localhost:5000';
+  return 'https://logicschedule.vercel.app';
 };
 
 export const api = axios.create({
