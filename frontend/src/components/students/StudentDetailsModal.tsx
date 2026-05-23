@@ -38,7 +38,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
 
   // Calculate attendance if available
   let presentCount = 0;
-  let totalClasses = attendanceData?.length || 0;
+  const totalClasses = attendanceData?.length || 0;
   if (attendanceData) {
     attendanceData.forEach((cls: any) => {
       const record = cls.attendance?.find((a: any) => a.studentId === student._id);

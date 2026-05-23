@@ -132,3 +132,41 @@ export const createTeacherAccount = async (req: Request, res: Response): Promise
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
+// @desc    Change current user password
+// @route   PUT /auth/change-password
+// @access  Private
+export const changePassword = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      res.status(400).json({ message: 'Please provide current and new password' });
+      return;
+    }
+
+    const user: any = await User.findById(req.user._id);
+
+    if (user && (await user.matchPassword(currentPassword))) {
+      user.password = newPassword;
+      user.mustChangePassword = false;
+      await user.save();
+
+      // Clear tempPassword from Teacher profile if it exists
+      if (user.role === 'Teacher') {
+        const teacher = await Teacher.findOne({ user: user._id });
+        if (teacher) {
+          teacher.tempPassword = '';
+          await teacher.save();
+        }
+      }
+
+      res.json({ message: 'Password updated successfully' });
+    } else {
+      res.status(401).json({ message: 'Invalid current password' });
+    }
+  } catch (error: any) {
+    console.error('Change password error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};

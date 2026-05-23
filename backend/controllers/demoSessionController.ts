@@ -1,0 +1,182 @@
+import { Response } from 'express';
+import DemoSession from '../models/DemoSession';
+import Teacher from '../models/Teacher';
+import Schedule from '../models/Schedule';
+
+// @desc    Get all demo sessions
+// @route   GET /demo-sessions
+// @access  Private
+export const getDemoSessions = async (req: any, res: Response): Promise<void> => {
+  try {
+    let query: any = {};
+
+    // If logged in user is a Teacher, only fetch their demo sessions
+    if (req.user && req.user.role === 'Teacher') {
+      const teacher = await Teacher.findOne({ user: req.user._id });
+      if (teacher) {
+        query = { teacher: teacher._id };
+      } else {
+        res.json([]);
+        return;
+      }
+    }
+
+    const demoSessions = await DemoSession.find(query)
+      .populate('teacher', 'name email status availability');
+    res.json(demoSessions);
+  } catch (error: any) {
+    console.error('Get demo sessions error:', error.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc    Create a demo session
+// @route   POST /demo-sessions
+// @access  Private/Admin
+export const createDemoSession = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { teacher, studentName, studentEmail, subject, date, startTime, endTime, meetingLink, notes } = req.body;
+
+    if (!teacher || !studentName || !subject || !date || !startTime || !endTime) {
+      res.status(400).json({ message: 'Please provide all required fields: teacher, studentName, subject, date, startTime, endTime' });
+      return;
+    }
+
+    const dateObj = new Date(date);
+
+    // Check conflict with regular schedules
+    const scheduleConflict = await Schedule.findOne({
+      teacher,
+      date: dateObj,
+      status: { $ne: 'Cancelled' },
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: startTime } },
+      ],
+    });
+
+    // Check conflict with other demo sessions
+    const demoConflict = await DemoSession.findOne({
+      teacher,
+      date: dateObj,
+      status: { $ne: 'Cancelled' },
+      $or: [
+        { startTime: { $lt: endTime }, endTime: { $gt: startTime } },
+      ],
+    });
+
+    const isConflict = !!scheduleConflict || !!demoConflict;
+
+    const demoSession = await DemoSession.create({
+      teacher,
+      studentName,
+      studentEmail: studentEmail || '',
+      subject,
+      date: dateObj,
+      startTime,
+      endTime,
+      meetingLink: meetingLink || '',
+      notes: notes || '',
+      conflict: isConflict,
+    });
+
+    const populated = await demoSession.populate('teacher', 'name email status availability');
+    res.status(201).json(populated);
+  } catch (error: any) {
+    console.error('Create demo session error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+
+// @desc    Update a demo session
+// @route   PUT /demo-sessions/:id
+// @access  Private
+export const updateDemoSession = async (req: any, res: Response): Promise<void> => {
+  try {
+    const demoSession = await DemoSession.findById(req.params.id);
+
+    if (!demoSession) {
+      res.status(404).json({ message: 'Demo session not found' });
+      return;
+    }
+
+    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin';
+    let isAssignedTeacher = false;
+
+    const teacherProfile = await Teacher.findOne({ user: req.user._id });
+    if (teacherProfile && demoSession.teacher.toString() === teacherProfile._id.toString()) {
+      isAssignedTeacher = true;
+    }
+
+    if (!isAdmin && !isAssignedTeacher) {
+      res.status(403).json({ message: 'Not authorized to update this demo session' });
+      return;
+    }
+
+    if (isAdmin) {
+      demoSession.studentName = req.body.studentName || demoSession.studentName;
+      demoSession.studentEmail = req.body.studentEmail !== undefined ? req.body.studentEmail : demoSession.studentEmail;
+      demoSession.subject = req.body.subject || demoSession.subject;
+      demoSession.teacher = req.body.teacher || demoSession.teacher;
+      demoSession.date = req.body.date ? new Date(req.body.date) : demoSession.date;
+      demoSession.startTime = req.body.startTime || demoSession.startTime;
+      demoSession.endTime = req.body.endTime || demoSession.endTime;
+      demoSession.status = req.body.status || demoSession.status;
+      demoSession.meetingLink = req.body.meetingLink !== undefined ? req.body.meetingLink : demoSession.meetingLink;
+      demoSession.notes = req.body.notes !== undefined ? req.body.notes : demoSession.notes;
+
+      // Recalculate conflict for this demo session
+      const dateObj = new Date(demoSession.date);
+      const scheduleConflict = await Schedule.findOne({
+        teacher: demoSession.teacher,
+        date: dateObj,
+        status: { $ne: 'Cancelled' },
+        $or: [
+          { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
+        ],
+      });
+
+      const demoConflict = await DemoSession.findOne({
+        _id: { $ne: demoSession._id },
+        teacher: demoSession.teacher,
+        date: dateObj,
+        status: { $ne: 'Cancelled' },
+        $or: [
+          { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
+        ],
+      });
+
+      demoSession.conflict = !!scheduleConflict || !!demoConflict;
+    } else {
+      // Teacher edits: only allowed to change status, meetingLink, and notes
+      if (req.body.status !== undefined) demoSession.status = req.body.status;
+      if (req.body.meetingLink !== undefined) demoSession.meetingLink = req.body.meetingLink;
+      if (req.body.notes !== undefined) demoSession.notes = req.body.notes;
+    }
+
+    const updated = await demoSession.save();
+    const populated = await updated.populate('teacher', 'name email status availability');
+    res.json(populated);
+  } catch (error: any) {
+    console.error('Update demo session error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+
+// @desc    Delete a demo session
+// @route   DELETE /demo-sessions/:id
+// @access  Private/Admin
+export const deleteDemoSession = async (req: any, res: Response): Promise<void> => {
+  try {
+    const demoSession = await DemoSession.findById(req.params.id);
+
+    if (demoSession) {
+      await DemoSession.deleteOne({ _id: demoSession._id });
+      res.json({ message: 'Demo session removed' });
+    } else {
+      res.status(404).json({ message: 'Demo session not found' });
+    }
+  } catch (error: any) {
+    console.error('Delete demo session error:', error.message);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

@@ -113,3 +113,43 @@ export const deleteTeacher = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
+// @desc    Get current teacher's profile
+// @route   GET /teachers/profile
+// @access  Private (Teacher only)
+export const getTeacherProfile = async (req: any, res: Response): Promise<void> => {
+  try {
+    const teacher = await Teacher.findOne({ user: req.user._id }).populate('user', 'name email role');
+    if (!teacher) {
+      res.status(404).json({ message: 'Teacher profile not found' });
+      return;
+    }
+    res.json(teacher);
+  } catch (error: any) {
+    console.error('Get teacher profile error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+
+// @desc    Update current teacher's profile/availability
+// @route   PUT /teachers/profile
+// @access  Private (Teacher only)
+export const updateTeacherProfile = async (req: any, res: Response): Promise<void> => {
+  try {
+    const teacher = await Teacher.findOne({ user: req.user._id });
+    if (!teacher) {
+      res.status(404).json({ message: 'Teacher profile not found' });
+      return;
+    }
+
+    if (req.body.phone !== undefined) teacher.phone = req.body.phone;
+    if (req.body.status !== undefined) teacher.status = req.body.status;
+    if (req.body.availability !== undefined) teacher.availability = req.body.availability;
+
+    const updated = await teacher.save();
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Update teacher profile error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};

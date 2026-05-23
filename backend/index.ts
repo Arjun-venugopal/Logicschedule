@@ -27,6 +27,7 @@ import batchRoutes from './routes/batchRoutes';
 import scheduleRoutes from './routes/scheduleRoutes';
 import statsRoutes from './routes/statsRoutes';
 import studentRoutes from './routes/studentRoutes';
+import demoRoutes from './routes/demoRoutes';
 import { notFound, errorHandler } from './middleware/errorMiddleware';
 
 app.use('/auth', authRoutes);
@@ -35,6 +36,7 @@ app.use('/batches', batchRoutes);
 app.use('/schedules', scheduleRoutes);
 app.use('/stats', statsRoutes);
 app.use('/students', studentRoutes);
+app.use('/demo-sessions', demoRoutes);
 
 app.get('/', (req, res) => {
   res.send('API is running...');

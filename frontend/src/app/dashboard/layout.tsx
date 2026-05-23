@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle } from "lucide-react";
+import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -38,6 +38,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     ...(isTeacher
       ? [
           { icon: BookOpen, label: "My Batches", href: "/dashboard/batches" },
+          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions" },
           { icon: CheckCircle, label: "Completed Classes", href: "/dashboard/completed-classes" },
           { icon: Users, label: "Attendance", href: "/dashboard/attendance" }
         ]
@@ -45,6 +46,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { icon: BookOpen, label: "Batches", href: "/dashboard/batches" },
           { icon: Users, label: "Teachers", href: "/dashboard/teachers" },
           { icon: Users, label: "Students", href: "/dashboard/students" },
+          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions" },
           { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes" },
           { icon: Users, label: "Attendance", href: "/dashboard/attendance" },
         ]),
