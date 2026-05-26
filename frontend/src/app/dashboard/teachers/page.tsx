@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound } from "lucide-react";
+import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp } from "lucide-react";
+import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -29,6 +30,7 @@ export default function TeachersPage() {
   const [createdCreds, setCreatedCreds] = useState<{ email: string; tempPassword: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
+  const [performanceTeacherId, setPerformanceTeacherId] = useState<string | null>(null);
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -248,12 +250,22 @@ export default function TeachersPage() {
                     </td>
 
                     <td className="py-3.5 px-5">
-                      <button
-                        onClick={() => deleteTeacher.mutate(teacher._id)}
-                        className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-600 hover:text-red-400"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setPerformanceTeacherId(teacher._id)}
+                          className="p-2 hover:bg-amber-500/10 rounded-lg transition-colors text-neutral-500 hover:text-amber-400"
+                          title="View Performance"
+                        >
+                          <TrendingUp className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteTeacher.mutate(teacher._id)}
+                          className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
+                          title="Delete Teacher"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -367,6 +379,13 @@ export default function TeachersPage() {
               </form>
             </motion.div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Teacher Performance Modal */}
+      <AnimatePresence>
+        {performanceTeacherId && (
+          <TeacherPerformanceModal teacherId={performanceTeacherId} onClose={() => setPerformanceTeacherId(null)} />
         )}
       </AnimatePresence>
     </div>

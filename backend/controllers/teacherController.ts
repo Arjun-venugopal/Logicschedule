@@ -1,6 +1,10 @@
 import { Request, Response } from 'express';
+import mongoose from 'mongoose';
 import Teacher from '../models/Teacher';
 import User from '../models/User';
+import Batch from '../models/Batch';
+import Schedule from '../models/Schedule';
+import DemoSession from '../models/DemoSession';
 
 // @desc    Get all teachers
 // @route   GET /teachers
@@ -153,3 +157,106 @@ export const updateTeacherProfile = async (req: any, res: Response): Promise<voi
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
+// @desc    Get teacher performance metrics
+// @route   GET /teachers/:id/performance
+// @access  Private (Teacher or Admin)
+export const getTeacherPerformance = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    let teacher: any = null;
+
+    if (id === 'me' || id === 'self') {
+      teacher = await Teacher.findOne({ user: req.user._id });
+    } else {
+      if (!mongoose.Types.ObjectId.isValid(id)) {
+        res.status(400).json({ message: 'Invalid teacher ID format' });
+        return;
+      }
+      teacher = await Teacher.findById(id);
+    }
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Teacher profile not found' });
+      return;
+    }
+
+    // Check authorization: Admin can see anything, Teacher can only see their own performance
+    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+      if (teacher.user.toString() !== req.user._id.toString()) {
+        res.status(403).json({ message: 'Forbidden: You can only view your own performance' });
+        return;
+      }
+    }
+
+    const totalBatches = await Batch.countDocuments({ assignedTeacher: teacher._id });
+    const totalSchedules = await Schedule.countDocuments({ teacher: teacher._id });
+    const completedClasses = await Schedule.countDocuments({ teacher: teacher._id, status: 'Completed' });
+    const cancelledClasses = await Schedule.countDocuments({ teacher: teacher._id, status: 'Cancelled' });
+    const completionRate = totalSchedules > 0 ? Math.round((completedClasses / totalSchedules) * 100) : 0;
+
+    const completedSchedulesList = await Schedule.find({ teacher: teacher._id, status: 'Completed' });
+    let totalHoursTaught = 0;
+    completedSchedulesList.forEach((s: any) => {
+      if (s.startTime && s.endTime) {
+        const [sh, sm] = s.startTime.split(':').map(Number);
+        const [eh, em] = s.endTime.split(':').map(Number);
+        totalHoursTaught += (eh + em / 60) - (sh + sm / 60);
+      }
+    });
+    totalHoursTaught = Math.round(totalHoursTaught * 10) / 10;
+
+    let totalPresent = 0;
+    let totalEnrolled = 0;
+    completedSchedulesList.forEach((s: any) => {
+      if (s.attendance && s.attendance.length > 0) {
+        totalEnrolled += s.attendance.length;
+        totalPresent += s.attendance.filter((a: any) => a.isPresent).length;
+      }
+    });
+    const avgAttendanceRate = totalEnrolled > 0 ? Math.round((totalPresent / totalEnrolled) * 100) : 0;
+
+    const totalDemos = await DemoSession.countDocuments({ teacher: teacher._id });
+    const completedDemos = await DemoSession.countDocuments({ teacher: teacher._id, status: 'Completed' });
+    const demoConversionRate = totalDemos > 0 ? Math.round((completedDemos / totalDemos) * 100) : 0;
+
+    const recentFeedback = await Schedule.find({
+      teacher: teacher._id,
+      status: 'Completed',
+      notes: { $ne: '' }
+    })
+      .populate('batch', 'name')
+      .sort({ date: -1 })
+      .limit(5)
+      .select('date subject notes batch');
+
+    res.json({
+      teacher: {
+        _id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone,
+        status: teacher.status,
+        subjectExpertise: teacher.subjectExpertise,
+        experience: teacher.experience,
+      },
+      stats: {
+        totalBatches,
+        totalSchedules,
+        completedClasses,
+        cancelledClasses,
+        completionRate,
+        totalHoursTaught,
+        avgAttendanceRate,
+        totalDemos,
+        completedDemos,
+        demoConversionRate,
+      },
+      recentFeedback,
+    });
+  } catch (error: any) {
+    console.error('Get teacher performance error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+
