@@ -13,7 +13,7 @@ interface TeacherPerformanceModalProps {
 }
 
 export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerformanceModalProps) {
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, error } = useQuery({
     queryKey: ["teacher-performance", teacherId],
     queryFn: async () => (await api.get(`/teachers/${teacherId}/performance`)).data,
   });
@@ -26,7 +26,24 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
     );
   }
 
-  if (!data) return null;
+  if (error || !data) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+        <div className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl p-6 text-center">
+          <p className="text-red-500 font-bold mb-2">Error Loading Performance</p>
+          <p className="text-neutral-400 text-sm mb-4">
+            {(error as any)?.response?.data?.message || "Failed to load performance metrics."}
+          </p>
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const { teacher, stats, recentFeedback = [] } = data;
 

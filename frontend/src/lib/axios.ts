@@ -1,14 +1,23 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
+  const envUrl = process.env.NEXT_PUBLIC_API_URL;
+
   if (typeof window !== 'undefined') {
-    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    const host = window.location.hostname;
+    // In development, always point to the backend on the same host
+    if (host === 'localhost' || host === '127.0.0.1') {
       return 'http://localhost:5000';
     }
-    return 'https://logicschedule.vercel.app';
+    // LAN access (e.g., 192.168.x.x from a phone) — backend is on same host
+    if (/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) {
+      return `http://${host}:5000`;
+    }
+    // Production — use env var
+    return envUrl || '';
   }
-  return 'https://logicschedule.vercel.app';
+  // Server-side rendering fallback
+  return envUrl || '';
 };
 
 export const api = axios.create({

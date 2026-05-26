@@ -62,7 +62,9 @@ export const getDashboardStats = async (req: any, res: Response) => {
       if (s.startTime && s.endTime) {
         const [sh, sm] = s.startTime.split(':').map(Number);
         const [eh, em] = s.endTime.split(':').map(Number);
-        hoursScheduled += (eh + em / 60) - (sh + sm / 60);
+        let diff = (eh + em / 60) - (sh + sm / 60);
+        if (diff < 0) diff += 24; // Handle shift spanning midnight
+        hoursScheduled += diff;
       }
     });
 
