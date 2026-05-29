@@ -1,9 +1,5 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-import path from 'path';
-
-// Load env from backend folder
-dotenv.config();
+import { config } from '../config/config';
 
 // Define/import models so mongoose registers them
 import Teacher from '../models/Teacher';
@@ -12,7 +8,7 @@ import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 
 async function testPerformance() {
-  const uri = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/teacher_schedule';
+  const uri = config.MONGO_URI;
   console.log('Connecting to MONGO_URI...', uri ? 'URI loaded' : 'URI not found');
   await mongoose.connect(uri);
   console.log('Connected!');

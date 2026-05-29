@@ -1,12 +1,10 @@
 import express from 'express';
-import dotenv from 'dotenv';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import connectDB from './config/db';
 import helmet from 'helmet';
-
-dotenv.config();
+import { config } from './config/config';
 
 const app = express();
 const httpServer = createServer(app);
@@ -22,8 +20,9 @@ const allowedOrigins = [
   'http://localhost:3000'
 ];
 
-if (process.env.FRONTEND_URL) {
-  allowedOrigins.push(process.env.FRONTEND_URL);
+if (config.FRONTEND_URL) {
+  const origins = config.FRONTEND_URL.split(',').map((o) => o.trim());
+  allowedOrigins.push(...origins);
 }
 
 app.use(cors({
@@ -33,7 +32,7 @@ app.use(cors({
 
     const isAllowed = allowedOrigins.includes(origin) ||
       origin.endsWith('.vercel.app') ||
-      (process.env.NODE_ENV !== 'production' && (
+      (config.NODE_ENV !== 'production' && (
         origin.startsWith('http://localhost:') ||
         /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)
       ));
@@ -83,7 +82,7 @@ io.on('connection', (socket) => {
   });
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = config.PORT;
 
 connectDB().then(() => {
   httpServer.listen(PORT, () => {

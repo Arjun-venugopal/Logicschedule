@@ -3,6 +3,10 @@ import axios from 'axios';
 const getBaseUrl = () => {
   const envUrl = process.env.NEXT_PUBLIC_API_URL;
 
+  if (envUrl) {
+    return envUrl;
+  }
+
   if (typeof window !== 'undefined') {
     const host = window.location.hostname;
     // In development, always point to the backend on the same host
@@ -13,11 +17,9 @@ const getBaseUrl = () => {
     if (/^(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(host)) {
       return `http://${host}:5000`;
     }
-    // Production — use env var
-    return envUrl || '';
   }
-  // Server-side rendering fallback
-  return envUrl || '';
+  // Server-side rendering fallback or default empty string
+  return '';
 };
 
 export const api = axios.create({

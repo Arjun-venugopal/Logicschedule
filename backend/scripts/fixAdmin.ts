@@ -1,15 +1,13 @@
 import mongoose from 'mongoose';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { config } from '../config/config';
 
 async function fixAdmin() {
-  const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/teacher_schedule';
+  const MONGO_URI = config.MONGO_URI;
   await mongoose.connect(MONGO_URI);
   console.log('Connected');
 
   const result = await mongoose.connection.db!.collection('users').updateOne(
-    { email: 'admin@gmail.com' },
+    { email: config.ADMIN_EMAIL.toLowerCase() },
     { $set: { role: 'Admin' } }
   );
   console.log('Updated:', result.modifiedCount, 'docs');

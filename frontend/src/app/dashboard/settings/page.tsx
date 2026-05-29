@@ -545,9 +545,9 @@ export default function SettingsPage() {
           <div className="space-y-3">
             {[
               { label: "Application", value: "Schedulix v1.0" },
-              { label: "Backend API", value: "http://localhost:5000" },
+              { label: "Backend API", value: api.defaults.baseURL || "http://localhost:5000" },
               { label: "Database", value: "MongoDB" },
-              { label: "Environment", value: "Development" },
+              { label: "Environment", value: process.env.NODE_ENV === "production" ? "Production" : "Development" },
             ].map((item) => (
               <div key={item.label} className="flex justify-between items-center py-2.5 border-b border-neutral-800 last:border-0">
                 <span className="text-sm text-neutral-400">{item.label}</span>
