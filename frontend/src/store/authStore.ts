@@ -1,10 +1,8 @@
 import { create } from 'zustand';
 
 interface AuthState {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   user: any | null;
   token: string | null;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   setAuth: (user: any, token: string) => void;
   logout: () => void;
 }

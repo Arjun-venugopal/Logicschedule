@@ -171,7 +171,6 @@ export default function SchedulePage() {
     setModal({ open: true, mode: "create", prefillDate });
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const openEdit = (s: any) => {
     setForm({
       teacher: s.teacher?._id || s.teacher,
@@ -206,7 +205,6 @@ export default function SchedulePage() {
 
   // Match schedule to a day+hour cell
   const getEventForCell = (dayDate: Date, hour: number) => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     return schedules.find((s: any) => {
       const sDate = new Date(s.date);
       const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
@@ -242,7 +240,6 @@ export default function SchedulePage() {
   };
 
   const isPending = createSchedule.isPending || updateSchedule.isPending;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const apiError = (createSchedule.error || updateSchedule.error) as any;
 
   return (
