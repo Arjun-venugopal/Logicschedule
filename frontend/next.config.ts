@@ -1,6 +1,12 @@
 import type { NextConfig } from "next";
 
 const nextConfig = {
+  // Enable static HTML export to generate the 'out' directory for Render Static Site
+  output: 'export',
+  images: {
+    // Disable Next.js image optimization API since static export runs without a Node server
+    unoptimized: true,
+  },
   turbopack: {
     root: __dirname,
   },
