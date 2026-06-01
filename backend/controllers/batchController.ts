@@ -23,18 +23,22 @@ async function generateSchedulesForBatch(batch: any): Promise<number> {
   const end   = new Date(endDate);
   const selectedDayIndexes = (days as string[]).map((d) => DAY_INDEX[d]);
 
+  // Pre-fetch all schedules for this batch in the date range to avoid N+1 queries in the loop
+  const existingSchedules = await Schedule.find({
+    batch: _id,
+    date: { $gte: start, $lte: end }
+  }).select('date');
+
+  const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
+
   const schedulesToCreate: any[] = [];
   const cursor = new Date(start);
 
   while (cursor <= end) {
     if (selectedDayIndexes.includes(cursor.getDay())) {
-      // Check if a schedule already exists for this batch+date
-      const exists = await Schedule.findOne({
-        batch: _id,
-        date: new Date(cursor),
-      });
+      const cursorTime = new Date(cursor).getTime();
 
-      if (!exists) {
+      if (!existingTimes.has(cursorTime)) {
         schedulesToCreate.push({
           teacher: assignedTeacher || undefined,
           batch: _id,

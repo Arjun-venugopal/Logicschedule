@@ -66,5 +66,10 @@ const scheduleSchema = new mongoose.Schema(
   }
 );
 
+scheduleSchema.index({ teacher: 1 });
+scheduleSchema.index({ date: 1 });
+scheduleSchema.index({ batch: 1 });
+scheduleSchema.index({ replacementTeacher: 1 });
+
 const Schedule = mongoose.model('Schedule', scheduleSchema);
 export default Schedule;

@@ -52,5 +52,7 @@ const batchSchema = new mongoose.Schema(
   }
 );
 
+batchSchema.index({ assignedTeacher: 1 });
+
 const Batch = mongoose.model('Batch', batchSchema);
 export default Batch;

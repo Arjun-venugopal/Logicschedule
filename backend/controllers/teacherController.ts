@@ -190,12 +190,14 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     }
 
     const totalBatches = await Batch.countDocuments({ assignedTeacher: teacher._id });
-    const totalSchedules = await Schedule.countDocuments({ teacher: teacher._id });
-    const completedClasses = await Schedule.countDocuments({ teacher: teacher._id, status: 'Completed' });
-    const cancelledClasses = await Schedule.countDocuments({ teacher: teacher._id, status: 'Cancelled' });
-    const completionRate = totalSchedules > 0 ? Math.round((completedClasses / totalSchedules) * 100) : 0;
 
-    const completedSchedulesList = await Schedule.find({ teacher: teacher._id, status: 'Completed' });
+    // Fetch all schedules for this teacher to compute metrics in-memory
+    const allSchedulesList = await Schedule.find({ teacher: teacher._id });
+    const totalSchedules = allSchedulesList.length;
+    const completedSchedulesList = allSchedulesList.filter((s: any) => s.status === 'Completed');
+    const completedClasses = completedSchedulesList.length;
+    const cancelledClasses = allSchedulesList.filter((s: any) => s.status === 'Cancelled').length;
+    const completionRate = totalSchedules > 0 ? Math.round((completedClasses / totalSchedules) * 100) : 0;
     let totalHoursTaught = 0;
     completedSchedulesList.forEach((s: any) => {
       if (s.startTime && s.endTime) {

@@ -70,23 +70,18 @@ export const getDashboardStats = async (req: any, res: Response) => {
 
     // --- Weekly chart data (Mon–Sun) ---
     const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weekData = await Promise.all(
-      DAY_LABELS.map(async (label, i) => {
-        const day = new Date(weekStart);
-        day.setDate(weekStart.getDate() + i);
-        const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
-        
-        let dayQuery: any = {
-          date: { $gte: day, $lte: dayEnd }
-        };
-        if (isTeacher && teacherProfile) {
-          dayQuery.teacher = teacherProfile._id;
-        }
-
-        const count = await Schedule.countDocuments(dayQuery);
-        return { day: label, classes: count };
-      })
-    );
+    const weekData = DAY_LABELS.map((label, i) => {
+      const day = new Date(weekStart);
+      day.setDate(weekStart.getDate() + i);
+      const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
+      
+      const count = weekSchedules.filter((s: any) => {
+        const sDate = new Date(s.date);
+        return sDate >= day && sDate <= dayEnd;
+      }).length;
+      
+      return { day: label, classes: count };
+    });
 
     // --- Live teacher status ---
     const teachers = await Teacher.find({}).select('name status subjectExpertise');

@@ -54,5 +54,8 @@ const demoSessionSchema = new mongoose.Schema(
   }
 );
 
+demoSessionSchema.index({ teacher: 1 });
+demoSessionSchema.index({ date: 1 });
+
 const DemoSession = mongoose.model('DemoSession', demoSessionSchema);
 export default DemoSession;

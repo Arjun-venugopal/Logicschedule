@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
@@ -44,7 +44,7 @@ export default function AttendancePage() {
     queryFn: async () => (await api.get(`/students/batch/${selectedBatchId}`)).data,
     enabled: !!selectedBatchId,
   });
-  const students = fetchedStudents || [];
+  const students = useMemo(() => fetchedStudents || [], [fetchedStudents]);
 
   const selectedClass = schedules.find((s: any) => s._id === selectedClassId);
 
@@ -67,7 +67,7 @@ export default function AttendancePage() {
     } else {
       setAttendanceState(prev => Object.keys(prev).length > 0 ? {} : prev);
     }
-  }, [selectedClassId, fetchedStudents, selectedClass]);
+  }, [selectedClassId, students, selectedClass]);
 
   const updateSchedule = useMutation({
     mutationFn: (data: any) => api.put(`/schedules/${selectedClassId}`, data),
