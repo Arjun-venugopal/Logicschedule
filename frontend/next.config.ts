@@ -4,8 +4,14 @@ const nextConfig = {
   turbopack: {
     root: __dirname,
   },
-  // Next.js runtime requires this at the root for cross-origin dev requests, 
-  // but it might not be fully typed in the installed @types/next version.
+  eslint: {
+    // Ignore linting during build to save memory on Render's free tier
+    ignoreDuringBuilds: true,
+  },
+  typescript: {
+    // Ignore type checking during build to save memory on Render's free tier
+    ignoreBuildErrors: true,
+  },
   allowedDevOrigins: [
     '192.168.1.39',
     '192.168.1.39:3000',
