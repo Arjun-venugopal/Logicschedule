@@ -8,41 +8,45 @@ import { config } from './config/config';
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: '*',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  },
-});
 
-app.use(helmet());
-const allowedOrigins = [
-  'http://localhost:3000'
-];
-
+// Configure allowed origins for security
+const allowedOrigins = ['http://localhost:3000'];
 if (config.FRONTEND_URL) {
   const origins = config.FRONTEND_URL.split(',').map((o) => o.trim());
   allowedOrigins.push(...origins);
 }
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
-    if (!origin) return callback(null, true);
+// Reusable CORS validation function
+const corsOriginVerifier = (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+  // Allow requests with no origin (like server-to-server or test scripts)
+  if (!origin) return callback(null, true);
 
-    const isAllowed = allowedOrigins.includes(origin) ||
-      origin.endsWith('.vercel.app') ||
-      (config.NODE_ENV !== 'production' && (
-        origin.startsWith('http://localhost:') ||
-        /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)
-      ));
+  const isAllowed = allowedOrigins.includes(origin) ||
+    origin.endsWith('.vercel.app') ||
+    (config.NODE_ENV !== 'production' && (
+      origin.startsWith('http://localhost:') ||
+      /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2\d|3[01])\.)/.test(origin)
+    ));
 
-    if (isAllowed) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
+  if (isAllowed) {
+    callback(null, true);
+  } else {
+    callback(new Error('Not allowed by CORS'));
+  }
+};
+
+// Initialize socket.io with the secure CORS configuration
+const io = new Server(httpServer, {
+  cors: {
+    origin: corsOriginVerifier,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    credentials: true,
   },
+});
+
+app.use(helmet());
+app.use(cors({
+  origin: corsOriginVerifier,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-CSRF-Token', 'Accept-Version', 'Content-Length', 'Content-MD5', 'Date', 'X-Api-Version']
