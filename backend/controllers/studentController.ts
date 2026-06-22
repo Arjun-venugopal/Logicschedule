@@ -3,6 +3,7 @@ import multer from 'multer';
 import * as xlsx from 'xlsx';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
+import Teacher from '../models/Teacher';
 
 // Setup multer for memory storage
 const upload = multer({ storage: multer.memoryStorage() });
@@ -91,8 +92,29 @@ export const getStudentsByBatch = async (req: Request, res: Response): Promise<v
   }
 };
 
-export const getAllStudents = async (req: Request, res: Response): Promise<void> => {
+export const getAllStudents = async (req: any, res: Response): Promise<void> => {
   try {
+    if (req.user && req.user.role === 'Teacher') {
+      const teacher = await Teacher.findOne({ user: req.user._id });
+      if (!teacher) {
+        res.status(200).json([]);
+        return;
+      }
+      
+      const teacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
+      const teacherBatchIds = teacherBatches.map((b: any) => b._id);
+      
+      const students = await Student.find({
+        $or: [
+          { batch: { $in: teacherBatchIds } },
+          { 'pastBatches.batch': { $in: teacherBatchIds } }
+        ]
+      }).populate('batch', 'name subject');
+      
+      res.status(200).json(students);
+      return;
+    }
+
     const students = await Student.find().populate('batch', 'name subject');
     res.status(200).json(students);
   } catch (error) {

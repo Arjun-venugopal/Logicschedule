@@ -41,6 +41,10 @@ const batchSchema = new mongoose.Schema(
       enum: ['1 Week', '2 Weeks', '1 Month', '3 Months', '6 Months', '1 Year', 'Custom'],
       default: '1 Month',
     },
+    numberOfSessions: {
+      type: Number,
+      default: null,
+    },
     status: {
       type: String,
       enum: ['Upcoming', 'Active', 'Completed', 'Cancelled'],

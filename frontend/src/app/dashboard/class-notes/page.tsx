@@ -13,13 +13,52 @@ export default function ClassNotesPage() {
   const { user } = useAuthStore();
   const { searchQuery, setSearchQuery } = useSearchStore();
 
+  const [selectedTeacherId, setSelectedTeacherId] = useState("");
+  const [selectedStudentId, setSelectedStudentId] = useState("");
+
+  const { data: teachers = [] } = useQuery({
+    queryKey: ["teachers"],
+    queryFn: async () => (await api.get("/teachers")).data,
+    enabled: user?.role === "Admin",
+  });
+
+  const { data: batches = [] } = useQuery({
+    queryKey: ["batches"],
+    queryFn: async () => (await api.get("/batches")).data,
+    enabled: user?.role === "Admin",
+  });
+
+  const { data: students = [] } = useQuery({
+    queryKey: ["students"],
+    queryFn: async () => (await api.get("/students")).data,
+    enabled: user?.role === "Admin",
+  });
+
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ["schedules-completed"],
     queryFn: async () => (await api.get("/schedules")).data,
   });
 
+  // Filter students by teacher
+  const teacherBatches = batches.filter((b: any) => (b.assignedTeacher?._id || b.assignedTeacher) === selectedTeacherId);
+  const teacherBatchIds = teacherBatches.map((b: any) => b._id);
+  const studentsForTeacher = students.filter((s: any) => teacherBatchIds.includes(s.batch?._id || s.batch));
+
   const completedClasses = schedules.filter((s: any) => {
     if (s.status !== "Completed" || (!s.notes && !s.subject)) return false;
+    
+    if (selectedTeacherId) {
+      if ((s.teacher?._id || s.teacher) !== selectedTeacherId) return false;
+    }
+    
+    if (selectedStudentId) {
+      const student = students.find((st: any) => st._id === selectedStudentId);
+      if (!student) return false;
+      const studentBatchId = student.batch?._id || student.batch;
+      const scheduleBatchId = s.batch?._id || s.batch;
+      if (scheduleBatchId !== studentBatchId) return false;
+    }
+
     if (!searchQuery) return true;
     
     const lowerSearch = searchQuery.toLowerCase();
@@ -43,22 +82,53 @@ export default function ClassNotesPage() {
   return (
     <div className="flex flex-col gap-6 h-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-white">Completed Class Notes</h1>
           <p className="text-neutral-400 text-sm mt-0.5">
             Review subjects taught and remarks submitted by teachers.
           </p>
         </div>
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            type="text"
-            placeholder="Search notes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:w-64 bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
-          />
+        
+        {/* Filters */}
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          <select
+            value={selectedTeacherId}
+            onChange={(e) => {
+              setSelectedTeacherId(e.target.value);
+              setSelectedStudentId(""); // Reset student on teacher change
+            }}
+            className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          >
+            <option value="">Select Teacher</option>
+            {teachers.map((t: any) => (
+              <option key={t._id} value={t._id}>{t.name}</option>
+            ))}
+          </select>
+
+          {selectedTeacherId && (
+            <select
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            >
+              <option value="">Select Student ({studentsForTeacher.length})</option>
+              {studentsForTeacher.map((s: any) => (
+                <option key={s._id} value={s._id}>{s.name}</option>
+              ))}
+            </select>
+          )}
+
+          <div className="relative w-full md:w-64">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
+            <input
+              type="text"
+              placeholder="Search notes..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
+            />
+          </div>
         </div>
       </div>
 

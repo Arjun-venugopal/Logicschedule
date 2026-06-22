@@ -1,5 +1,6 @@
 "use client";
 
+import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
@@ -7,6 +8,9 @@ import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw } 
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DashboardPage() {
+  const { user } = useAuthStore();
+  const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+
   const { data: stats, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => (await api.get("/stats")).data,
@@ -14,14 +18,14 @@ export default function DashboardPage() {
   });
 
   const statCards = [
-    {
+    ...(isAdmin ? [{
       label: "Total Teachers",
       value: stats?.totalTeachers ?? "—",
       icon: Users,
       color: "text-amber-400",
       bg: "bg-amber-500/10",
       border: "border-amber-500/20",
-    },
+    }] : []),
     {
       label: "Active Batches",
       value: stats?.activeBatches ?? "—",
@@ -40,14 +44,14 @@ export default function DashboardPage() {
       bg: "bg-yellow-500/10",
       border: "border-yellow-500/20",
     },
-    {
+    ...(isAdmin ? [{
       label: "Conflicts",
       value: stats?.conflicts ?? "—",
       icon: AlertCircle,
       color: stats?.conflicts > 0 ? "text-red-400" : "text-emerald-400",
       bg: stats?.conflicts > 0 ? "bg-red-500/10" : "bg-emerald-500/10",
       border: stats?.conflicts > 0 ? "border-red-500/20" : "border-emerald-500/20",
-    },
+    }] : []),
   ];
 
   const weekData = stats?.weekData ?? [
@@ -131,7 +135,7 @@ export default function DashboardPage() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className="lg:col-span-2 bg-neutral-900 border border-neutral-800 rounded-2xl p-6"
+          className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} bg-neutral-900 border border-neutral-800 rounded-2xl p-6`}
         >
           <div className="flex items-center justify-between mb-6">
             <div>
@@ -173,9 +177,10 @@ export default function DashboardPage() {
         </motion.div>
 
         {/* Live Teacher Status */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
+        {isAdmin && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.45 }}
           className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col"
         >
@@ -226,6 +231,7 @@ export default function DashboardPage() {
             )}
           </div>
         </motion.div>
+        )}
       </div>
     </div>
   );

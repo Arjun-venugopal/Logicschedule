@@ -58,7 +58,11 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
         <div className="flex items-center justify-between p-6 border-b border-neutral-800 shrink-0">
           <div>
             <h2 className="text-xl font-bold text-white leading-tight">{batch.name} Analytics</h2>
-            <p className="text-sm text-neutral-400 mt-0.5">{batch.subject} · {batch.assignedTeacher?.name || "No Teacher"}</p>
+            <p className="text-sm text-neutral-400 mt-0.5">
+              {batch.subject} · {batch.assignedTeacher?.name || "No Teacher"}
+              <span className="mx-2">•</span>
+              Duration: {batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : (batch.durationType || "Not specified")}
+            </p>
           </div>
           <button onClick={onClose} className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
             <X className="w-5 h-5" />

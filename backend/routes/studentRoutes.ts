@@ -8,7 +8,7 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 // Admin only routes
 router.post('/upload', protect, admin, upload.single('file'), uploadStudents);
-router.get('/', protect, admin, getAllStudents);
+router.get('/', protect, getAllStudents);
 router.post('/', protect, admin, createStudent);
 router.get('/:id', protect, admin, getStudentById);
 router.put('/:id', protect, admin, updateStudent);

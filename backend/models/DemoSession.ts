@@ -15,6 +15,46 @@ const demoSessionSchema = new mongoose.Schema(
       type: String,
       default: '',
     },
+    customerName: {
+      type: String,
+      default: '',
+    },
+    phoneNumber: {
+      type: String,
+      default: '',
+    },
+    place: {
+      type: String,
+      default: '',
+    },
+    age: {
+      type: Number,
+    },
+    feeDiscussed: {
+      type: String,
+      default: '',
+    },
+    numberOfSessions: {
+      type: Number,
+      default: null,
+    },
+    admissionConfirmed: {
+      type: String,
+      enum: ['Pending', 'Yes', 'No'],
+      default: 'Pending',
+    },
+    salesExecutive: {
+      type: String,
+      default: '',
+    },
+    classAssignedTutor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Teacher',
+    },
+    batchAssigned: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Batch',
+    },
     subject: {
       type: String,
       required: true,

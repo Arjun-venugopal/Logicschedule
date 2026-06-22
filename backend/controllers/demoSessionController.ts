@@ -2,6 +2,8 @@ import { Response } from 'express';
 import DemoSession from '../models/DemoSession';
 import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
+import Student from '../models/Student';
+import Batch from '../models/Batch';
 
 // @desc    Get all demo sessions
 // @route   GET /demo-sessions
@@ -35,7 +37,10 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
 // @access  Private/Admin
 export const createDemoSession = async (req: any, res: Response): Promise<void> => {
   try {
-    const { teacher, studentName, studentEmail, subject, date, startTime, endTime, meetingLink, notes } = req.body;
+    const { 
+      teacher, studentName, studentEmail, subject, date, startTime, endTime, meetingLink, notes,
+      customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions 
+    } = req.body;
 
     if (!teacher || !studentName || !subject || !date || !startTime || !endTime) {
       res.status(400).json({ message: 'Please provide all required fields: teacher, studentName, subject, date, startTime, endTime' });
@@ -70,6 +75,15 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       teacher,
       studentName,
       studentEmail: studentEmail || '',
+      customerName: customerName || '',
+      phoneNumber: phoneNumber || '',
+      place: place || '',
+      age,
+      feeDiscussed,
+      admissionConfirmed: admissionConfirmed || 'Pending',
+      salesExecutive: salesExecutive || '',
+      classAssignedTutor: classAssignedTutor || undefined,
+      batchAssigned: batchAssigned || undefined,
       subject,
       date: dateObj,
       startTime,
@@ -77,6 +91,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       meetingLink: meetingLink || '',
       notes: notes || '',
       conflict: isConflict,
+      numberOfSessions: numberOfSessions !== undefined ? numberOfSessions : null,
     });
 
     const populated = await demoSession.populate('teacher', 'name email status availability');
@@ -99,6 +114,8 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       return;
     }
 
+    const previousAdmissionConfirmed = demoSession.admissionConfirmed;
+
     const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin';
     let isAssignedTeacher = false;
 
@@ -115,6 +132,17 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     if (isAdmin) {
       demoSession.studentName = req.body.studentName || demoSession.studentName;
       demoSession.studentEmail = req.body.studentEmail !== undefined ? req.body.studentEmail : demoSession.studentEmail;
+      demoSession.customerName = req.body.customerName !== undefined ? req.body.customerName : demoSession.customerName;
+      demoSession.phoneNumber = req.body.phoneNumber !== undefined ? req.body.phoneNumber : demoSession.phoneNumber;
+      demoSession.place = req.body.place !== undefined ? req.body.place : demoSession.place;
+      demoSession.age = req.body.age !== undefined ? req.body.age : demoSession.age;
+      demoSession.feeDiscussed = req.body.feeDiscussed !== undefined ? req.body.feeDiscussed : demoSession.feeDiscussed;
+      demoSession.admissionConfirmed = req.body.admissionConfirmed || demoSession.admissionConfirmed;
+      demoSession.salesExecutive = req.body.salesExecutive !== undefined ? req.body.salesExecutive : demoSession.salesExecutive;
+      demoSession.classAssignedTutor = req.body.classAssignedTutor || demoSession.classAssignedTutor;
+      demoSession.batchAssigned = req.body.batchAssigned || demoSession.batchAssigned;
+      demoSession.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : demoSession.numberOfSessions;
+      
       demoSession.subject = req.body.subject || demoSession.subject;
       demoSession.teacher = req.body.teacher || demoSession.teacher;
       demoSession.date = req.body.date ? new Date(req.body.date) : demoSession.date;
@@ -154,6 +182,37 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     const updated = await demoSession.save();
+
+    // Check if admission was newly confirmed and transfer to batch module
+    if (isAdmin && updated.admissionConfirmed === 'Yes' && previousAdmissionConfirmed !== 'Yes') {
+      const existingStudent = await Student.findOne({ email: updated.studentEmail, name: updated.studentName });
+      if (!existingStudent || !existingStudent.batch) {
+        const count = await Batch.countDocuments();
+        const serialNo = count + 1;
+        const batchName = `${updated.studentName} 1:1 ${serialNo}`;
+
+        const newBatch = await Batch.create({
+          name: batchName,
+          subject: updated.subject,
+          assignedTeacher: updated.classAssignedTutor || updated.teacher,
+          studentsCount: 1,
+          status: 'Upcoming',
+          durationType: updated.numberOfSessions ? 'Custom' : '1 Month',
+          numberOfSessions: updated.numberOfSessions || null,
+        });
+
+        updated.batchAssigned = newBatch._id;
+        await updated.save();
+
+        await Student.create({
+          name: updated.studentName,
+          batch: newBatch._id,
+          mobileNumber: updated.phoneNumber || '',
+          email: updated.studentEmail || '',
+        });
+      }
+    }
+
     const populated = await updated.populate('teacher', 'name email status availability');
     res.json(populated);
   } catch (error: any) {

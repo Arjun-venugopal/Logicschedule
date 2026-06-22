@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock3 } from "lucide-react";
-import { format, addWeeks, addMonths, addYears, differenceInDays, parseISO } from "date-fns";
+import { format, addWeeks, addMonths, addYears, addDays, differenceInDays, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { BatchAnalyticsModal } from "@/components/batches/BatchAnalyticsModal";
@@ -40,6 +40,33 @@ function computeEndDate(startDate: string, durationType: string): string {
   return "";
 }
 
+function computeEndDateBySessions(startDate: string, sessions: number | "", days: string[]): string {
+  if (!startDate || !sessions || typeof sessions !== "number" || sessions <= 0 || !days || days.length === 0) return "";
+  
+  const daysMap: Record<string, number> = {
+    Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6,
+  };
+  const activeDays = new Set(days.map(d => daysMap[d]));
+  
+  let current = parseISO(startDate);
+  let sessionsCounted = 0;
+  
+  if (activeDays.has(current.getDay())) {
+    sessionsCounted++;
+  }
+  
+  let loopCount = 0;
+  while (sessionsCounted < sessions && loopCount < 5000) {
+    current = addDays(current, 1);
+    if (activeDays.has(current.getDay())) {
+      sessionsCounted++;
+    }
+    loopCount++;
+  }
+  
+  return format(current, "yyyy-MM-dd");
+}
+
 function batchProgress(startDate: string, endDate: string): number {
   if (!startDate || !endDate) return 0;
   const start = new Date(startDate).getTime();
@@ -65,6 +92,7 @@ type BatchForm = {
   startDate: string;
   endDate: string;
   status: string;
+  numberOfSessions: number | "";
 };
 
 const emptyForm = (): BatchForm => ({
@@ -80,6 +108,7 @@ const emptyForm = (): BatchForm => ({
   startDate: "",
   endDate: "",
   status: "Upcoming",
+  numberOfSessions: "",
 });
 
 export default function BatchesPage() {
@@ -96,6 +125,15 @@ export default function BatchesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState<string | null>(null);
   const [analyticsBatchId, setAnalyticsBatchId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (form.numberOfSessions && form.startDate && form.days.length > 0) {
+      const computedEnd = computeEndDateBySessions(form.startDate, form.numberOfSessions, form.days);
+      if (computedEnd && form.endDate !== computedEnd) {
+        setForm(f => ({ ...f, endDate: computedEnd, durationType: "Custom" }));
+      }
+    }
+  }, [form.numberOfSessions, form.startDate, form.days]);
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -140,10 +178,11 @@ export default function BatchesPage() {
       endTime: b.timing?.endTime || "10:00",
       days: b.days || [],
       meetingLink: b.meetingLink || "",
-      durationType: b.durationType || "1 Month",
+      durationType: b.numberOfSessions ? "Custom" : (b.durationType || "1 Month"),
       startDate: b.startDate ? format(new Date(b.startDate), "yyyy-MM-dd") : "",
       endDate: b.endDate ? format(new Date(b.endDate), "yyyy-MM-dd") : "",
       status: b.status || "Upcoming",
+      numberOfSessions: b.numberOfSessions || "",
     });
     setEditingId(b._id);
     setModal(true);
@@ -266,21 +305,30 @@ export default function BatchesPage() {
                 )}
                 {batch.durationType && (
                   <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
-                    <Clock3 className="w-2.5 h-2.5" /> {batch.durationType}
+                    <Clock3 className="w-2.5 h-2.5" /> 
+                    {batch.durationType === 'Custom' && batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : batch.durationType}
                   </span>
                 )}
               </div>
 
               {/* Info Row */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="bg-neutral-800/60 rounded-xl p-3">
                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Students</p>
                   <p className="text-lg font-bold text-white">{batch.studentsCount || 0}</p>
                 </div>
                 <div className="bg-neutral-800/60 rounded-xl p-3">
+                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Batch Duration</p>
+                  <p className="text-lg font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                    {batch.durationType === 'Custom' && batch.numberOfSessions 
+                      ? `${batch.numberOfSessions} Hours` 
+                      : (batch.durationType === 'Custom' ? 'Custom' : (batch.durationType || "—"))}
+                  </p>
+                </div>
+                <div className="bg-neutral-800/60 rounded-xl p-3 overflow-hidden">
                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Timing</p>
-                  <p className="text-sm font-semibold text-white">
-                    {batch.timing?.startTime || "—"} – {batch.timing?.endTime || "—"}
+                  <p className="text-sm font-semibold text-white whitespace-nowrap text-ellipsis overflow-hidden">
+                    {batch.timing?.startTime || "—"} - {batch.timing?.endTime || "—"}
                   </p>
                 </div>
               </div>
@@ -450,7 +498,7 @@ export default function BatchesPage() {
                         type="button"
                         onClick={() => {
                           const end = computeEndDate(form.startDate, p.value);
-                          setForm({ ...form, durationType: p.value, endDate: end });
+                          setForm({ ...form, durationType: p.value, endDate: end, numberOfSessions: p.value === "Custom" ? form.numberOfSessions : "" });
                         }}
                         className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
                           form.durationType === p.value
@@ -462,6 +510,19 @@ export default function BatchesPage() {
                       </button>
                     ))}
                   </div>
+                  {form.durationType === "Custom" && (
+                    <div className="mt-3 max-w-xs animate-in fade-in slide-in-from-top-1 duration-200">
+                      <label className="block text-xs font-semibold text-neutral-400 mb-1.5">Enter Number of Hours</label>
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="e.g. 20"
+                        value={form.numberOfSessions}
+                        onChange={(e) => setForm({ ...form, numberOfSessions: e.target.value ? Number(e.target.value) : "", durationType: "Custom" })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Start + End Date */}
