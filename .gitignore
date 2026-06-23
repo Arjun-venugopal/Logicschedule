@@ -19,6 +19,7 @@ out/
 .env.production.local
 .env.*.local
 *.env
+firebase-service-account.json
 
 # Logs and databases
 *.log

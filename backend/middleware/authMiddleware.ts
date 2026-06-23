@@ -17,7 +17,8 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     try {
       token = req.headers.authorization.split(' ')[1];
       const decoded: any = jwt.verify(token, config.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+      req.user = await User.findById(decoded.id);
+      if (req.user) delete req.user.password;
       next();
       return;
     } catch (error) {

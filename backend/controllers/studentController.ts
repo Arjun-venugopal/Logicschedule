@@ -124,7 +124,7 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
 
 export const getStudentById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const student = await Student.findById(req.params.id)
+    const student = await Student.findById(req.params.id as string)
       .populate('batch', 'name subject')
       .populate('pastBatches.batch', 'name subject');
     if (!student) {
@@ -169,7 +169,7 @@ export const createStudent = async (req: Request, res: Response): Promise<void> 
 export const updateStudent = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, batch, parentName, mobileNumber, whatsappNumber, email } = req.body;
-    const studentId = req.params.id;
+    const studentId = req.params.id as string;
 
     const student = await Student.findById(studentId);
     if (!student) {
@@ -214,7 +214,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
 
 export const deleteStudent = async (req: Request, res: Response): Promise<void> => {
   try {
-    const student = await Student.findById(req.params.id);
+    const student = await Student.findById(req.params.id as string);
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
       return;

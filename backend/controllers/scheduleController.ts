@@ -88,10 +88,10 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
 // @access  Private
 export const updateSchedule = async (req: any, res: Response): Promise<void> => {
   try {
-    console.log(`[updateSchedule] Attempting to update schedule ${req.params.id}`);
+    console.log(`[updateSchedule] Attempting to update schedule ${req.params.id as string}`);
     console.log(`[updateSchedule] Payload:`, JSON.stringify(req.body, null, 2));
 
-    const schedule = await Schedule.findById(req.params.id);
+    const schedule = await Schedule.findById(req.params.id as string);
 
     if (schedule) {
       const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin';
@@ -157,7 +157,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
 // @access  Private/Admin
 export const deleteSchedule = async (req: Request, res: Response): Promise<void> => {
   try {
-    const schedule = await Schedule.findById(req.params.id);
+    const schedule = await Schedule.findById(req.params.id as string);
 
     if (schedule) {
       await Schedule.deleteOne({ _id: schedule._id });

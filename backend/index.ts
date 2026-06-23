@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import connectDB from './config/db';
+import { connectFirebase } from './config/firebase';
 import helmet from 'helmet';
 import { config } from './config/config';
 
@@ -88,15 +88,14 @@ io.on('connection', (socket) => {
 
 const PORT = config.PORT;
 
-connectDB().then(() => {
-  httpServer.listen(PORT, () => {
-    console.log(`✅ Server running on port ${PORT}`);
-  });
-}).catch(() => {
-  // DB failed but still start server so we can show proper API errors
-  httpServer.listen(PORT, () => {
-    console.log(`⚠️  Server running on port ${PORT} — MongoDB not connected. Update MONGO_URI in .env`);
-  });
+try {
+  connectFirebase();
+} catch (error) {
+  console.log(`⚠️  Firebase not connected. Ensure GOOGLE_APPLICATION_CREDENTIALS is set.`);
+}
+
+httpServer.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
 });
 
 export default app;

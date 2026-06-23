@@ -1,5 +1,4 @@
 import { Request, Response } from 'express';
-import mongoose from 'mongoose';
 import Teacher from '../models/Teacher';
 import User from '../models/User';
 import Batch from '../models/Batch';
@@ -138,7 +137,7 @@ export const createTeacher = async (req: Request, res: Response): Promise<void> 
 // @access  Private/Admin
 export const updateTeacher = async (req: Request, res: Response): Promise<void> => {
   try {
-    const teacher = await Teacher.findById(req.params.id);
+    const teacher = await Teacher.findById(req.params.id as string);
 
     if (!teacher) {
       res.status(404).json({ message: 'Teacher not found' });
@@ -166,7 +165,7 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
 // @access  Private/Admin
 export const deleteTeacher = async (req: Request, res: Response): Promise<void> => {
   try {
-    const teacher = await Teacher.findById(req.params.id);
+    const teacher = await Teacher.findById(req.params.id as string);
 
     if (!teacher) {
       res.status(404).json({ message: 'Teacher not found' });
@@ -234,7 +233,7 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     if (id === 'me' || id === 'self') {
       teacher = await Teacher.findOne({ user: req.user._id });
     } else {
-      if (!mongoose.Types.ObjectId.isValid(id)) {
+      if (id.length < 5) {
         res.status(400).json({ message: 'Invalid teacher ID format' });
         return;
       }
@@ -301,7 +300,7 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     }
 
     const matchedBatches = await Batch.find(batchQuery);
-    const matchedBatchIds = matchedBatches.map(b => b._id);
+    const matchedBatchIds = matchedBatches.map((b: any) => b._id);
     const totalBatches = matchedBatchIds.length;
 
     // Fetch schedules based on date and batch filters
@@ -382,7 +381,7 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
 
     // Fetch students assigned to this teacher (current or past)
     const allTeacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
-    const allTeacherBatchIds = allTeacherBatches.map(b => b._id);
+    const allTeacherBatchIds = allTeacherBatches.map((b: any) => b._id);
     const assignedStudents = await Student.find({
       $or: [
         { batch: { $in: allTeacherBatchIds } },

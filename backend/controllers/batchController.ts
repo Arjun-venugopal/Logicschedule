@@ -129,7 +129,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
 // @access  Private/Admin
 export const updateBatch = async (req: Request, res: Response): Promise<void> => {
   try {
-    const batch = await Batch.findById(req.params.id);
+    const batch = await Batch.findById(req.params.id as string);
 
     if (!batch) {
       res.status(404).json({ message: 'Batch not found' });
@@ -179,7 +179,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 // @access  Private/Admin
 export const deleteBatch = async (req: Request, res: Response): Promise<void> => {
   try {
-    const batch = await Batch.findById(req.params.id);
+    const batch = await Batch.findById(req.params.id as string);
 
     if (!batch) {
       res.status(404).json({ message: 'Batch not found' });
@@ -187,8 +187,8 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
     }
 
     // Remove all auto-generated schedules tied to this batch
-    const deleted = await Schedule.deleteMany({ batch: batch._id });
-    console.log(`🗑️  Removed ${deleted.deletedCount} schedule(s) for deleted batch "${batch.name}"`);
+    await Schedule.deleteMany({ batch: batch._id });
+    console.log(`🗑️  Removed schedule(s) for deleted batch "${batch.name}"`);
 
     await Batch.deleteOne({ _id: batch._id });
     res.json({ message: 'Batch and its schedules removed' });
@@ -205,7 +205,7 @@ import Student from '../models/Student';
 // @access  Private
 export const getBatchAnalytics = async (req: Request, res: Response): Promise<void> => {
   try {
-    const batch = await Batch.findById(req.params.id).populate('assignedTeacher', 'name email');
+    const batch = await Batch.findById(req.params.id as string).populate('assignedTeacher', 'name email');
     if (!batch) {
       res.status(404).json({ message: 'Batch not found' });
       return;
@@ -214,15 +214,15 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     const students = await Student.find({ batch: batch._id });
     const schedules = await Schedule.find({ batch: batch._id }).sort({ date: 1 });
 
-    const completedClasses = schedules.filter(s => s.status === 'Completed');
+    const completedClasses = schedules.filter((s: any) => s.status === 'Completed');
     
     // Compute attendance statistics per student
-    const attendanceStats = students.map((stu) => {
+    const attendanceStats = students.map((stu: any) => {
       let presentCount = 0;
       let totalCount = 0;
       
-      completedClasses.forEach(cls => {
-        const record = cls.attendance?.find(a => a.studentId?.toString() === stu._id.toString());
+      completedClasses.forEach((cls: any) => {
+        const record = cls.attendance?.find((a: any) => a.studentId?.toString() === stu._id.toString());
         if (record) {
           totalCount++;
           if (record.isPresent) presentCount++;

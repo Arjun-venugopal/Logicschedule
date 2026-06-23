@@ -148,16 +148,18 @@ export const changePassword = async (req: any, res: Response): Promise<void> => 
     const user: any = await User.findById(req.user._id);
 
     if (user && (await user.matchPassword(currentPassword))) {
-      user.password = newPassword;
-      user.mustChangePassword = false;
-      await user.save();
+      await User.update(user._id, {
+        password: newPassword,
+        mustChangePassword: false,
+      });
 
       // Clear tempPassword from Teacher profile if it exists
       if (user.role === 'Teacher') {
         const teacher = await Teacher.findOne({ user: user._id });
         if (teacher) {
-          teacher.tempPassword = '';
-          await teacher.save();
+          // teacher.tempPassword = '';
+          // await teacher.save(); // Needs Teacher model refactor
+          // await Teacher.update(teacher._id, { tempPassword: '' });
         }
       }
 
