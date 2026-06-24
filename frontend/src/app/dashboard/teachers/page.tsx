@@ -9,6 +9,7 @@ import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanc
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 function generatePassword(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
@@ -19,6 +20,8 @@ export default function TeachersPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const router = useRouter();
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("teachers");
 
   useEffect(() => {
     if (user && user.role === "Teacher") {
@@ -149,12 +152,14 @@ export default function TeachersPage() {
           <h1 className="text-2xl font-bold text-white">Teachers</h1>
           <p className="text-neutral-400 text-sm mt-0.5">Manage teaching staff and access credentials</p>
         </div>
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
-        >
-          <UserPlus className="w-4 h-4" /> Add Teacher
-        </button>
+        {hasWriteAccess && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+          >
+            <UserPlus className="w-4 h-4" /> Add Teacher
+          </button>
+        )}
       </div>
 
       {/* Credentials Banner */}
@@ -208,7 +213,7 @@ export default function TeachersPage() {
             </div>
             <p className="text-neutral-400 font-medium">No teachers found</p>
             <p className="text-neutral-600 text-sm mt-1">Try adjusting your search criteria</p>
-            {!searchQuery && (
+            {!searchQuery && hasWriteAccess && (
               <button
                 onClick={() => setIsModalOpen(true)}
                 className="mt-4 px-4 py-2 brand-gradient text-black font-semibold rounded-lg text-sm hover:opacity-90"
@@ -300,20 +305,24 @@ export default function TeachersPage() {
                         >
                           <TrendingUp className="w-4 h-4" />
                         </button>
-                        <button
-                          onClick={() => openEditModal(teacher)}
-                          className="p-2 hover:bg-blue-500/10 rounded-lg transition-colors text-neutral-500 hover:text-blue-400"
-                          title="Edit Teacher"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => deleteTeacherMutation.mutate(teacher._id)}
-                          className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
-                          title="Delete Teacher"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {hasWriteAccess && (
+                          <>
+                            <button
+                              onClick={() => openEditModal(teacher)}
+                              className="p-2 hover:bg-blue-500/10 rounded-lg transition-colors text-neutral-500 hover:text-blue-400"
+                              title="Edit Teacher"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => deleteTeacherMutation.mutate(teacher._id)}
+                              className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
+                              title="Delete Teacher"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>

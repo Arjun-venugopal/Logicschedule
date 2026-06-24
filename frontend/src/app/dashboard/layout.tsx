@@ -32,27 +32,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   const isTeacher = user?.role === "Teacher";
 
+  const isSubAdmin = user?.role === "Sub Admin";
+  const permissions = user?.permissions || {};
+
+  const canAccess = (module: string) => {
+    if (isTeacher) return true; // Handled separately
+    if (!isSubAdmin) return true; // Admin/Super Admin
+    return permissions[module]?.read === true;
+  };
+
   const navItems = [
-    { icon: Home, label: isTeacher ? "My Overview" : "Dashboard", href: "/dashboard" },
-    { icon: Calendar, label: isTeacher ? "My Schedule" : "Schedule", href: "/dashboard/schedule" },
+    { icon: Home, label: isTeacher ? "My Overview" : "Dashboard", href: "/dashboard", show: canAccess("dashboard") },
+    { icon: Calendar, label: isTeacher ? "My Schedule" : "Schedule", href: "/dashboard/schedule", show: canAccess("schedule") },
     ...(isTeacher
       ? [
-          { icon: BookOpen, label: "My Batches", href: "/dashboard/batches" },
-          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions" },
-          { icon: CheckCircle, label: "Completed Classes", href: "/dashboard/completed-classes" },
-          { icon: Users, label: "Attendance", href: "/dashboard/attendance" },
-          { icon: TrendingUp, label: "Performance", href: "/dashboard/performance" }
+          { icon: BookOpen, label: "My Batches", href: "/dashboard/batches", show: true },
+          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions", show: true },
+          { icon: CheckCircle, label: "Completed Classes", href: "/dashboard/completed-classes", show: true },
+          { icon: Users, label: "Attendance", href: "/dashboard/attendance", show: true },
+          { icon: TrendingUp, label: "Performance", href: "/dashboard/performance", show: true }
         ]
       : [
-          { icon: BookOpen, label: "Batches", href: "/dashboard/batches" },
-          { icon: Users, label: "Teachers", href: "/dashboard/teachers" },
-          { icon: Users, label: "Students", href: "/dashboard/students" },
-          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions" },
-          { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes" },
-          { icon: Users, label: "Attendance", href: "/dashboard/attendance" },
+          { icon: BookOpen, label: "Batches", href: "/dashboard/batches", show: canAccess("batches") },
+          { icon: Users, label: "Teachers", href: "/dashboard/teachers", show: canAccess("teachers") },
+          { icon: Users, label: "Students", href: "/dashboard/students", show: canAccess("students") },
+          { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions", show: canAccess("demoSessions") },
+          { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes", show: canAccess("classNotes") },
+          { icon: Users, label: "Attendance", href: "/dashboard/attendance", show: canAccess("attendance") },
         ]),
-    { icon: Settings, label: "Settings", href: "/dashboard/settings" },
-  ];
+    { icon: Settings, label: "Settings", href: "/dashboard/settings", show: canAccess("settings") },
+  ].filter(item => item.show);
 
   if (!mounted || !token) return null;
 

@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface Teacher {
   _id: string;
@@ -113,6 +114,8 @@ export default function DemoSessionsPage() {
   const { user } = useAuthStore();
   const isTeacher = user?.role === "Teacher";
   const { searchQuery } = useSearchStore();
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("demoSessions");
 
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit" } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -336,10 +339,10 @@ export default function DemoSessionsPage() {
           <p className="text-neutral-400 text-sm mt-0.5">
             {isTeacher
               ? "View and update feedback for your upcoming prospect demo classes"
-              : "Schedule and manage prospective student demo classes based on teacher availability"}
+              : "Schedule and manage prospective student demo classes based on teacher availability"            }
           </p>
         </div>
-        {!isTeacher && (
+        {!isTeacher && hasWriteAccess && (
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
@@ -408,7 +411,7 @@ export default function DemoSessionsPage() {
             <p className="text-neutral-600 text-sm mt-1">
               {searchQuery ? "Try resetting your search query" : "No demo sessions have been scheduled yet"}
             </p>
-            {!isTeacher && !searchQuery && (
+            {!isTeacher && !searchQuery && hasWriteAccess && (
               <button
                 onClick={openCreate}
                 className="mt-4 px-4 py-2 brand-gradient text-black font-semibold rounded-lg text-sm hover:opacity-90"
@@ -512,14 +515,16 @@ export default function DemoSessionsPage() {
                       )}
 
                       <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => openEdit(session)}
-                          className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
-                          title={isTeacher ? "Add notes / feedback" : "Edit Session"}
-                        >
-                          <Edit2 className="w-3.5 h-3.5" />
-                        </button>
-                        {!isTeacher && (
+                        {hasWriteAccess && (
+                          <button
+                            onClick={() => openEdit(session)}
+                            className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
+                            title={isTeacher ? "Add notes / feedback" : "Edit Session"}
+                          >
+                            <Edit2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {!isTeacher && hasWriteAccess && (
                           <button
                             onClick={() => setDeleteConfirm(session._id)}
                             className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-colors border border-red-500/25"
@@ -579,8 +584,12 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.admissionConfirmed || "Pending"}</td>
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
-                      <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white"><Edit2 className="w-4 h-4" /></button>
-                      <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
+                      {hasWriteAccess && (
+                        <>
+                          <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 ))}

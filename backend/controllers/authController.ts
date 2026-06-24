@@ -23,6 +23,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
         name: user.name,
         email: user.email,
         role: user.role,
+        permissions: user.permissions,
         token: generateToken(user._id, user.role),
       });
     } else {
@@ -65,6 +66,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         name: user.name,
         email: user.email,
         role: user.role,
+        permissions: user.permissions,
         token: generateToken(user._id, user.role),
       });
     } else {

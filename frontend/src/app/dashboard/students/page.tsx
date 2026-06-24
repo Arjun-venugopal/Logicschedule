@@ -7,6 +7,7 @@ import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Ph
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import dynamic from "next/dynamic";
 import type { Student, Batch } from "@/types";
 
@@ -27,6 +28,8 @@ export default function StudentsPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { searchQuery } = useSearchStore();
   const queryClient = useQueryClient();
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("students");
 
   const { data: students = [], isLoading, refetch } = useQuery({
     queryKey: ["students-all"],
@@ -126,12 +129,14 @@ export default function StudentsPage() {
             </div>
             <h1 className="text-2xl font-bold text-white">Student Roster</h1>
           </div>
-          <button
-            onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
-          >
-            <Plus className="w-4 h-4" /> New Student
-          </button>
+          {hasWriteAccess && (
+            <button
+              onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
+              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+            >
+              <Plus className="w-4 h-4" /> New Student
+            </button>
+          )}
         </div>
       ) : (
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
@@ -141,12 +146,14 @@ export default function StudentsPage() {
               Manage your entire student roster, view assignments, and import data in bulk.
             </p>
           </div>
-          <button
-            onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
-          >
-            <Plus className="w-4 h-4" /> New Student
-          </button>
+          {hasWriteAccess && (
+            <button
+              onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
+              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+            >
+              <Plus className="w-4 h-4" /> New Student
+            </button>
+          )}
         </div>
       )}
 
@@ -185,79 +192,83 @@ export default function StudentsPage() {
               </div>
             </div>
 
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hidden md:flex flex-col justify-center items-center text-center border-dashed border-2 hover:border-amber-500/50 transition-colors cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
-              <div className="w-10 h-10 rounded-full bg-neutral-800 group-hover:bg-amber-500/20 flex items-center justify-center mb-2 transition-colors">
-                <Upload className="w-4 h-4 text-neutral-400 group-hover:text-amber-500 transition-colors" />
+            {hasWriteAccess && (
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hidden md:flex flex-col justify-center items-center text-center border-dashed border-2 hover:border-amber-500/50 transition-colors cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
+                <div className="w-10 h-10 rounded-full bg-neutral-800 group-hover:bg-amber-500/20 flex items-center justify-center mb-2 transition-colors">
+                  <Upload className="w-4 h-4 text-neutral-400 group-hover:text-amber-500 transition-colors" />
+                </div>
+                <p className="text-sm font-semibold text-white">Quick Import</p>
+                <p className="text-xs text-neutral-500 mt-0.5">Upload .xlsx or .csv</p>
               </div>
-              <p className="text-sm font-semibold text-white">Quick Import</p>
-              <p className="text-xs text-neutral-500 mt-0.5">Upload .xlsx or .csv</p>
-            </div>
+            )}
           </div>
 
           {/* Bulk Upload Section */}
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shrink-0">
-            <div className="p-5 border-b border-neutral-800 bg-neutral-800/20">
-              <h3 className="font-semibold text-white flex items-center gap-2">
-                <FileUp className="w-4 h-4 text-amber-500" /> Bulk Registration
-              </h3>
-            </div>
-            <div className="p-5 md:p-6 flex flex-col md:flex-row gap-6 items-center">
-              <div className="flex-1 w-full text-sm text-neutral-400">
-                <p className="mb-2">Upload a spreadsheet to register multiple students at once. Ensure your file contains exactly these column headers:</p>
-                <div className="flex flex-wrap gap-2">
-                  {['Name', 'Batch', 'Parent Name', 'Mobile Number'].map(header => (
-                    <span key={header} className="px-2.5 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs font-mono text-neutral-300">
-                      {header}
-                    </span>
-                  ))}
+          {hasWriteAccess && (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shrink-0">
+              <div className="p-5 border-b border-neutral-800 bg-neutral-800/20">
+                <h3 className="font-semibold text-white flex items-center gap-2">
+                  <FileUp className="w-4 h-4 text-amber-500" /> Bulk Registration
+                </h3>
+              </div>
+              <div className="p-5 md:p-6 flex flex-col md:flex-row gap-6 items-center">
+                <div className="flex-1 w-full text-sm text-neutral-400">
+                  <p className="mb-2">Upload a spreadsheet to register multiple students at once. Ensure your file contains exactly these column headers:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['Name', 'Batch', 'Parent Name', 'Mobile Number'].map(header => (
+                      <span key={header} className="px-2.5 py-1 bg-neutral-800 border border-neutral-700 rounded-md text-xs font-mono text-neutral-300">
+                        {header}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3 items-center shrink-0">
+                  <input
+                    type="file"
+                    accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
+                    onChange={handleFileChange}
+                    ref={fileInputRef}
+                    className="hidden"
+                  />
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-xl text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
+                  >
+                    <FileUp className="w-4 h-4 text-amber-500" />
+                    {file ? <span className="truncate max-w-[150px]">{file.name}</span> : "Select File"}
+                  </button>
+                  <button
+                    onClick={handleUpload}
+                    disabled={!file || uploading}
+                    className="w-full sm:w-auto px-6 py-2.5 brand-gradient text-black font-bold rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
+                  >
+                    {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {uploading ? "Importing..." : "Run Import"}
+                  </button>
                 </div>
               </div>
 
-              <div className="w-full md:w-auto flex flex-col sm:flex-row gap-3 items-center shrink-0">
-                <input
-                  type="file"
-                  accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-                  onChange={handleFileChange}
-                  ref={fileInputRef}
-                  className="hidden"
-                />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="w-full sm:w-auto px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-xl text-sm font-medium text-white transition-colors flex items-center justify-center gap-2"
-                >
-                  <FileUp className="w-4 h-4 text-amber-500" />
-                  {file ? <span className="truncate max-w-[150px]">{file.name}</span> : "Select File"}
-                </button>
-                <button
-                  onClick={handleUpload}
-                  disabled={!file || uploading}
-                  className="w-full sm:w-auto px-6 py-2.5 brand-gradient text-black font-bold rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20"
-                >
-                  {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                  {uploading ? "Importing..." : "Run Import"}
-                </button>
-              </div>
+              <AnimatePresence>
+                {status && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="px-6 pb-6"
+                  >
+                    <div className={`p-4 rounded-xl flex items-center gap-3 border ${status.type === "success"
+                      ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                      : "bg-red-500/10 border-red-500/20 text-red-400"
+                      }`}>
+                      {status.type === "success" ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
+                      <p className="text-sm font-medium">{status.message}</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
-
-            <AnimatePresence>
-              {status && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="px-6 pb-6"
-                >
-                  <div className={`p-4 rounded-xl flex items-center gap-3 border ${status.type === "success"
-                    ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                    : "bg-red-500/10 border-red-500/20 text-red-400"
-                    }`}>
-                    {status.type === "success" ? <CheckCircle2 className="w-5 h-5 shrink-0" /> : <AlertCircle className="w-5 h-5 shrink-0" />}
-                    <p className="text-sm font-medium">{status.message}</p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+          )}
 
           {/* Roster Prompt Section */}
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-8 md:p-12 flex flex-col items-center justify-center text-center shrink-0">
@@ -363,20 +374,24 @@ export default function StudentsPage() {
                           >
                             View Details
                           </button>
-                          <button
-                            onClick={() => setEditStudent({ ...student, batch: student.batch?._id || "" })}
-                            className="p-1.5 hover:bg-amber-500/10 rounded-lg text-neutral-500 hover:text-amber-400 transition-colors"
-                            title="Edit / Reassign Batch"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => setDeleteConfirm(student._id)}
-                            className="p-1.5 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-400 transition-colors"
-                            title="Remove Student"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {hasWriteAccess && (
+                            <>
+                              <button
+                                onClick={() => setEditStudent({ ...student, batch: student.batch?._id || "" })}
+                                className="p-1.5 hover:bg-amber-500/10 rounded-lg text-neutral-500 hover:text-amber-400 transition-colors"
+                                title="Edit / Reassign Batch"
+                              >
+                                <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => setDeleteConfirm(student._id)}
+                                className="p-1.5 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-400 transition-colors"
+                                title="Remove Student"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>

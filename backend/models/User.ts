@@ -3,6 +3,18 @@ import bcrypt from 'bcrypt';
 
 const getCollection = () => getDb().collection('users');
 
+export interface IUserPermissions {
+  dashboard: { read: boolean; write: boolean };
+  schedule: { read: boolean; write: boolean };
+  batches: { read: boolean; write: boolean };
+  teachers: { read: boolean; write: boolean };
+  students: { read: boolean; write: boolean };
+  demoSessions: { read: boolean; write: boolean };
+  classNotes: { read: boolean; write: boolean };
+  attendance: { read: boolean; write: boolean };
+  settings: { read: boolean; write: boolean };
+}
+
 export interface IUser {
   _id?: string;
   name: string;
@@ -10,6 +22,7 @@ export interface IUser {
   password?: string;
   role: string;
   mustChangePassword?: boolean;
+  permissions?: IUserPermissions | null;
   createdAt?: any;
   updatedAt?: any;
   matchPassword?: (enteredPassword: string) => Promise<boolean>;

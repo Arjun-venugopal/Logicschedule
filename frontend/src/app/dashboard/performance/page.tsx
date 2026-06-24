@@ -191,40 +191,6 @@ export default function TeacherPerformancePage() {
         </div>
       </div>
 
-      {/* Remarks Section */}
-      <div className="space-y-4">
-        <h3 className="font-semibold text-white flex items-center gap-2 border-b border-neutral-800 pb-2">
-          <MessageSquare className="w-4 h-4 text-amber-500" /> My Recent Remarks & Class Notes
-        </h3>
-        <div className="grid gap-3">
-          {recentFeedback.length === 0 ? (
-            <div className="py-8 text-center text-neutral-500 bg-neutral-900 border border-neutral-800 rounded-2xl text-sm">
-              No notes or remarks have been recorded for completed classes yet.
-            </div>
-          ) : (
-            recentFeedback.map((feedback: any) => (
-              <div
-                key={feedback._id}
-                className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hover:border-neutral-700 transition-all"
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <span className="text-xs text-amber-450 font-semibold">{feedback.batch?.name || "Unknown Batch"}</span>
-                    <h4 className="text-sm font-bold text-white">{feedback.subject}</h4>
-                  </div>
-                  <span className="text-[10px] text-neutral-500 flex items-center gap-1 font-medium">
-                    <Calendar className="w-3 h-3" />
-                    {feedback.date ? format(parseISO(feedback.date), "MMM d, yyyy") : ""}
-                  </span>
-                </div>
-                <p className="text-xs text-neutral-300 bg-neutral-950 p-3 rounded-lg border border-neutral-850">
-                  {feedback.notes}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
     </div>
   );
 }

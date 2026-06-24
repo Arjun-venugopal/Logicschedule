@@ -403,6 +403,10 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
       ]
     }).select('_id name');
 
+    const recentFeedback = completedSchedulesList
+      .filter((s: any) => s.notes && s.notes !== 'Auto-generated for batch')
+      .slice(0, 10);
+
     res.json({
       teacher: {
         _id: teacher._id,
@@ -427,6 +431,7 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
       },
       demoSessions,
       assignedStudents,
+      recentFeedback,
       filteredBatches: matchedBatches,
       filteredSchedules: allSchedulesList,
     });

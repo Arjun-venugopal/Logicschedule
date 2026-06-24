@@ -6,12 +6,23 @@ import { motion } from "framer-motion";
 import { format, parseISO } from "date-fns";
 import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Check, Lock, Edit2 } from "lucide-react";
 import { useState } from "react";
+import { useAuthStore } from "@/store/authStore";
 
 export default function AttendancePage() {
   const queryClient = useQueryClient();
+  const { user } = useAuthStore();
+  const isTeacher = user?.role === "Teacher";
+  
   const [savingScheduleId, setSavingScheduleId] = useState<string | null>(null);
+  const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+
+  const { data: teachers = [], isLoading: loadingTeachers } = useQuery({
+    queryKey: ["all-teachers"],
+    queryFn: async () => (await api.get("/teachers")).data,
+    enabled: !isTeacher,
+  });
 
   // 1. Fetch Students
   const { data: students = [], isLoading: loadingStudents } = useQuery({
@@ -65,7 +76,7 @@ export default function AttendancePage() {
     });
   };
 
-  if (loadingStudents || loadingSchedules) {
+  if (loadingStudents || loadingSchedules || (!isTeacher && loadingTeachers)) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 h-full">
         <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-4" />
@@ -99,11 +110,22 @@ export default function AttendancePage() {
     };
   }).filter((s: any) => s.schedules.length > 0);
 
+  const filteredStudentsWithSchedules = studentsWithSchedules.filter((student: any) => {
+    if (isTeacher) return true; // Teachers only see their own students/schedules from the backend anyway
+    if (!selectedTeacherId) return true;
+    return student.schedules.some((s: any) => 
+      s.teacher?._id === selectedTeacherId || 
+      s.teacher === selectedTeacherId ||
+      s.replacementTeacher?._id === selectedTeacherId ||
+      s.replacementTeacher === selectedTeacherId
+    );
+  });
+
   let globalTotal = 0;
   let globalMarked = 0;
   let globalPresent = 0;
 
-  studentsWithSchedules.forEach((s: any) => {
+  filteredStudentsWithSchedules.forEach((s: any) => {
     globalTotal += s.stats.total;
     globalMarked += s.stats.marked;
     globalPresent += s.stats.present;
@@ -112,8 +134,8 @@ export default function AttendancePage() {
   const globalRate = globalMarked > 0 ? Math.round((globalPresent / globalMarked) * 100) : 0;
 
   const displayedStudents = selectedStudentId 
-    ? studentsWithSchedules.filter((s: any) => s._id === selectedStudentId)
-    : studentsWithSchedules;
+    ? filteredStudentsWithSchedules.filter((s: any) => s._id === selectedStudentId)
+    : filteredStudentsWithSchedules;
 
   return (
     <div className="flex flex-col gap-6 h-full max-w-6xl mx-auto pb-10 overflow-y-auto">
@@ -162,7 +184,29 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* Filter */}
+        {/* Filter by Teacher (Admin Only) */}
+        {!isTeacher && (
+          <div className="lg:w-1/4 flex flex-col justify-center">
+            <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
+              <Users className="w-4 h-4 text-amber-500" /> Filter by Teacher
+            </label>
+            <select
+              value={selectedTeacherId}
+              onChange={(e) => {
+                setSelectedTeacherId(e.target.value);
+                setSelectedStudentId(""); // reset student when teacher changes
+              }}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            >
+              <option value="">All Teachers</option>
+              {teachers.map((t: any) => (
+                <option key={t._id} value={t._id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Filter by Student */}
         <div className="lg:w-1/3 flex flex-col justify-center">
           <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
             <Users className="w-4 h-4 text-amber-500" /> Filter by Student
@@ -173,7 +217,7 @@ export default function AttendancePage() {
             className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
           >
             <option value="">All Students</option>
-            {studentsWithSchedules.map((s: any) => (
+            {filteredStudentsWithSchedules.map((s: any) => (
               <option key={s._id} value={s._id}>{s.name} ({s.batch?.name || 'Unknown Batch'})</option>
             ))}
           </select>

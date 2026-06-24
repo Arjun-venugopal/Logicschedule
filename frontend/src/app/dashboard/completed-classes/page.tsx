@@ -7,13 +7,13 @@ import { Search, CheckCircle, FileText, Clock, Edit2, X, AlertTriangle } from "l
 import { useState } from "react";
 import { format, parseISO, isBefore } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
-import { useSearchStore } from "@/store/searchStore";
 
 export default function CompletedClassesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const { searchQuery, setSearchQuery } = useSearchStore();
   const [modal, setModal] = useState<any>(null);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>("");
   
   const [form, setForm] = useState({
     subject: "",
@@ -24,6 +24,11 @@ export default function CompletedClassesPage() {
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
+  });
+
+  const { data: students = [] } = useQuery({
+    queryKey: ["all-students"],
+    queryFn: async () => (await api.get("/students")).data,
   });
 
   const updateSchedule = useMutation({
@@ -43,13 +48,23 @@ export default function CompletedClassesPage() {
     
     if (!isPast && !isCompleted) return false;
 
-    // Apply search filter
-    if (!searchQuery) return true;
-    const lowerSearch = searchQuery.toLowerCase();
-    return (
-      (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
-      (s.subject || "").toLowerCase().includes(lowerSearch)
-    );
+    // Apply student filter
+    if (selectedStudentId) {
+      const student = students.find((st: any) => st._id === selectedStudentId);
+      if (student) {
+        const studentBatchId = student.batch?._id || student.batch;
+        const scheduleBatchId = s.batch?._id || s.batch;
+        if (scheduleBatchId !== studentBatchId) return false;
+      }
+    }
+
+    // Apply date filter
+    if (selectedDate) {
+      const scheduleDate = format(new Date(s.date), "yyyy-MM-dd");
+      if (scheduleDate !== selectedDate) return false;
+    }
+
+    return true;
   }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   if (user?.role !== "Teacher") {
@@ -95,15 +110,34 @@ export default function CompletedClassesPage() {
             View your past classes and add remarks or topics covered.
           </p>
         </div>
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
-          <input
-            type="text"
-            placeholder="Search classes..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full md:w-64 bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
-          />
+        <div className="flex flex-col md:flex-row items-center gap-3">
+          <select
+            value={selectedStudentId}
+            onChange={(e) => setSelectedStudentId(e.target.value)}
+            className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          >
+            <option value="">All Students</option>
+            {students.map((s: any) => (
+              <option key={s._id} value={s._id}>{s.name} ({s.batch?.name || "Unknown"})</option>
+            ))}
+          </select>
+
+          <div className="relative w-full md:w-48">
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            />
+            {selectedDate && (
+              <button 
+                onClick={() => setSelectedDate("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

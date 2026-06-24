@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, BookOpen, Calendar, AlignLeft, Info, Search } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const SLOT_COLORS = [
   { bg: "bg-amber-500/20", border: "border-amber-500/50", text: "text-amber-300", dot: "bg-amber-400" },
@@ -56,6 +57,10 @@ type ScheduleEntry = {
   subject: string;
   notes: string;
   attendance?: { studentId: string; isPresent: boolean }[];
+  cancellationReason?: string;
+  rescheduleDate?: string;
+  rescheduleStartTime?: string;
+  rescheduleEndTime?: string;
 };
 
 type PopulatedScheduleEntry = {
@@ -82,12 +87,18 @@ const emptyForm = (): ScheduleEntry => ({
   subject: "",
   notes: "",
   attendance: [],
+  cancellationReason: "",
+  rescheduleDate: "",
+  rescheduleStartTime: "",
+  rescheduleEndTime: "",
 });
 
 export default function SchedulePage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const isTeacher = user?.role === "Teacher";
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("schedule");
 
   const [currentDate, setCurrentDate] = useState(new Date());
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit"; prefillDate?: string } | null>(null);
@@ -197,7 +208,29 @@ export default function SchedulePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (modal?.mode === "edit" && editingId) {
-      updateSchedule.mutate({ id: editingId, data: form });
+      if (form.status === "Cancelled" && form.rescheduleDate && form.rescheduleStartTime && form.rescheduleEndTime) {
+        const notesSuffix = `Cancelled. Reason: ${form.cancellationReason || 'Not provided'}. Rescheduled to ${format(parseISO(form.rescheduleDate), "MMM d, yyyy")} ${form.rescheduleStartTime}-${form.rescheduleEndTime}.`;
+        const updateData = { 
+          ...form, 
+          notes: form.notes ? `${notesSuffix}\n\n${form.notes}` : notesSuffix
+        };
+        updateSchedule.mutate({ id: editingId, data: updateData });
+
+        const newClass = {
+          ...emptyForm(),
+          teacher: form.teacher,
+          batch: form.batch,
+          date: form.rescheduleDate,
+          startTime: form.rescheduleStartTime,
+          endTime: form.rescheduleEndTime,
+          status: "Scheduled",
+          subject: form.subject,
+          notes: "Rescheduled from " + (form.date ? format(parseISO(form.date), "MMM d, yyyy") : "previous date"),
+        };
+        createSchedule.mutate(newClass);
+      } else {
+        updateSchedule.mutate({ id: editingId, data: form });
+      }
     } else {
       createSchedule.mutate(form);
     }
@@ -305,7 +338,7 @@ export default function SchedulePage() {
           >
             Today
           </button>
-          {!isTeacher && (
+          {!isTeacher && hasWriteAccess && (
             <button
               onClick={() => openCreate()}
               className="flex items-center gap-2 px-4 py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 text-sm shadow-lg shadow-amber-500/20"
@@ -378,14 +411,14 @@ export default function SchedulePage() {
                       key={i} 
                       className={`border-b border-r border-neutral-800/40 p-1.5 md:p-2 flex flex-col group cursor-pointer hover:bg-neutral-800/40 transition-colors ${isCurrentMonth ? 'bg-transparent' : 'bg-neutral-950/50'}`}
                       onClick={() => {
-                        if (!isTeacher) openCreate(format(dayDate, "yyyy-MM-dd"));
+                        if (!isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
                       }}
                     >
                       <div className="flex justify-between items-start mb-1.5 pl-1">
                         <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full transition-transform ${isToday ? 'brand-gradient text-black shadow-lg shadow-amber-500/20 scale-110' : isCurrentMonth ? 'text-neutral-300' : 'text-neutral-600'}`}>
                           {format(dayDate, "d")}
                         </span>
-                        {!isTeacher && (
+                        {!isTeacher && hasWriteAccess && (
                           <div className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-neutral-700/50 text-neutral-500 hover:text-white transition-all mt-0.5 mr-0.5">
                             <Plus className="w-3.5 h-3.5" />
                           </div>
@@ -472,7 +505,7 @@ export default function SchedulePage() {
                         key={dayIdx}
                         className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer"
                         onClick={() => {
-                          if (!event && !isTeacher) openCreate(format(dayDate, "yyyy-MM-dd"));
+                          if (!event && !isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
                         }}
                       >
                         {event ? (
@@ -525,25 +558,29 @@ export default function SchedulePage() {
                                   <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
                                 </a>
                               )}
-                              <button
-                                onClick={(e) => { e.stopPropagation(); openEdit(event); }}
-                                className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                title={isTeacher ? "Add session notes / topic" : "Edit Class"}
-                              >
-                                <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
-                              </button>
-                              {!isTeacher && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
-                                  className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
-                                >
-                                  <Trash2 className="w-2.5 h-2.5 text-red-300" />
-                                </button>
+                              {hasWriteAccess && (
+                                <>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); openEdit(event); }}
+                                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                    title={isTeacher ? "Add session notes / topic" : "Edit Class"}
+                                  >
+                                    <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
+                                  </button>
+                                  {!isTeacher && (
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
+                                      className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
+                                    >
+                                      <Trash2 className="w-2.5 h-2.5 text-red-300" />
+                                    </button>
+                                  )}
+                                </>
                               )}
                             </div>
                           </motion.div>
                         ) : (
-                          !isTeacher && (
+                          !isTeacher && hasWriteAccess && (
                             <div className="absolute inset-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity border border-dashed border-neutral-700 flex items-center justify-center">
                               <Plus className="w-3.5 h-3.5 text-neutral-600" />
                             </div>
@@ -754,6 +791,60 @@ export default function SchedulePage() {
                         </select>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-500">
                           <ChevronRight className="w-4 h-4 rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Cancellation / Reschedule Fields */}
+                  {form.status === "Cancelled" && (
+                    <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl space-y-4 mb-4">
+                      <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" /> Cancellation Details
+                      </h4>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-neutral-400">Reason for Cancellation</label>
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Health issue, Emergency..."
+                          value={form.cancellationReason || ""}
+                          onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
+                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                        />
+                      </div>
+
+                      <div className="grid md:grid-cols-3 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Reschedule Date</label>
+                          <input
+                            type="date"
+                            required
+                            value={form.rescheduleDate || ""}
+                            onChange={(e) => setForm({ ...form, rescheduleDate: e.target.value })}
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Start Time</label>
+                          <input
+                            type="time"
+                            required
+                            value={form.rescheduleStartTime || ""}
+                            onChange={(e) => setForm({ ...form, rescheduleStartTime: e.target.value })}
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">End Time</label>
+                          <input
+                            type="time"
+                            required
+                            value={form.rescheduleEndTime || ""}
+                            onChange={(e) => setForm({ ...form, rescheduleEndTime: e.target.value })}
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
                         </div>
                       </div>
                     </div>

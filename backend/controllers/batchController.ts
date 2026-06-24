@@ -75,7 +75,34 @@ export const getBatches = async (req: any, res: Response) => {
       else { res.json([]); return; }
     }
     const batches = await Batch.find(query).populate('assignedTeacher', 'name email');
-    res.json(batches);
+    
+    // Fetch schedules count for these batches
+    const batchIds = batches.map((b: any) => b._id);
+    const allSchedules = await Schedule.find({
+      batch: { $in: batchIds }
+    });
+    
+    const completedCountMap: Record<string, number> = {};
+    const totalCountMap: Record<string, number> = {};
+    
+    allSchedules.forEach((s: any) => {
+      const bId = s.batch?._id ? s.batch._id.toString() : s.batch.toString();
+      totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
+      if (s.status === 'Completed') {
+        completedCountMap[bId] = (completedCountMap[bId] || 0) + 1;
+      }
+    });
+
+    const enrichedBatches = batches.map((b: any) => {
+      const batchObj = b.toObject ? b.toObject() : b;
+      return {
+        ...batchObj,
+        completedClassesCount: completedCountMap[batchObj._id.toString()] || 0,
+        totalClassesCount: totalCountMap[batchObj._id.toString()] || 0
+      };
+    });
+
+    res.json(enrichedBatches);
   } catch (error: any) {
     console.error('Get batches error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
@@ -90,7 +117,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     const {
       name, subject, assignedTeacher, studentsCount,
       timing, days, meetingLink,
-      startDate, endDate, durationType, status,
+      startDate, endDate, durationType, status, numberOfSessions
     } = req.body;
 
     if (!name || !subject) {
@@ -110,6 +137,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       endDate: endDate ? new Date(endDate) : undefined,
       durationType: durationType || '1 Month',
       status: status || 'Upcoming',
+      numberOfSessions: numberOfSessions || null,
     });
 
     // Auto-generate calendar schedules for every class day in the duration
@@ -151,6 +179,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.meetingLink     = req.body.meetingLink ?? batch.meetingLink;
     batch.durationType    = req.body.durationType ?? batch.durationType;
     batch.status          = req.body.status ?? batch.status;
+    batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
 
     if (req.body.startDate !== undefined)
       batch.startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;

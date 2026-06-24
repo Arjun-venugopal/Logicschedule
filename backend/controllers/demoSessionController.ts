@@ -94,6 +94,35 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       numberOfSessions: numberOfSessions !== undefined ? numberOfSessions : null,
     });
 
+    if (demoSession.admissionConfirmed === 'Yes') {
+      const existingStudent = await Student.findOne({ email: demoSession.studentEmail, name: demoSession.studentName });
+      if (!existingStudent || !existingStudent.batch) {
+        const count = await Batch.countDocuments();
+        const serialNo = count + 1;
+        const batchName = `${demoSession.studentName} 1:1 ${serialNo}`;
+
+        const newBatch = await Batch.create({
+          name: batchName,
+          subject: demoSession.subject,
+          assignedTeacher: demoSession.classAssignedTutor || demoSession.teacher,
+          studentsCount: 1,
+          status: 'Upcoming',
+          durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
+          numberOfSessions: demoSession.numberOfSessions || null,
+        });
+
+        demoSession.batchAssigned = newBatch._id;
+        await demoSession.save();
+
+        await Student.create({
+          name: demoSession.studentName,
+          batch: newBatch._id,
+          mobileNumber: demoSession.phoneNumber || '',
+          email: demoSession.studentEmail || '',
+        });
+      }
+    }
+
     const populated = await demoSession.populate('teacher', 'name email status availability');
     res.status(201).json(populated);
   } catch (error: any) {
@@ -116,7 +145,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
-    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin';
+    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
     let isAssignedTeacher = false;
 
     const teacherProfile = await Teacher.findOne({ user: req.user._id });

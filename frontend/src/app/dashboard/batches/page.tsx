@@ -10,6 +10,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { BatchAnalyticsModal } from "@/components/batches/BatchAnalyticsModal";
 import { useSearchStore } from "@/store/searchStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 const DURATION_PRESETS = [
   { label: "1 Week", value: "1 Week" },
@@ -116,8 +117,8 @@ export default function BatchesPage() {
   const { user } = useAuthStore();
   const router = useRouter();
   const { searchQuery } = useSearchStore();
-
-  // Removed redirect so teachers can view batches
+  const { canWrite } = usePermissions();
+  const hasWriteAccess = canWrite("batches");
 
   const [modal, setModal] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -125,15 +126,21 @@ export default function BatchesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState<string | null>(null);
   const [analyticsBatchId, setAnalyticsBatchId] = useState<string | null>(null);
+  const [filterTeacher, setFilterTeacher] = useState<string>("");
 
   useEffect(() => {
-    if (form.numberOfSessions && form.startDate && form.days.length > 0) {
-      const computedEnd = computeEndDateBySessions(form.startDate, form.numberOfSessions, form.days);
-      if (computedEnd && form.endDate !== computedEnd) {
-        setForm(f => ({ ...f, endDate: computedEnd, durationType: "Custom" }));
+    if (form.durationType === "Custom") {
+      if (form.numberOfSessions && form.startDate && form.days.length > 0) {
+        const computedEnd = computeEndDateBySessions(form.startDate, form.numberOfSessions, form.days);
+        if (computedEnd && form.endDate !== computedEnd) {
+          setForm(f => ({ ...f, endDate: computedEnd }));
+        }
+      } else if (!form.numberOfSessions && form.endDate !== "") {
+        // Clear end date if number of sessions is cleared
+        setForm(f => ({ ...f, endDate: "" }));
       }
     }
-  }, [form.numberOfSessions, form.startDate, form.days]);
+  }, [form.numberOfSessions, form.startDate, form.days, form.durationType]);
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -215,6 +222,8 @@ export default function BatchesPage() {
   // No early return for teacher, let them see their batches
 
   const filteredBatches = batches.filter((b: any) => {
+    if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
+    
     if (!searchQuery) return true;
     const lowerSearch = searchQuery.toLowerCase();
     return (
@@ -232,7 +241,7 @@ export default function BatchesPage() {
           <h1 className="text-2xl font-bold text-white">Batches</h1>
           <p className="text-neutral-400 text-sm mt-0.5">Create and manage class batches with schedules and meeting links</p>
         </div>
-        {user?.role !== "Teacher" && (
+        {hasWriteAccess && (
           <button
             onClick={openCreate}
             className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
@@ -241,6 +250,33 @@ export default function BatchesPage() {
           </button>
         )}
       </div>
+
+      {/* Filters */}
+      {user?.role !== "Teacher" && (
+        <div className="flex items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
+          <div className="flex-1 md:max-w-xs">
+            <select
+              value={filterTeacher}
+              onChange={(e) => setFilterTeacher(e.target.value)}
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            >
+              <option value="">All Teachers</option>
+              {teachers.map((t: any) => (
+                <option key={t._id} value={t._id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+          {filterTeacher && (
+            <button
+              onClick={() => setFilterTeacher("")}
+              className="p-2 text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
+              title="Clear Filter"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Batch Cards */}
       {isLoading ? (
@@ -278,7 +314,7 @@ export default function BatchesPage() {
                     <p className="text-sm text-amber-400">{batch.subject}</p>
                   </div>
                 </div>
-                {user?.role !== "Teacher" && (
+                {hasWriteAccess && (
                   <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() => openEdit(batch)}
@@ -312,10 +348,16 @@ export default function BatchesPage() {
               </div>
 
               {/* Info Row */}
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div className="bg-neutral-800/60 rounded-xl p-3">
                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Students</p>
                   <p className="text-lg font-bold text-white">{batch.studentsCount || 0}</p>
+                </div>
+                <div className="bg-neutral-800/60 rounded-xl p-3">
+                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes Done</p>
+                  <p className="text-lg font-bold text-emerald-400">
+                    {batch.completedClassesCount || 0} / {batch.totalClassesCount || 0}
+                  </p>
                 </div>
                 <div className="bg-neutral-800/60 rounded-xl p-3">
                   <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Batch Duration</p>
@@ -349,9 +391,10 @@ export default function BatchesPage() {
                       style={{ width: `${batchProgress(batch.startDate, batch.endDate)}%` }}
                     />
                   </div>
-                  <p className="text-[9px] text-neutral-600 mt-1 text-right">
-                    {batchProgress(batch.startDate, batch.endDate)}% complete
-                  </p>
+                  <div className="flex items-center justify-between text-[9px] text-neutral-600 mt-1">
+                    <span>{Math.max((batch.totalClassesCount || 0) - (batch.completedClassesCount || 0), 0)} classes remaining</span>
+                    <span>{batchProgress(batch.startDate, batch.endDate)}% elapsed</span>
+                  </div>
                 </div>
               )}
 
@@ -512,10 +555,11 @@ export default function BatchesPage() {
                   </div>
                   {form.durationType === "Custom" && (
                     <div className="mt-3 max-w-xs animate-in fade-in slide-in-from-top-1 duration-200">
-                      <label className="block text-xs font-semibold text-neutral-400 mb-1.5">Enter Number of Hours</label>
+                      <label className="block text-xs font-semibold text-neutral-400 mb-1.5">Enter Number of Hours (Sessions)</label>
                       <input
                         type="number"
                         min={0}
+                        step="any"
                         placeholder="e.g. 20"
                         value={form.numberOfSessions}
                         onChange={(e) => setForm({ ...form, numberOfSessions: e.target.value ? Number(e.target.value) : "", durationType: "Custom" })}
