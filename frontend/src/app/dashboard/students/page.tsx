@@ -1,13 +1,20 @@
 "use client";
 
-import { useState, useRef, useMemo } from "react";
+import { useState, useRef, useMemo, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Download, Plus, Edit2, Trash2, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
-import { StudentDetailsModal } from "@/components/students/StudentDetailsModal";
+import dynamic from "next/dynamic";
+import type { Student, Batch } from "@/types";
+
+// Dynamically import heavy modal
+const StudentDetailsModal = dynamic(
+  () => import("@/components/students/StudentDetailsModal").then(m => m.StudentDetailsModal),
+  { ssr: false }
+);
 
 export default function StudentsPage() {
   const [file, setFile] = useState<File | null>(null);

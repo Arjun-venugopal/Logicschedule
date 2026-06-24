@@ -1,6 +1,7 @@
-import { Request, Response } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
+import { z } from 'zod';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
@@ -137,9 +138,23 @@ export const getStudentById = async (req: Request, res: Response): Promise<void>
   }
 };
 
-export const createStudent = async (req: Request, res: Response): Promise<void> => {
+const studentSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  batch: z.string().min(1, "Batch is required"),
+  parentName: z.string().optional(),
+  mobileNumber: z.string().optional(),
+  whatsappNumber: z.string().optional(),
+  email: z.string().email("Invalid email").optional().or(z.literal('')),
+});
+
+export const createStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = req.body;
+    const parsed = studentSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
+      return;
+    }
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = parsed.data;
     
     const existingStudent = await Student.findOne({ name, batch });
     if (existingStudent) {
@@ -161,14 +176,19 @@ export const createStudent = async (req: Request, res: Response): Promise<void> 
     }
 
     res.status(201).json(newStudent);
-  } catch (error) {
-    res.status(500).json({ message: 'Failed to create student' });
+  } catch (error: any) {
+    next(error);
   }
 };
 
-export const updateStudent = async (req: Request, res: Response): Promise<void> => {
+export const updateStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = req.body;
+    const parsed = studentSchema.partial().safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
+      return;
+    }
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = parsed.data;
     const studentId = req.params.id as string;
 
     const student = await Student.findById(studentId);
@@ -183,20 +203,21 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
 
     if (oldBatchId && newBatchId && oldBatchId.toString() !== newBatchId.toString()) {
       // Add to pastBatches before changing
+      if (!student.pastBatches) student.pastBatches = [];
       student.pastBatches.push({
         batch: oldBatchId,
         leftAt: new Date(),
       });
     }
 
-    student.name = name || student.name;
-    student.batch = batch || student.batch;
-    student.parentName = parentName !== undefined ? parentName : student.parentName;
-    student.mobileNumber = mobileNumber !== undefined ? mobileNumber : student.mobileNumber;
-    student.whatsappNumber = whatsappNumber !== undefined ? whatsappNumber : student.whatsappNumber;
-    student.email = email !== undefined ? email : student.email;
+    if (name !== undefined) student.name = name;
+    if (batch !== undefined) student.batch = batch;
+    if (parentName !== undefined) student.parentName = parentName;
+    if (mobileNumber !== undefined) student.mobileNumber = mobileNumber;
+    if (whatsappNumber !== undefined) student.whatsappNumber = whatsappNumber;
+    if (email !== undefined) student.email = email;
 
-    await student.save();
+    const updatedStudent = await student.save();
 
     // If batch changed, update counts
     if (oldBatchId && newBatchId && oldBatchId.toString() !== newBatchId.toString()) {

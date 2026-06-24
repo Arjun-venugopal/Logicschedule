@@ -50,6 +50,50 @@ export class BaseModel {
     return getDb().collection(this.collectionName);
   }
 
+  private _attachMethods(doc: any) {
+    if (!doc || typeof doc !== 'object') return doc;
+    
+    // Add populate method
+    Object.defineProperty(doc, 'populate', {
+      value: async (path: string, select?: string) => {
+        await this._applyPopulates(doc, [{ path, select: select || '' }]);
+        return doc;
+      },
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+
+    Object.defineProperty(doc, 'deleteOne', {
+      value: async () => {
+        await this.collection.doc(doc._id).delete();
+      },
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+
+    // Add save method
+    Object.defineProperty(doc, 'save', {
+      value: async () => {
+        const updateData = { ...doc };
+        delete updateData._id;
+        for (const key of Object.keys(updateData)) {
+           if (updateData[key] && typeof updateData[key] === 'object' && updateData[key]._id && !(updateData[key] instanceof Date)) {
+              updateData[key] = updateData[key]._id;
+           }
+        }
+        await this.collection.doc(doc._id).update({ ...updateData, updatedAt: new Date() });
+        return doc;
+      },
+      enumerable: false,
+      configurable: true,
+      writable: true
+    });
+
+    return doc;
+  }
+
   // Helper to create a lazy query object
   private _makeLazyQuery(queryObj: any, isCount: boolean, isFindOne: boolean, isFindById: boolean, id?: string) {
     const chain: any = {
@@ -88,6 +132,7 @@ export class BaseModel {
           const doc = await this.collection.doc(id).get();
           if (!doc.exists) return null;
           let result = convertTimestamps({ _id: doc.id, ...doc.data() });
+          result = this._attachMethods(result);
           result = await this._applyPopulates(result, chain._populates);
           return result;
         }
@@ -96,11 +141,13 @@ export class BaseModel {
         if (isFindOne) {
           if (results.length === 0) return null;
           let result = results[0];
+          result = this._attachMethods(result);
           result = await this._applyPopulates(result, chain._populates);
           return result;
         }
 
         // Apply populates to all results
+        results = results.map(r => this._attachMethods(r));
         if (chain._populates.length > 0) {
           const populateCache: Record<string, Promise<any>> = {};
           results = await Promise.all(results.map((r: any) => this._applyPopulates(r, chain._populates, populateCache)));
@@ -207,6 +254,11 @@ export class BaseModel {
     let firestoreQuery: any = this.collection;
     let queryKeys = Object.keys(query);
 
+    if (query._id && typeof query._id === 'string' && Object.keys(query).length === 1) {
+      const doc = await this.collection.doc(query._id).get();
+      return doc.exists ? [convertTimestamps({ _id: doc.id, ...doc.data() })] : [];
+    }
+
     const inMemoryFilters: any = {};
     for (const key of queryKeys) {
       if (key === '$or' || key === '$and') {
@@ -227,7 +279,12 @@ export class BaseModel {
           if (val.$lt !== undefined) firestoreQuery = firestoreQuery.where(key, '<', val.$lt);
         }
       } else {
-        firestoreQuery = firestoreQuery.where(key, '==', val);
+        if (key === '_id') {
+           // Firestore requires FieldPath.documentId() for ID queries, fallback to in-memory filtering for simplicity if it's mixed with other queries
+           inMemoryFilters[key] = val;
+        } else {
+           firestoreQuery = firestoreQuery.where(key, '==', val);
+        }
       }
     }
 
@@ -282,12 +339,22 @@ export class BaseModel {
           if (key === '$or') {
              const orConditions = imQuery[key];
              let match = false;
-             for (const cond of orConditions) {
+              for (const cond of orConditions) {
                 const condKey = Object.keys(cond)[0];
-                if (item[condKey] === cond[condKey]) match = true;
-                if (cond[condKey] && cond[condKey].$regex) {
-                    const regex = new RegExp(cond[condKey].$regex, 'i');
-                    if (regex.test(item[condKey])) match = true;
+                const condVal = cond[condKey];
+                
+                if (item[condKey] === condVal || item[condKey]?.toString() === condVal?.toString()) {
+                    match = true;
+                } else if (condVal && typeof condVal === 'object' && !Array.isArray(condVal)) {
+                    if (condVal.$regex) {
+                        const regex = new RegExp(condVal.$regex, 'i');
+                        if (regex.test(item[condKey])) match = true;
+                    }
+                    if (condVal.$in && Array.isArray(condVal.$in)) {
+                        if (condVal.$in.some((v: any) => v === item[condKey] || v?.toString() === item[condKey]?.toString())) {
+                            match = true;
+                        }
+                    }
                 }
              }
              if (!match) return false;
@@ -357,10 +424,7 @@ export class BaseModel {
   async create(data: any): Promise<any> {
     const docRef = await this.collection.add({ ...data, createdAt: new Date(), updatedAt: new Date() });
     const newDoc = { ...data, _id: docRef.id };
-    return {
-        ...newDoc,
-        save: async () => {} // Mock save
-    };
+    return this._attachMethods(newDoc);
   }
 
   async updateOne(query: any, data: any): Promise<void> {
@@ -400,16 +464,35 @@ export class BaseModel {
 
   async findByIdAndUpdate(id: string, update: any, options?: any): Promise<any> {
     if (!id) return null;
-    let updateData = update.$set || update;
+    let updateData = { ...(update.$set || update) };
+    
+    // Handle $inc for Firestore natively using FieldValue.increment
+    if (update.$inc) {
+      const { FieldValue } = require('firebase-admin/firestore');
+      for (const key of Object.keys(update.$inc)) {
+        updateData[key] = FieldValue.increment(update.$inc[key]);
+      }
+      delete updateData.$inc; // Make sure we don't save $inc literally
+    }
+    
+    // Handle naive $push
     if (update.$push) {
       // Mock push manually (naively)
-      // Real implementation would use FieldValue.arrayUnion
     }
-    await this.collection.doc(id).update({ ...updateData, updatedAt: new Date() });
-    return this.findById(id);
+
+    try {
+      await this.collection.doc(id).update({ ...updateData, updatedAt: new Date() });
+      return this.findById(id);
+    } catch (e: any) {
+      if (e.code === 5 || e.message.includes('NOT_FOUND') || e.message.includes('No document to update')) {
+        return null;
+      }
+      throw e;
+    }
   }
 
   countDocuments(query: any = {}): any {
     return this._makeLazyQuery(query, true, false, false);
   }
 }
+

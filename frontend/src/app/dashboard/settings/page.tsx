@@ -537,25 +537,27 @@ export default function SettingsPage() {
         </div>
 
         {/* System Info */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <Info className="w-5 h-5 text-amber-500" />
-            System Information
-          </h3>
-          <div className="space-y-3">
-            {[
-              { label: "Application", value: "Schedulix v1.0" },
-              { label: "Backend API", value: api.defaults.baseURL || "http://localhost:5000" },
-              { label: "Database", value: "MongoDB" },
-              { label: "Environment", value: process.env.NODE_ENV === "production" ? "Production" : "Development" },
-            ].map((item) => (
-              <div key={item.label} className="flex justify-between items-center py-2.5 border-b border-neutral-800 last:border-0">
-                <span className="text-sm text-neutral-400">{item.label}</span>
-                <span className="text-sm text-white font-medium font-mono">{item.value}</span>
-              </div>
-            ))}
+        {!isTeacher && (
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+            <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
+              <Info className="w-5 h-5 text-amber-500" />
+              System Information
+            </h3>
+            <div className="space-y-3">
+              {[
+                { label: "Application", value: "Schedulix v1.0" },
+                { label: "Backend API", value: api.defaults.baseURL || "http://localhost:5000" },
+                { label: "Database", value: "MongoDB" },
+                { label: "Environment", value: process.env.NODE_ENV === "production" ? "Production" : "Development" },
+              ].map((item) => (
+                <div key={item.label} className="flex justify-between items-center py-2.5 border-b border-neutral-800 last:border-0">
+                  <span className="text-sm text-neutral-400">{item.label}</span>
+                  <span className="text-sm text-white font-medium font-mono">{item.value}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

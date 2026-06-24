@@ -169,3 +169,25 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: 'Server error' });
   }
 };
+
+// @desc    Get schedules by student ID
+// @route   GET /schedules/student/:studentId
+// @access  Private
+export const getSchedulesByStudent = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.studentId;
+    const schedules = await Schedule.find({ status: 'Completed' })
+      .populate('teacher', 'name email')
+      .populate('batch', 'name subject');
+      
+    const studentSchedules = schedules.filter((s: any) => {
+      if (!s.attendance) return false;
+      return s.attendance.some((a: any) => (a.studentId?._id || a.studentId) === studentId);
+    });
+    
+    res.json(studentSchedules);
+  } catch (error) {
+    console.error('Error fetching student schedules:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};

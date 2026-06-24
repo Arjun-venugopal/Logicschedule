@@ -86,7 +86,7 @@ export const getTeachers = async (req: Request, res: Response) => {
 // @access  Private/Admin
 export const createTeacher = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, email, phone, subjectExpertise, experience, status, tempPassword } = req.body;
+    const { name, email, phone, subjectExpertise, experience, status, tempPassword, address, hourlyRate } = req.body;
 
     if (!name || !email) {
       res.status(400).json({ message: 'Name and email are required' });
@@ -119,6 +119,9 @@ export const createTeacher = async (req: Request, res: Response): Promise<void> 
       name,
       email: normalizedEmail,
       phone: phone || '',
+      address: address || '',
+      employmentType: req.body.employmentType || 'Full Time',
+      hourlyRate: req.body.employmentType === 'Part Time' && hourlyRate ? Number(hourlyRate) : 0,
       subjectExpertise: subjectExpertise || [],
       experience: experience || 0,
       status: status || 'Available',
@@ -146,6 +149,17 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
 
     teacher.name              = req.body.name ?? teacher.name;
     teacher.phone             = req.body.phone ?? teacher.phone;
+    teacher.address           = req.body.address ?? teacher.address;
+    if (req.body.employmentType !== undefined) {
+      teacher.employmentType = req.body.employmentType;
+      if (req.body.employmentType === 'Full Time') {
+        teacher.hourlyRate = 0;
+      } else if (req.body.hourlyRate !== undefined) {
+        teacher.hourlyRate = Number(req.body.hourlyRate);
+      }
+    } else if (req.body.hourlyRate !== undefined) {
+      teacher.hourlyRate = Number(req.body.hourlyRate);
+    }
     teacher.subjectExpertise  = req.body.subjectExpertise ?? teacher.subjectExpertise;
     teacher.experience        = req.body.experience ?? teacher.experience;
     teacher.status            = req.body.status ?? teacher.status;

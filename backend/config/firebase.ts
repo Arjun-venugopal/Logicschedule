@@ -17,6 +17,7 @@ const connectFirebase = () => {
         // Fallback to default (relies on GOOGLE_APPLICATION_CREDENTIALS env var)
         initializeApp();
       }
+      getFirestore().settings({ ignoreUndefinedProperties: true });
     }
     console.log('✅ Firebase Admin SDK Initialized. Connected to Firestore.');
   } catch (error: any) {

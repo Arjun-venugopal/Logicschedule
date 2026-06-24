@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp } from "lucide-react";
+import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2 } from "lucide-react";
 import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
@@ -31,11 +31,18 @@ export default function TeachersPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [performanceTeacherId, setPerformanceTeacherId] = useState<string | null>(null);
+  const [editTeacher, setEditTeacher] = useState<any>(null); // For editing
   const [formData, setFormData] = useState({
     name: "",
     email: "",
     phone: "",
+    address: "",
+    employmentType: "Full Time",
+    hourlyRate: "",
     tempPassword: generatePassword(),
+    experience: 0,
+    status: "Available",
+    subjectExpertise: [] as string[],
   });
 
   const { data: teachers, isLoading } = useQuery({
@@ -55,23 +62,41 @@ export default function TeachersPage() {
     );
   }) || [];
 
-  const createTeacher = useMutation({
+  const createTeacherMutation = useMutation({
     mutationFn: async (data: typeof formData) =>
       (await api.post("/auth/create-teacher", {
         name: data.name,
         email: data.email,
         phone: data.phone,
+        address: data.address,
+        employmentType: data.employmentType,
+        hourlyRate: data.employmentType === "Part Time" ? data.hourlyRate : 0,
+        subjectExpertise: data.subjectExpertise,
         tempPassword: data.tempPassword,
       })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       setCreatedCreds({ email: formData.email, tempPassword: formData.tempPassword });
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", tempPassword: generatePassword() });
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", subjectExpertise: [] });
     },
   });
 
-  const deleteTeacher = useMutation({
+  const updateTeacherMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string, data: any }) => {
+      const payload = { ...data };
+      if (payload.employmentType === "Full Time") payload.hourlyRate = 0;
+      return api.put(`/teachers/${id}`, payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setEditTeacher(null);
+      setIsModalOpen(false);
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", subjectExpertise: [] });
+    },
+  });
+
+  const deleteTeacherMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/teachers/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teachers"] }),
   });
@@ -94,6 +119,23 @@ export default function TeachersPage() {
     if (status === "Available") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
     if (status === "Busy") return "bg-amber-500/10 text-amber-400 border-amber-500/20";
     return "bg-neutral-700/50 text-neutral-400 border-neutral-600/30";
+  };
+
+  const openEditModal = (teacher: any) => {
+    setEditTeacher(teacher);
+    setFormData({
+      name: teacher.name || "",
+      email: teacher.email || "",
+      phone: teacher.phone || "",
+      address: teacher.address || "",
+      employmentType: teacher.employmentType || "Full Time",
+      hourlyRate: teacher.hourlyRate || "",
+      tempPassword: "",
+      experience: teacher.experience || 0,
+      status: teacher.status || "Available",
+      subjectExpertise: teacher.subjectExpertise || [],
+    });
+    setIsModalOpen(true);
   };
 
   if (user && user.role === "Teacher") {
@@ -259,7 +301,14 @@ export default function TeachersPage() {
                           <TrendingUp className="w-4 h-4" />
                         </button>
                         <button
-                          onClick={() => deleteTeacher.mutate(teacher._id)}
+                          onClick={() => openEditModal(teacher)}
+                          className="p-2 hover:bg-blue-500/10 rounded-lg transition-colors text-neutral-500 hover:text-blue-400"
+                          title="Edit Teacher"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => deleteTeacherMutation.mutate(teacher._id)}
                           className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
                           title="Delete Teacher"
                         >
@@ -292,87 +341,152 @@ export default function TeachersPage() {
               className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl"
             >
               <div className="flex items-center justify-between p-6 border-b border-neutral-800">
-                <h2 className="text-lg font-bold text-white">Add New Teacher</h2>
-                <button onClick={() => setIsModalOpen(false)} className="text-neutral-500 hover:text-white transition-colors">
+                <h2 className="text-lg font-bold text-white">{editTeacher ? "Edit Teacher" : "Add New Teacher"}</h2>
+                <button onClick={() => { setIsModalOpen(false); setEditTeacher(null); }} className="text-neutral-500 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               <form
-                onSubmit={(e) => { e.preventDefault(); createTeacher.mutate(formData); }}
+                onSubmit={(e) => { 
+                  e.preventDefault(); 
+                  if (editTeacher) {
+                    updateTeacherMutation.mutate({ id: editTeacher._id, data: formData });
+                  } else {
+                    createTeacherMutation.mutate(formData); 
+                  }
+                }}
                 className="p-6 space-y-4"
               >
-                {[
-                  { label: "Full Name", key: "name", type: "text", placeholder: "e.g. Sarah Jenkins" },
-                  { label: "Email Address", key: "email", type: "email", placeholder: "sarah@school.edu" },
-                  { label: "Phone (optional)", key: "phone", type: "tel", placeholder: "+91 98765 43210" },
-                ].map((field) => (
-                  <div key={field.key}>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">{field.label}</label>
+                <div className="grid grid-cols-2 gap-4">
+                  {[
+                    { label: "Full Name", key: "name", type: "text", placeholder: "e.g. Sarah Jenkins" },
+                    { label: "Email Address", key: "email", type: "email", placeholder: "sarah@school.edu" },
+                    { label: "Phone (optional)", key: "phone", type: "tel", placeholder: "+91 98765 43210" },
+                  ].map((field) => (
+                    <div key={field.key} className={field.key === "email" || field.key === "name" ? "col-span-2 sm:col-span-1" : "col-span-2 sm:col-span-1"}>
+                      <label className="block text-sm font-medium text-neutral-300 mb-1.5">{field.label}</label>
+                      <input
+                        type={field.type}
+                        placeholder={field.placeholder}
+                        value={(formData as any)[field.key]}
+                        onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
+                        required={field.key === "name" || field.key === "email"}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-neutral-600"
+                      />
+                    </div>
+                  ))}
+
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Employment Type</label>
+                    <select
+                      value={formData.employmentType}
+                      onChange={(e) => setFormData({ ...formData, employmentType: e.target.value })}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all"
+                    >
+                      <option value="Full Time">Full Time</option>
+                      <option value="Part Time">Part Time</option>
+                    </select>
+                  </div>
+
+                  {formData.employmentType === "Part Time" && (
+                    <div className="col-span-2 sm:col-span-1">
+                      <label className="block text-sm font-medium text-neutral-300 mb-1.5">Hourly Rate (₹)</label>
+                      <input
+                        type="number"
+                        placeholder="e.g. 500"
+                        value={formData.hourlyRate}
+                        onChange={(e) => setFormData({ ...formData, hourlyRate: e.target.value })}
+                        required
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-neutral-600"
+                      />
+                    </div>
+                  )}
+                  
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Address</label>
+                    <textarea
+                      rows={2}
+                      placeholder="Full residential address"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-neutral-600 resize-none"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Subject Expertise (comma-separated)</label>
                     <input
-                      type={field.type}
-                      placeholder={field.placeholder}
-                      value={(formData as any)[field.key]}
-                      onChange={(e) => setFormData({ ...formData, [field.key]: e.target.value })}
-                      required={field.key !== "phone"}
+                      type="text"
+                      placeholder="e.g. Mathematics, Physics, English"
+                      value={formData.subjectExpertise.join(", ")}
+                      onChange={(e) => setFormData({ 
+                        ...formData, 
+                        subjectExpertise: e.target.value.split(",").map(s => s.trim()).filter(Boolean) 
+                      })}
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-neutral-600"
                     />
                   </div>
-                ))}
-
-                {/* Temp Password */}
-                <div>
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="text-sm font-medium text-neutral-300">Temporary Password</label>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, tempPassword: generatePassword() })}
-                      className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
-                    >
-                      <RefreshCw className="w-3 h-3" /> Regenerate
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      value={formData.tempPassword}
-                      onChange={(e) => setFormData({ ...formData, tempPassword: e.target.value })}
-                      className="w-full bg-neutral-800 border border-amber-500/30 rounded-xl px-3 py-2.5 pr-10 text-sm text-amber-400 font-mono outline-none focus:border-amber-500 transition-all"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(formData.tempPassword, "modal")}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-amber-400"
-                    >
-                      {copied === "modal" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <p className="text-xs text-neutral-500 mt-1">Auto-generated. Teacher must change it on first login.</p>
                 </div>
 
-                {createTeacher.isError && (
+                {/* Temp Password */}
+                {!editTeacher && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="text-sm font-medium text-neutral-300">Temporary Password</label>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, tempPassword: generatePassword() })}
+                        className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Regenerate
+                      </button>
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={formData.tempPassword}
+                        onChange={(e) => setFormData({ ...formData, tempPassword: e.target.value })}
+                        className="w-full bg-neutral-800 border border-amber-500/30 rounded-xl px-3 py-2.5 pr-10 text-sm text-amber-400 font-mono outline-none focus:border-amber-500 transition-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(formData.tempPassword, "modal")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-amber-400"
+                      >
+                        {copied === "modal" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+                    <p className="text-xs text-neutral-500 mt-1">Auto-generated. Teacher must change it on first login.</p>
+                  </div>
+                )}
+
+                {(createTeacherMutation.isError || updateTeacherMutation.isError) && (
                   <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">
-                    {(createTeacher.error as any)?.response?.data?.message || "Failed to create teacher"}
+                    {editTeacher ? 
+                      ((updateTeacherMutation.error as any)?.response?.data?.message || "Failed to update teacher") : 
+                      ((createTeacherMutation.error as any)?.response?.data?.message || "Failed to create teacher")
+                    }
                   </div>
                 )}
 
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setIsModalOpen(false)}
+                    onClick={() => { setIsModalOpen(false); setEditTeacher(null); }}
                     className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors text-sm font-medium"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
-                    disabled={createTeacher.isPending}
+                    disabled={createTeacherMutation.isPending || updateTeacherMutation.isPending}
                     className="flex-1 py-2.5 rounded-xl brand-gradient text-black font-semibold hover:opacity-90 transition-opacity text-sm disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    {createTeacher.isPending ? (
-                      <><div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> Creating...</>
+                    {createTeacherMutation.isPending || updateTeacherMutation.isPending ? (
+                      <><div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" /> {editTeacher ? "Updating..." : "Creating..."}</>
                     ) : (
-                      <><Plus className="w-4 h-4" /> Create Account</>
+                      <><Plus className="w-4 h-4" /> {editTeacher ? "Update Account" : "Create Account"}</>
                     )}
                   </button>
                 </div>
