@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, parseISO } from "date-fns";
+import { format, parseISO, isSameDay, isSameWeek, isSameMonth } from "date-fns";
 import {
   Plus,
   X,
@@ -114,8 +114,9 @@ export default function DemoSessionsPage() {
   const { user } = useAuthStore();
   const isTeacher = user?.role === "Teacher";
   const { searchQuery } = useSearchStore();
-  const { canWrite } = usePermissions();
+  const { canWrite, isSalesPerson } = usePermissions();
   const hasWriteAccess = canWrite("demoSessions");
+  const canManageSlots = !isSalesPerson && hasWriteAccess;
 
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit" } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -123,6 +124,15 @@ export default function DemoSessionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterDate, setFilterDate] = useState<string>("All");
+
+  const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
+  const [slotForm, setSlotForm] = useState({
+    teacher: "",
+    date: format(new Date(), "yyyy-MM-dd"),
+    startTime: "09:00",
+    endTime: "10:00",
+  });
 
   // Queries
   const { data: demoSessions = [], isLoading: isLoadingDemo } = useQuery<DemoSession[]>({
@@ -143,6 +153,26 @@ export default function DemoSessionsPage() {
   const { data: batches = [] } = useQuery<any[]>({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
+  });
+
+  const { data: demoSlots = [], isLoading: isLoadingSlots } = useQuery<any[]>({
+    queryKey: ["demo-slots"],
+    queryFn: async () => (await api.get("/demo-slots")).data,
+  });
+
+  const createSlotMutation = useMutation({
+    mutationFn: (data: any) => api.post("/demo-slots", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demo-slots"] });
+      setSlotForm({ teacher: "", date: format(new Date(), "yyyy-MM-dd"), startTime: "09:00", endTime: "10:00" });
+    },
+  });
+
+  const deleteSlotMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/demo-slots/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["demo-slots"] });
+    },
   });
 
   // Mutations
@@ -172,10 +202,35 @@ export default function DemoSessionsPage() {
   });
 
   // Helpers
+  const formatTimeAMPM = (timeStr: string) => {
+    if (!timeStr) return "";
+    try {
+      const [h, m] = timeStr.split(":");
+      const date = new Date();
+      date.setHours(parseInt(h, 10), parseInt(m, 10), 0);
+      return format(date, "h:mm a");
+    } catch {
+      return timeStr;
+    }
+  };
+
   const openCreate = () => {
     setForm(emptyForm());
     setEditingId(null);
     setModal({ open: true, mode: "create" });
+  };
+
+  const openBookSlot = (slot: any) => {
+    setForm({
+      ...emptyForm(),
+      teacher: slot.teacher?._id || slot.teacher,
+      date: format(new Date(slot.date), "yyyy-MM-dd"),
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+    });
+    setEditingId(null);
+    setModal({ open: true, mode: "create" });
+    setActiveTab("sessions");
   };
 
   const openEdit = (d: DemoSession) => {
@@ -324,13 +379,64 @@ export default function DemoSessionsPage() {
     // Status filter
     if (filterStatus && d.status !== filterStatus) return false;
 
+    // Date filter
+    if (filterDate !== "All") {
+      const dDate = new Date(d.date);
+      const today = new Date();
+      if (filterDate === "Today" && !isSameDay(dDate, today)) return false;
+      if (filterDate === "This Week" && !isSameWeek(dDate, today)) return false;
+      if (filterDate === "This Month" && !isSameMonth(dDate, today)) return false;
+    }
+
     return true;
+  });
+
+  // Slots Filtering & Grouping
+  const filteredSlots = demoSlots.filter((slot: any) => {
+    if (filterTeacher && slot.teacher?._id !== filterTeacher && slot.teacher !== filterTeacher) {
+      return false;
+    }
+    if (filterDate !== "All") {
+      const sDate = new Date(slot.date);
+      const today = new Date();
+      if (filterDate === "Today" && !isSameDay(sDate, today)) return false;
+      if (filterDate === "This Week" && !isSameWeek(sDate, today)) return false;
+      if (filterDate === "This Month" && !isSameMonth(sDate, today)) return false;
+    }
+    return true;
+  });
+
+  const groupedSlots = filteredSlots.reduce((acc: any, slot: any) => {
+    const tId = slot.teacher?._id || slot.teacher;
+    const key = tId;
+    
+    if (!acc[key]) {
+      acc[key] = {
+        teacher: slot.teacher,
+        slots: []
+      };
+    }
+    acc[key].slots.push(slot);
+    return acc;
+  }, {});
+
+  const groupedSlotsArray = Object.values(groupedSlots).sort((a: any, b: any) => {
+    return (a.teacher?.name || "").localeCompare(b.teacher?.name || "");
+  });
+
+  // sort slots within teacher by date then time
+  groupedSlotsArray.forEach((group: any) => {
+    group.slots.sort((a: any, b: any) => {
+      const dateDiff = new Date(a.date).getTime() - new Date(b.date).getTime();
+      if (dateDiff !== 0) return dateDiff;
+      return a.startTime.localeCompare(b.startTime);
+    });
   });
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <Video className="w-6 h-6 text-amber-400" />
@@ -339,66 +445,123 @@ export default function DemoSessionsPage() {
           <p className="text-neutral-400 text-sm mt-0.5">
             {isTeacher
               ? "View and update feedback for your upcoming prospect demo classes"
-              : "Schedule and manage prospective student demo classes based on teacher availability"            }
+              : "Schedule and manage prospective student demo classes based on teacher availability"}
           </p>
         </div>
+        
         {!isTeacher && hasWriteAccess && (
-          <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
-          >
-            <Plus className="w-4 h-4" /> Schedule Demo
-          </button>
+          <div className="flex items-center gap-2">
+            <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-xl flex items-center mr-2">
+              <button
+                onClick={() => setActiveTab("sessions")}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+                  activeTab === "sessions" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                Sessions
+              </button>
+              <button
+                onClick={() => setActiveTab("slots")}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+                  activeTab === "slots" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                }`}
+              >
+                Available Slots
+              </button>
+            </div>
+            
+            {activeTab === "sessions" && canManageSlots && (
+              <button
+                onClick={openCreate}
+                className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+              >
+                <Plus className="w-4 h-4" /> Schedule Demo
+              </button>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Filters (Admin only) */}
-      {!isTeacher && (
-        <div className="flex items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
-          <div className="flex-1 md:max-w-xs">
-            <select
-              value={filterTeacher}
-              onChange={(e) => setFilterTeacher(e.target.value)}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-            >
-              <option value="">All Teachers</option>
-              {teachers.map((t) => (
-                <option key={t._id} value={t._id}>
-                  {t.name}
-                </option>
-              ))}
-            </select>
+      {/* Filters */}
+      {!isTeacher && activeTab === "sessions" && (
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
+            <div className="flex-1 min-w-[120px] max-w-[150px]">
+              <select
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="All">All Time</option>
+                <option value="Today">Today</option>
+                <option value="This Week">This Week</option>
+                <option value="This Month">This Month</option>
+              </select>
+            </div>
+            <div className="flex-1 md:max-w-xs">
+              <select
+                value={filterTeacher}
+                onChange={(e) => setFilterTeacher(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="">All Teachers</option>
+                {teachers.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex-1 md:max-w-xs">
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="">All Statuses</option>
+                <option value="Scheduled">Scheduled</option>
+                <option value="Completed">Completed</option>
+                <option value="Cancelled">Cancelled</option>
+              </select>
+            </div>
+            {(filterTeacher || filterStatus || filterDate !== "All") && (
+              <button
+                onClick={() => {
+                  setFilterTeacher("");
+                  setFilterStatus("");
+                  setFilterDate("All");
+                }}
+                className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+            )}
           </div>
-          <div className="flex-1 md:max-w-xs">
-            <select
-              value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-            >
-              <option value="">All Statuses</option>
-              <option value="Scheduled">Scheduled</option>
-              <option value="Completed">Completed</option>
-              <option value="Cancelled">Cancelled</option>
-            </select>
+          
+          {/* Stats Summary */}
+          <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="p-2 bg-amber-500/10 rounded-lg">
+                <Calendar className="w-5 h-5 text-amber-400" />
+              </div>
+              <div>
+                <p className="text-xs text-neutral-400 font-medium">Total Demos Booked</p>
+                <p className="text-xl font-bold text-white">{filteredSessions.length}</p>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-[10px] text-neutral-500 uppercase font-semibold">Current Filter</p>
+              <p className="text-sm font-medium text-amber-400">{filterDate === "All" ? "All Time" : filterDate}</p>
+            </div>
           </div>
-          {(filterTeacher || filterStatus) && (
-            <button
-              onClick={() => {
-                setFilterTeacher("");
-                setFilterStatus("");
-              }}
-              className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
-            >
-              Clear
-            </button>
-          )}
         </div>
       )}
 
       {/* Main List */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
-        {isLoadingDemo ? (
-          <div className="py-16 text-center text-neutral-500">
+      {activeTab === "sessions" && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+          {isLoadingDemo ? (
+            <div className="py-16 text-center text-neutral-500">
             <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
             Loading demo sessions...
           </div>
@@ -470,7 +633,7 @@ export default function DemoSessionsPage() {
                       <div className="flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-neutral-500" />
                         <span>
-                          {session.startTime} – {session.endTime}
+                          {formatTimeAMPM(session.startTime)} – {formatTimeAMPM(session.endTime)}
                         </span>
                       </div>
                       <div className="flex items-center gap-2">
@@ -515,7 +678,7 @@ export default function DemoSessionsPage() {
                       )}
 
                       <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        {hasWriteAccess && (
+                        {canManageSlots && (
                           <button
                             onClick={() => openEdit(session)}
                             className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
@@ -524,7 +687,7 @@ export default function DemoSessionsPage() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {!isTeacher && hasWriteAccess && (
+                        {!isTeacher && canManageSlots && (
                           <button
                             onClick={() => setDeleteConfirm(session._id)}
                             className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-colors border border-red-500/25"
@@ -571,7 +734,7 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.place || "-"}</td>
                     <td className="px-4 py-3">{session.age || "-"}</td>
                     <td className="px-4 py-3">{format(new Date(session.date), "dd MMM yyyy")}</td>
-                    <td className="px-4 py-3">{session.startTime} - {session.endTime}</td>
+                    <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
                     <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
                     <td className="px-4 py-3">{session.subject}</td>
                     <td className="px-4 py-3">{session.feeDiscussed || "-"}</td>
@@ -584,7 +747,7 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.admissionConfirmed || "Pending"}</td>
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
-                      {hasWriteAccess && (
+                      {canManageSlots && (
                         <>
                           <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
@@ -598,6 +761,196 @@ export default function DemoSessionsPage() {
           </div>
         )}
       </div>
+      )}
+
+      {/* Slots Layout */}
+      {activeTab === "slots" && !isTeacher && (
+        <div className="space-y-6">
+          {/* Add Slot Form */}
+          {canManageSlots && (
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+              <h2 className="text-lg font-bold text-white mb-4">Add Available Time Slot</h2>
+              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400">Teacher *</label>
+                  <select
+                    required
+                    value={slotForm.teacher}
+                    onChange={(e) => setSlotForm({ ...slotForm, teacher: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  >
+                    <option value="">Select Teacher</option>
+                    {teachers.map((t) => (
+                      <option key={t._id} value={t._id}>{t.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400">Date *</label>
+                  <input
+                    required
+                    type="date"
+                    value={slotForm.date}
+                    onChange={(e) => setSlotForm({ ...slotForm, date: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400">Start Time *</label>
+                  <input
+                    required
+                    type="time"
+                    value={slotForm.startTime}
+                    onChange={(e) => setSlotForm({ ...slotForm, startTime: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-neutral-400">End Time *</label>
+                  <input
+                    required
+                    type="time"
+                    value={slotForm.endTime}
+                    onChange={(e) => setSlotForm({ ...slotForm, endTime: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  />
+                </div>
+                <button
+                  onClick={() => {
+                    if (slotForm.teacher && slotForm.date && slotForm.startTime && slotForm.endTime) {
+                      createSlotMutation.mutate(slotForm);
+                    }
+                  }}
+                  disabled={createSlotMutation.isPending || !slotForm.teacher}
+                  className="w-full px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold rounded-xl transition-all text-sm border border-neutral-700 disabled:opacity-50"
+                >
+                  {createSlotMutation.isPending ? "Adding..." : "Add Slot"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Slots Filter */}
+          <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl mb-4">
+            <div className="flex-1 min-w-[120px] max-w-[150px]">
+              <select
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="All">All Time</option>
+                <option value="Today">Today</option>
+                <option value="This Week">This Week</option>
+                <option value="This Month">This Month</option>
+              </select>
+            </div>
+            <div className="flex-1 md:max-w-xs">
+              <select
+                value={filterTeacher}
+                onChange={(e) => setFilterTeacher(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="">All Teachers</option>
+                {teachers.map((t) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {(filterTeacher || filterDate !== "All") && (
+              <button
+                onClick={() => {
+                  setFilterTeacher("");
+                  setFilterDate("All");
+                }}
+                className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+
+          {/* Slots List */}
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden p-5">
+            <h2 className="text-lg font-bold text-white mb-4">Available Slots</h2>
+            {isLoadingSlots ? (
+              <div className="py-10 text-center text-neutral-500">
+                <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                Loading slots...
+              </div>
+            ) : groupedSlotsArray.length === 0 ? (
+              <div className="py-10 text-center text-neutral-400">
+                No demo slots match the current filters.
+              </div>
+            ) : (
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                {groupedSlotsArray.map((group: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className="border border-neutral-800 rounded-xl bg-neutral-900/50 p-4 flex flex-col max-h-[500px]"
+                  >
+                    <div className="pb-3 border-b border-neutral-800 mb-3 flex items-center justify-between">
+                      <h3 className="font-bold text-white text-base truncate">
+                        {group.teacher?.name || "Unknown Teacher"}
+                      </h3>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400 shrink-0">
+                        {group.slots.length} Slots
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1">
+                      {group.slots.map((slot: any) => (
+                        <div key={slot._id} className={`p-2.5 rounded-lg border ${
+                          slot.isBooked
+                            ? "bg-red-500/5 border-red-500/10"
+                            : "bg-emerald-500/5 border-emerald-500/10 hover:bg-emerald-500/10"
+                        } transition-colors`}>
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <p className="text-[10px] text-neutral-400 uppercase font-semibold">
+                                {format(new Date(slot.date), "dd MMM yyyy")}
+                              </p>
+                              <p className="text-sm font-bold text-white mt-0.5">
+                                {formatTimeAMPM(slot.startTime)} - {formatTimeAMPM(slot.endTime)}
+                              </p>
+                            </div>
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
+                              slot.isBooked ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+                            }`}>
+                              {slot.isBooked ? "BOOKED" : "AVAILABLE"}
+                            </span>
+                          </div>
+                          
+                          <div className="flex gap-2 mt-2 pt-2 border-t border-neutral-800/50">
+                            {!slot.isBooked && hasWriteAccess && (
+                              <button
+                                onClick={() => openBookSlot(slot)}
+                                className="flex-1 py-1.5 text-xs font-semibold bg-amber-500 text-black hover:opacity-90 rounded-lg transition-opacity"
+                              >
+                                Book Demo
+                              </button>
+                            )}
+                            {canManageSlots && (
+                              <button
+                                onClick={() => deleteSlotMutation.mutate(slot._id)}
+                                className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors flex items-center justify-center"
+                                title="Delete Slot"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Create / Edit Modal */}
       <AnimatePresence>

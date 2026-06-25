@@ -37,6 +37,7 @@ export default function SettingsPage() {
   const { user } = useAuthStore();
   const isTeacher = user?.role === "Teacher";
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+  const isSalesPerson = user?.role === "Sales Person";
 
   const [phone, setPhone] = useState("");
   const [status, setStatus] = useState("Available");
@@ -441,31 +442,31 @@ export default function SettingsPage() {
             </form>
           )
         ) : (
-          /* ADMIN PROFILE - STATIC (AS IN EXISTING CODEBASE) WITH FIXED DETAILS */
+          /* NON-TEACHER PROFILE (ADMIN/SALES) */
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
             <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
               <Shield className="w-5 h-5 text-amber-500" />
-              Admin Profile
+              {isSalesPerson ? "Sales Person Profile" : "Admin Profile"}
             </h3>
             <div className="flex items-center gap-4 mb-6">
               <div className="w-16 h-16 rounded-2xl brand-gradient flex items-center justify-center text-2xl font-bold text-black">
-                A
+                {user?.name?.charAt(0) || "A"}
               </div>
               <div>
-                <p className="font-medium text-white">System Administrator</p>
-                <p className="text-sm text-neutral-400">{user?.email || "admin@school.edu"}</p>
+                <p className="font-medium text-white">{isSalesPerson ? "Sales Executive" : "System Administrator"}</p>
+                <p className="text-sm text-neutral-400">{user?.email}</p>
               </div>
             </div>
             <div className="grid md:grid-cols-2 gap-4">
               {[
-                { label: "Full Name", value: user?.name || "System Admin", disabled: true },
-                { label: "Email Address", value: user?.email || "admin@school.edu", type: "email", disabled: true },
+                { label: "Full Name", value: user?.name || (isSalesPerson ? "Sales Person" : "System Admin"), disabled: true },
+                { label: "Email Address", value: user?.email, type: "email", disabled: true },
               ].map((f) => (
                 <div key={f.label}>
                   <label className="block text-sm font-medium text-neutral-300 mb-1.5">{f.label}</label>
                   <input
                     type={f.type || "text"}
-                    value={f.value}
+                    value={f.value || ""}
                     disabled={f.disabled}
                     className="w-full bg-neutral-800/50 border border-neutral-800 text-neutral-500 rounded-xl px-3 py-2.5 text-sm outline-none cursor-not-allowed"
                   />

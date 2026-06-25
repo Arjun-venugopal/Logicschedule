@@ -22,6 +22,7 @@ export default function TeachersPage() {
   const router = useRouter();
   const { canWrite } = usePermissions();
   const hasWriteAccess = canWrite("teachers");
+  const isSuperAdminOrAdmin = user?.role === "Super Admin" || user?.role === "Admin";
 
   useEffect(() => {
     if (user && user.role === "Teacher") {
@@ -173,23 +174,29 @@ export default function TeachersPage() {
           >
             <div className="flex-1">
               <p className="font-semibold text-amber-400 mb-1">✅ Teacher account created!</p>
-              <p className="text-sm text-neutral-300 mb-3">Share these credentials with the teacher. Password is visible in the table below.</p>
+              <p className="text-sm text-neutral-300 mb-3">
+                {isSuperAdminOrAdmin ? "Share these credentials with the teacher. Password is visible in the table below." : "The teacher account has been successfully created."}
+              </p>
               <div className="flex flex-wrap gap-3">
                 <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm">
                   <span className="text-neutral-500 text-xs block mb-0.5">Email</span>
                   <span className="text-white font-mono">{createdCreds.email}</span>
                 </div>
-                <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm">
-                  <span className="text-neutral-500 text-xs block mb-0.5">Temp Password</span>
-                  <span className="text-amber-400 font-mono font-semibold">{createdCreds.tempPassword}</span>
-                </div>
-                <button
-                  onClick={() => handleCopy(`Email: ${createdCreds.email}\nPassword: ${createdCreds.tempPassword}`, "banner")}
-                  className="flex items-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-sm text-white transition-colors"
-                >
-                  {copied === "banner" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                  {copied === "banner" ? "Copied!" : "Copy All"}
-                </button>
+                {isSuperAdminOrAdmin && (
+                  <>
+                    <div className="bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm">
+                      <span className="text-neutral-500 text-xs block mb-0.5">Temp Password</span>
+                      <span className="text-amber-400 font-mono font-semibold">{createdCreds.tempPassword}</span>
+                    </div>
+                    <button
+                      onClick={() => handleCopy(`Email: ${createdCreds.email}\nPassword: ${createdCreds.tempPassword}`, "banner")}
+                      className="flex items-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-lg text-sm text-white transition-colors"
+                    >
+                      {copied === "banner" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                      {copied === "banner" ? "Copied!" : "Copy All"}
+                    </button>
+                  </>
+                )}
               </div>
             </div>
             <button onClick={() => setCreatedCreds(null)} className="text-neutral-500 hover:text-white transition-colors">
@@ -230,11 +237,13 @@ export default function TeachersPage() {
                 <th className="py-3.5 px-5 font-medium text-left">Email</th>
                 <th className="py-3.5 px-5 font-medium text-left">Status</th>
                 <th className="py-3.5 px-5 font-medium text-left">Subjects</th>
-                <th className="py-3.5 px-5 font-medium text-left">
-                  <span className="flex items-center gap-1.5">
-                    <KeyRound className="w-3.5 h-3.5" /> Password
-                  </span>
-                </th>
+                {isSuperAdminOrAdmin && (
+                  <th className="py-3.5 px-5 font-medium text-left">
+                    <span className="flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5" /> Password
+                    </span>
+                  </th>
+                )}
                 <th className="py-3.5 px-5 font-medium text-left">Actions</th>
               </tr>
             </thead>
@@ -270,31 +279,33 @@ export default function TeachersPage() {
                     </td>
 
                     {/* Password Cell */}
-                    <td className="py-3.5 px-5">
-                      {hasPassword ? (
-                        <div className="flex items-center gap-2">
-                          <span className={`font-mono text-xs px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 ${isRevealed ? "text-amber-400" : "text-neutral-700"}`}>
-                            {isRevealed ? teacher.tempPassword : "••••••••••"}
-                          </span>
-                          <button
-                            onClick={() => toggleReveal(teacher._id)}
-                            className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-white"
-                            title={isRevealed ? "Hide" : "Reveal"}
-                          >
-                            {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                          </button>
-                          <button
-                            onClick={() => handleCopy(teacher.tempPassword, teacher._id)}
-                            className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-amber-400"
-                            title="Copy password"
-                          >
-                            {copied === teacher._id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                          </button>
-                        </div>
-                      ) : (
-                        <span className="text-neutral-600 text-xs italic">Not set</span>
-                      )}
-                    </td>
+                    {isSuperAdminOrAdmin && (
+                      <td className="py-3.5 px-5">
+                        {hasPassword ? (
+                          <div className="flex items-center gap-2">
+                            <span className={`font-mono text-xs px-2 py-1 rounded-lg bg-neutral-800 border border-neutral-700 ${isRevealed ? "text-amber-400" : "text-neutral-700"}`}>
+                              {isRevealed ? teacher.tempPassword : "••••••••••"}
+                            </span>
+                            <button
+                              onClick={() => toggleReveal(teacher._id)}
+                              className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-white"
+                              title={isRevealed ? "Hide" : "Reveal"}
+                            >
+                              {isRevealed ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                            <button
+                              onClick={() => handleCopy(teacher.tempPassword, teacher._id)}
+                              className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-amber-400"
+                              title="Copy password"
+                            >
+                              {copied === teacher._id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="text-neutral-600 text-xs italic">Not set</span>
+                        )}
+                      </td>
+                    )}
 
                     <td className="py-3.5 px-5">
                       <div className="flex items-center gap-2">
@@ -439,7 +450,7 @@ export default function TeachersPage() {
                 </div>
 
                 {/* Temp Password */}
-                {!editTeacher && (
+                {isSuperAdminOrAdmin && !editTeacher && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
                       <label className="text-sm font-medium text-neutral-300">Temporary Password</label>

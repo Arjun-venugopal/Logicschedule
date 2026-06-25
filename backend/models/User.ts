@@ -9,6 +9,7 @@ export interface IUserPermissions {
   batches: { read: boolean; write: boolean };
   teachers: { read: boolean; write: boolean };
   students: { read: boolean; write: boolean };
+  salesPeople: { read: boolean; write: boolean };
   demoSessions: { read: boolean; write: boolean };
   classNotes: { read: boolean; write: boolean };
   attendance: { read: boolean; write: boolean };

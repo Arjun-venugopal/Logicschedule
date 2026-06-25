@@ -70,7 +70,9 @@ import scheduleRoutes from './routes/scheduleRoutes';
 import statsRoutes from './routes/statsRoutes';
 import studentRoutes from './routes/studentRoutes';
 import demoRoutes from './routes/demoRoutes';
+import demoSlotRoutes from './routes/demoSlotRoutes';
 import userRoutes from './routes/userRoutes';
+import salesRoutes from './routes/salesRoutes';
 import { notFound, errorHandler } from './middleware/errorMiddleware';
 
 app.use('/auth', authRoutes);
@@ -80,7 +82,9 @@ app.use('/schedules', scheduleRoutes);
 app.use('/stats', statsRoutes);
 app.use('/students', studentRoutes);
 app.use('/demo-sessions', demoRoutes);
+app.use('/demo-slots', demoSlotRoutes);
 app.use('/users', userRoutes);
+app.use('/sales-people', salesRoutes);
 
 app.get('/', (req, res) => {
   res.send('API is running...');

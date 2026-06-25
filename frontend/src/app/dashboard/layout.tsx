@@ -33,11 +33,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const isTeacher = user?.role === "Teacher";
 
   const isSubAdmin = user?.role === "Sub Admin";
+  const isSalesPerson = user?.role === "Sales Person";
   const permissions = user?.permissions || {};
 
   const canAccess = (module: string) => {
     if (isTeacher) return true; // Handled separately
-    if (!isSubAdmin) return true; // Admin/Super Admin
+    if (isSalesPerson) return module === "demoSessions" || module === "settings";
+    if (!isSubAdmin && !isSalesPerson) return true; // Admin/Super Admin
     return permissions[module]?.read === true;
   };
 
@@ -56,6 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { icon: BookOpen, label: "Batches", href: "/dashboard/batches", show: canAccess("batches") },
           { icon: Users, label: "Teachers", href: "/dashboard/teachers", show: canAccess("teachers") },
           { icon: Users, label: "Students", href: "/dashboard/students", show: canAccess("students") },
+          { icon: Users, label: "Sales People", href: "/dashboard/sales-people", show: canAccess("salesPeople") },
           { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions", show: canAccess("demoSessions") },
           { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes", show: canAccess("classNotes") },
           { icon: Users, label: "Attendance", href: "/dashboard/attendance", show: canAccess("attendance") },
