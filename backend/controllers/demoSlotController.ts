@@ -21,7 +21,7 @@ export const getDemoSlots = async (req: any, res: Response): Promise<void> => {
       }
     }
 
-    const demoSlots = await DemoSlot.find(query).populate('teacher', 'name email status');
+    const demoSlots = await DemoSlot.find(query).populate('teacher', 'name email status').lean();
     
     // Check booking status for each slot
     const slotsWithBookingStatus = await Promise.all(
@@ -92,7 +92,7 @@ export const createDemoSlot = async (req: any, res: Response): Promise<void> => 
     });
 
     const populated = await demoSlot.populate('teacher', 'name email status');
-    res.status(201).json({ ...populated, isBooked: false });
+    res.status(201).json({ ...populated.toObject(), isBooked: false });
   } catch (error: any) {
     console.error('Create demo slot error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

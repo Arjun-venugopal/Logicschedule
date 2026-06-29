@@ -340,21 +340,59 @@ export class BaseModel {
              const orConditions = imQuery[key];
              let match = false;
               for (const cond of orConditions) {
-                const condKey = Object.keys(cond)[0];
-                const condVal = cond[condKey];
-                
-                if (item[condKey] === condVal || item[condKey]?.toString() === condVal?.toString()) {
-                    match = true;
-                } else if (condVal && typeof condVal === 'object' && !Array.isArray(condVal)) {
-                    if (condVal.$regex) {
-                        const regex = new RegExp(condVal.$regex, 'i');
-                        if (regex.test(item[condKey])) match = true;
-                    }
-                    if (condVal.$in && Array.isArray(condVal.$in)) {
-                        if (condVal.$in.some((v: any) => v === item[condKey] || v?.toString() === item[condKey]?.toString())) {
-                            match = true;
+                let condMatch = true;
+                for (const condKey of Object.keys(cond)) {
+                  const condVal = cond[condKey];
+                  let keyMatch = false;
+                  
+                  if (item[condKey] === condVal || item[condKey]?.toString() === condVal?.toString()) {
+                      keyMatch = true;
+                  } else if (condVal && typeof condVal === 'object' && !Array.isArray(condVal)) {
+                      if (condVal.$regex) {
+                          const regex = new RegExp(condVal.$regex, 'i');
+                          if (regex.test(item[condKey])) keyMatch = true;
+                      }
+                      if (condVal.$in && Array.isArray(condVal.$in)) {
+                          if (condVal.$in.some((v: any) => v === item[condKey] || v?.toString() === item[condKey]?.toString())) {
+                              keyMatch = true;
+                          }
+                      }
+                      if (condVal.$gte !== undefined || condVal.$lte !== undefined || condVal.$gt !== undefined || condVal.$lt !== undefined) {
+                        let val = item[condKey];
+                        let isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
+                        
+                        if (isDateObj) {
+                          if (typeof val.toDate === 'function') val = val.toDate().getTime();
+                          else if (val instanceof Date) val = val.getTime();
                         }
-                    }
+                        
+                        const checkOp = (filterVal: any, isDate: boolean) => {
+                          if (isDate) {
+                            if (filterVal instanceof Date) return filterVal.getTime();
+                            if (typeof filterVal === 'string') return new Date(filterVal).getTime();
+                          }
+                          return filterVal;
+                        };
+
+                        let rangeMatch = true;
+                        if (condVal.$gte !== undefined && val < checkOp(condVal.$gte, isDateObj)) rangeMatch = false;
+                        if (condVal.$gt !== undefined && val <= checkOp(condVal.$gt, isDateObj)) rangeMatch = false;
+                        if (condVal.$lte !== undefined && val > checkOp(condVal.$lte, isDateObj)) rangeMatch = false;
+                        if (condVal.$lt !== undefined && val >= checkOp(condVal.$lt, isDateObj)) rangeMatch = false;
+                        
+                        if (rangeMatch) keyMatch = true;
+                      }
+                  }
+                  
+                  if (!keyMatch) {
+                      condMatch = false;
+                      break;
+                  }
+                }
+                
+                if (condMatch) {
+                    match = true;
+                    break;
                 }
              }
              if (!match) return false;
@@ -364,22 +402,32 @@ export class BaseModel {
           if (imQuery[key] && typeof imQuery[key] === 'object' && !Array.isArray(imQuery[key])) {
             if (imQuery[key].$in) {
                if (!imQuery[key].$in.includes(item[key])) return false;
-            } else if (imQuery[key].$gte !== undefined || imQuery[key].$lte !== undefined) {
-               let val = item[key];
-               if (val && typeof val.toDate === 'function') val = val.toDate().getTime();
-               else if (val instanceof Date) val = val.getTime();
-               else if (typeof val === 'string') val = new Date(val).getTime();
+            } else if (
+              imQuery[key].$gte !== undefined ||
+              imQuery[key].$lte !== undefined ||
+              imQuery[key].$gt !== undefined ||
+              imQuery[key].$lt !== undefined
+            ) {
+              let val = item[key];
+              let isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
+              
+              if (isDateObj) {
+                if (typeof val.toDate === 'function') val = val.toDate().getTime();
+                else if (val instanceof Date) val = val.getTime();
+              }
+              
+              const checkOp = (filterVal: any, isDate: boolean) => {
+                if (isDate) {
+                  if (filterVal instanceof Date) return filterVal.getTime();
+                  if (typeof filterVal === 'string') return new Date(filterVal).getTime();
+                }
+                return filterVal;
+              };
 
-               let filterGte = imQuery[key].$gte;
-               if (filterGte instanceof Date) filterGte = filterGte.getTime();
-               else if (typeof filterGte === 'string') filterGte = new Date(filterGte).getTime();
-
-               let filterLte = imQuery[key].$lte;
-               if (filterLte instanceof Date) filterLte = filterLte.getTime();
-               else if (typeof filterLte === 'string') filterLte = new Date(filterLte).getTime();
-
-               if (filterGte !== undefined && val < filterGte) return false;
-               if (filterLte !== undefined && val > filterLte) return false;
+              if (imQuery[key].$gte !== undefined && val < checkOp(imQuery[key].$gte, isDateObj)) return false;
+              if (imQuery[key].$gt !== undefined && val <= checkOp(imQuery[key].$gt, isDateObj)) return false;
+              if (imQuery[key].$lte !== undefined && val > checkOp(imQuery[key].$lte, isDateObj)) return false;
+              if (imQuery[key].$lt !== undefined && val >= checkOp(imQuery[key].$lt, isDateObj)) return false;
             }
           } else {
              if (item[key] !== imQuery[key] && item[key]?.toString() !== imQuery[key]?.toString()) return false;

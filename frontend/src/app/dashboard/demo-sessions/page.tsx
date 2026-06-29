@@ -61,6 +61,7 @@ interface DemoSession {
   meetingLink?: string;
   notes?: string;
   conflict?: boolean;
+  createdBy?: string;
 }
 
 type DemoSessionForm = {
@@ -764,7 +765,7 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.admissionConfirmed || "Pending"}</td>
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
-                      {canManageSlots && (
+                      {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
                         <>
                           <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
@@ -787,22 +788,24 @@ export default function DemoSessionsPage() {
           {canManageSlots && (
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
               <h2 className="text-lg font-bold text-white mb-4">Add Available Time Slot</h2>
-              <div className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-semibold text-neutral-400">Teacher *</label>
-                  <select
-                    required
-                    value={slotForm.teacher}
-                    onChange={(e) => setSlotForm({ ...slotForm, teacher: e.target.value })}
-                    disabled={isTeacher}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
-                  >
-                    <option value="">Select Teacher</option>
-                    {teachers.map((t) => (
-                      <option key={t._id} value={t._id}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className={`grid grid-cols-1 ${!isTeacher ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 items-end`}>
+                {!isTeacher && (
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-neutral-400">Teacher *</label>
+                    <select
+                      required
+                      value={slotForm.teacher}
+                      onChange={(e) => setSlotForm({ ...slotForm, teacher: e.target.value })}
+                      disabled={isTeacher}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
+                    >
+                      <option value="">Select Teacher</option>
+                      {teachers.map((t) => (
+                        <option key={t._id} value={t._id}>{t.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold text-neutral-400">Date *</label>
                   <input
@@ -862,20 +865,22 @@ export default function DemoSessionsPage() {
                 <option value="This Month">This Month</option>
               </select>
             </div>
-            <div className="flex-1 md:max-w-xs">
-              <select
-                value={filterTeacher}
-                onChange={(e) => setFilterTeacher(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="">All Teachers</option>
-                {teachers.map((t) => (
-                  <option key={t._id} value={t._id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
-            </div>
+            {!isTeacher && (
+              <div className="flex-1 md:max-w-xs">
+                <select
+                  value={filterTeacher}
+                  onChange={(e) => setFilterTeacher(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                >
+                  <option value="">All Teachers</option>
+                  {teachers.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             {(filterTeacher || filterDate !== "All") && (
               <button
                 onClick={() => {

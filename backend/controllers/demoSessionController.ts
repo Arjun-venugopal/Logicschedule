@@ -21,6 +21,14 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
         res.json([]);
         return;
       }
+    } else if (req.user && req.user.role === 'Sales Person') {
+      // If logged in user is a Sales Person, only fetch their demo sessions
+      query = {
+        $or: [
+          { createdBy: req.user._id.toString() },
+          { salesExecutive: req.user.name }
+        ]
+      };
     }
 
     const demoSessions = await DemoSession.find(query)
@@ -92,6 +100,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       notes: notes || '',
       conflict: isConflict,
       numberOfSessions: numberOfSessions !== undefined ? numberOfSessions : null,
+      createdBy: req.user ? req.user._id.toString() : null,
     });
 
     if (demoSession.admissionConfirmed === 'Yes') {
@@ -145,7 +154,9 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
-    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin' || req.user.role === 'Sales Person';
+    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
+    const isOwnerSales = req.user.role === 'Sales Person' && 
+      (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
     let isAssignedTeacher = false;
 
     const teacherProfile = await Teacher.findOne({ user: req.user._id });
@@ -153,12 +164,12 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       isAssignedTeacher = true;
     }
 
-    if (!isAdmin && !isAssignedTeacher) {
+    if (!isAdmin && !isAssignedTeacher && !isOwnerSales) {
       res.status(403).json({ message: 'Not authorized to update this demo session' });
       return;
     }
 
-    if (isAdmin) {
+    if (isAdmin || isOwnerSales) {
       demoSession.studentName = req.body.studentName || demoSession.studentName;
       demoSession.studentEmail = req.body.studentEmail !== undefined ? req.body.studentEmail : demoSession.studentEmail;
       demoSession.customerName = req.body.customerName !== undefined ? req.body.customerName : demoSession.customerName;
@@ -258,6 +269,15 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
     const demoSession = await DemoSession.findById(req.params.id);
 
     if (demoSession) {
+      const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
+      const isOwnerSales = req.user.role === 'Sales Person' && 
+        (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
+      
+      if (!isAdmin && !isOwnerSales) {
+        res.status(403).json({ message: 'Not authorized to delete this demo session' });
+        return;
+      }
+
       await DemoSession.deleteOne({ _id: demoSession._id });
       res.json({ message: 'Demo session removed' });
     } else {
