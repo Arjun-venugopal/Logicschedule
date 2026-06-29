@@ -145,7 +145,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
-    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
+    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin' || req.user.role === 'Sales Person';
     let isAssignedTeacher = false;
 
     const teacherProfile = await Teacher.findOne({ user: req.user._id });

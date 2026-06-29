@@ -1,15 +1,15 @@
 import express from 'express';
 import { getDemoSessions, createDemoSession, updateDemoSession, deleteDemoSession } from '../controllers/demoSessionController';
-import { protect, admin } from '../middleware/authMiddleware';
+import { protect, permissionCheck } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
 router.route('/')
   .get(protect, getDemoSessions)
-  .post(protect, admin, createDemoSession);
+  .post(protect, permissionCheck('demoSessions', 'write'), createDemoSession);
 
 router.route('/:id')
-  .put(protect, updateDemoSession)
-  .delete(protect, admin, deleteDemoSession);
+  .put(protect, permissionCheck('demoSessions', 'write'), updateDemoSession)
+  .delete(protect, permissionCheck('demoSessions', 'write'), deleteDemoSession);
 
 export default router;

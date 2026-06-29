@@ -63,6 +63,12 @@ export const permissionCheck = (module: string, accessType: 'read' | 'write') =>
       }
     }
     
+    // Sales Persons have access to demoSessions
+    if (req.user.role === 'Sales Person' && module === 'demoSessions') {
+      next();
+      return;
+    }
+    
     // Otherwise deny
     res.status(403).json({ message: 'Forbidden: Insufficient permissions' });
   };
