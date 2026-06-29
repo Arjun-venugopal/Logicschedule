@@ -230,7 +230,10 @@ export default function DemoSessionsPage() {
   };
 
   const openCreate = () => {
-    setForm(emptyForm());
+    setForm({
+      ...emptyForm(),
+      salesExecutive: isSalesPerson && user?.name ? user.name : "",
+    });
     setEditingId(null);
     setModal({ open: true, mode: "create" });
   };
@@ -242,6 +245,7 @@ export default function DemoSessionsPage() {
       date: format(new Date(slot.date), "yyyy-MM-dd"),
       startTime: slot.startTime,
       endTime: slot.endTime,
+      salesExecutive: isSalesPerson && user?.name ? user.name : "",
     });
     setEditingId(null);
     setModal({ open: true, mode: "create" });
@@ -1168,21 +1172,23 @@ export default function DemoSessionsPage() {
                           />
                         </div>
                       )}
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
-                        <select
-                          value={form.salesExecutive}
-                          onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
-                        >
-                          <option value="">Select Sales Executive</option>
-                          {salesPeople.map((sp: any) => (
-                            <option key={sp._id} value={sp.name}>
-                              {sp.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                      {!isSalesPerson && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
+                          <select
+                            value={form.salesExecutive}
+                            onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
+                          >
+                            <option value="">Select Sales Executive</option>
+                            {salesPeople.map((sp: any) => (
+                              <option key={sp._id} value={sp.name}>
+                                {sp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">No. of Hours</label>
                         <input
