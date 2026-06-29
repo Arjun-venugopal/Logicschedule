@@ -76,6 +76,14 @@ export const createDemoSlot = async (req: any, res: Response): Promise<void> => 
 
     const dateObj = new Date(date);
 
+    if (req.user && req.user.role === 'Teacher') {
+      const teacherProfile = await Teacher.findOne({ user: req.user._id });
+      if (!teacherProfile || teacherProfile._id.toString() !== teacher.toString()) {
+        res.status(403).json({ message: 'Not authorized to create slots for other teachers' });
+        return;
+      }
+    }
+
     const demoSlot = await DemoSlot.create({
       teacher,
       date: dateObj,
@@ -101,6 +109,14 @@ export const deleteDemoSlot = async (req: any, res: Response): Promise<void> => 
     if (!demoSlot) {
       res.status(404).json({ message: 'Demo slot not found' });
       return;
+    }
+
+    if (req.user && req.user.role === 'Teacher') {
+      const teacherProfile = await Teacher.findOne({ user: req.user._id });
+      if (!teacherProfile || demoSlot.teacher.toString() !== teacherProfile._id.toString()) {
+        res.status(403).json({ message: 'Not authorized to delete slots for other teachers' });
+        return;
+      }
     }
 
     await demoSlot.deleteOne();

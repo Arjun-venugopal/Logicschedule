@@ -12,7 +12,7 @@ const DAY_INDEX: Record<string, number> = {
  * Generate schedule entries for every matching class day between startDate and endDate.
  * Skips days that already have a schedule for the same batch+date.
  */
-async function generateSchedulesForBatch(batch: any): Promise<number> {
+async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, endDate } = batch;
 
   if (!startDate || !endDate || !days?.length || !timing?.startTime || !timing?.endTime) {
@@ -39,15 +39,16 @@ async function generateSchedulesForBatch(batch: any): Promise<number> {
       const cursorTime = new Date(cursor).getTime();
 
       if (!existingTimes.has(cursorTime)) {
+        const isCompleted = schedulesToCreate.length < preCompletedClasses;
         schedulesToCreate.push({
           teacher: assignedTeacher || undefined,
           batch: _id,
           date: new Date(cursor),
           startTime: timing.startTime,
           endTime: timing.endTime,
-          status: 'Scheduled',
+          status: isCompleted ? 'Completed' : 'Scheduled',
           meetingLink: meetingLink || '',
-          notes: `Auto-generated for batch`,
+          notes: isCompleted ? `Auto-generated as Completed (Late join)` : `Auto-generated for batch`,
         });
       }
     }
@@ -117,7 +118,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     const {
       name, subject, assignedTeacher, studentsCount,
       timing, days, meetingLink,
-      startDate, endDate, durationType, status, numberOfSessions
+      startDate, endDate, durationType, status, numberOfSessions, preCompletedClasses
     } = req.body;
 
     if (!name || !subject) {
@@ -138,10 +139,11 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       durationType: durationType || '1 Month',
       status: status || 'Upcoming',
       numberOfSessions: numberOfSessions || null,
+      preCompletedClasses: preCompletedClasses || 0,
     });
 
     // Auto-generate calendar schedules for every class day in the duration
-    const generated = await generateSchedulesForBatch(batch);
+    const generated = await generateSchedulesForBatch(batch, preCompletedClasses || 0);
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
 
     const populated = await batch.populate('assignedTeacher', 'name email');
@@ -180,6 +182,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.durationType    = req.body.durationType ?? batch.durationType;
     batch.status          = req.body.status ?? batch.status;
     batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
+    batch.preCompletedClasses = req.body.preCompletedClasses !== undefined ? req.body.preCompletedClasses : batch.preCompletedClasses;
 
     if (req.body.startDate !== undefined)
       batch.startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
@@ -190,8 +193,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     // If dates/days/timing changed, delete old auto-generated schedules and regenerate
     if (datesChanged) {
-      await Schedule.deleteMany({ batch: batch._id, notes: 'Auto-generated for batch' });
-      const generated = await generateSchedulesForBatch(updated);
+      await Schedule.deleteMany({ batch: batch._id, notes: { $regex: /Auto-generated/ } });
+      const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
       console.log(`🔄 Regenerated ${generated} schedule(s) for batch "${updated.name}"`);
     }
 

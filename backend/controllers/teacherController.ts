@@ -70,7 +70,7 @@ export const getTeachers = async (req: Request, res: Response) => {
 
       return {
         ...teacher,
-        status: isBusy ? 'Busy' : 'Available'
+        status: isBusy ? 'In Class' : 'Available'
       };
     });
 

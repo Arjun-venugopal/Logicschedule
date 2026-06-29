@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth } from "date-fns";
 import {
@@ -183,6 +183,15 @@ export default function DemoSessionsPage() {
       closeModal();
     },
   });
+
+  useEffect(() => {
+    if (isTeacher && user?.email && teachers.length > 0 && !slotForm.teacher) {
+      const myTeacher = teachers.find((t) => t.email === user.email);
+      if (myTeacher) {
+        setSlotForm((prev) => ({ ...prev, teacher: myTeacher._id }));
+      }
+    }
+  }, [isTeacher, user, teachers]);
 
   const updateDemoMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: DemoSessionForm }) =>
@@ -433,6 +442,12 @@ export default function DemoSessionsPage() {
     });
   });
 
+  const canViewFee = (sessionSalesExec?: string) => {
+    if (!isSalesPerson) return true;
+    if (!user?.name) return false;
+    return sessionSalesExec?.trim().toLowerCase() === user.name.trim().toLowerCase();
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -449,7 +464,7 @@ export default function DemoSessionsPage() {
           </p>
         </div>
         
-        {!isTeacher && hasWriteAccess && (
+        {hasWriteAccess && (
           <div className="flex items-center gap-2">
             <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-xl flex items-center mr-2">
               <button
@@ -470,7 +485,7 @@ export default function DemoSessionsPage() {
               </button>
             </div>
             
-            {activeTab === "sessions" && canManageSlots && (
+            {!isTeacher && activeTab === "sessions" && canManageSlots && (
               <button
                 onClick={openCreate}
                 className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
@@ -737,7 +752,9 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
                     <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
                     <td className="px-4 py-3">{session.subject}</td>
-                    <td className="px-4 py-3">{session.feeDiscussed || "-"}</td>
+                    <td className="px-4 py-3">
+                      {canViewFee(session.salesExecutive) ? (session.feeDiscussed || "-") : <span className="text-neutral-600 italic">Hidden</span>}
+                    </td>
                     <td className="px-4 py-3">{session.numberOfSessions || "-"}</td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-1 rounded-md text-xs font-bold border ${session.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
@@ -764,7 +781,7 @@ export default function DemoSessionsPage() {
       )}
 
       {/* Slots Layout */}
-      {activeTab === "slots" && !isTeacher && (
+      {activeTab === "slots" && (
         <div className="space-y-6">
           {/* Add Slot Form */}
           {canManageSlots && (
@@ -777,7 +794,8 @@ export default function DemoSessionsPage() {
                     required
                     value={slotForm.teacher}
                     onChange={(e) => setSlotForm({ ...slotForm, teacher: e.target.value })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                    disabled={isTeacher}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
                   >
                     <option value="">Select Teacher</option>
                     {teachers.map((t) => (
@@ -1128,16 +1146,18 @@ export default function DemoSessionsPage() {
                           className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                         />
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Fee Discussed</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. 5000 INR"
-                          value={form.feeDiscussed}
-                          onChange={(e) => setForm({ ...form, feeDiscussed: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
-                      </div>
+                      {(!isSalesPerson || modal?.mode === "create" || canViewFee(form.salesExecutive)) && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Fee Discussed</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. 5000 INR"
+                            value={form.feeDiscussed}
+                            onChange={(e) => setForm({ ...form, feeDiscussed: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                      )}
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
                         <input

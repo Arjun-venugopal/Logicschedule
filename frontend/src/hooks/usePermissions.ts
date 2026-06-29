@@ -2,7 +2,7 @@ import { useAuthStore } from "@/store/authStore";
 
 export const usePermissions = () => {
   const { user } = useAuthStore();
-  
+
   const isTeacher = user?.role === "Teacher";
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
   const isSubAdmin = user?.role === "Sub Admin";

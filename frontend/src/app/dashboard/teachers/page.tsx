@@ -52,6 +52,7 @@ export default function TeachersPage() {
   const { data: teachers, isLoading } = useQuery({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
+    refetchInterval: 60000, // Refetch every minute for live status updates
   });
 
   const { searchQuery } = useSearchStore();

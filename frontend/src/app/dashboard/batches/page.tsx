@@ -94,6 +94,7 @@ type BatchForm = {
   endDate: string;
   status: string;
   numberOfSessions: number | "";
+  preCompletedClasses?: number | "";
 };
 
 const emptyForm = (): BatchForm => ({
@@ -110,6 +111,7 @@ const emptyForm = (): BatchForm => ({
   endDate: "",
   status: "Upcoming",
   numberOfSessions: "",
+  preCompletedClasses: "",
 });
 
 export default function BatchesPage() {
@@ -190,6 +192,7 @@ export default function BatchesPage() {
       endDate: b.endDate ? format(new Date(b.endDate), "yyyy-MM-dd") : "",
       status: b.status || "Upcoming",
       numberOfSessions: b.numberOfSessions || "",
+      preCompletedClasses: b.preCompletedClasses || "",
     });
     setEditingId(b._id);
     setModal(true);
@@ -593,6 +596,22 @@ export default function BatchesPage() {
                     />
                   </div>
                 </div>
+                
+                {/* Pre-completed classes (if start date is in the past) */}
+                {form.startDate && new Date(form.startDate) < new Date(new Date().setHours(0,0,0,0)) && (
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Classes Already Completed</label>
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="e.g. 5"
+                      value={form.preCompletedClasses}
+                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
+                    />
+                    <p className="text-xs text-neutral-500 mt-1.5">Because the start date is in the past, specify how many classes have already been completed.</p>
+                  </div>
+                )}
 
                 {/* Status */}
                 <div>

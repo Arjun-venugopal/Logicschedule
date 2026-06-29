@@ -6,9 +6,9 @@ const router = express.Router();
 
 router.route('/')
   .get(protect, getDemoSlots)
-  .post(protect, admin, createDemoSlot);
+  .post(protect, createDemoSlot);
 
 router.route('/:id')
-  .delete(protect, admin, deleteDemoSlot);
+  .delete(protect, deleteDemoSlot);
 
 export default router;
