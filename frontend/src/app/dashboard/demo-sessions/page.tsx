@@ -21,7 +21,10 @@ import {
   Check,
   Video,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Eye,
+  LayoutGrid,
+  List
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
@@ -126,6 +129,8 @@ export default function DemoSessionsPage() {
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
+  const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
   const [slotForm, setSlotForm] = useState({
@@ -563,7 +568,7 @@ export default function DemoSessionsPage() {
             )}
           </div>
           
-          {/* Stats Summary */}
+          {/* Stats Summary & View Toggle */}
           <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-500/10 rounded-lg">
@@ -574,9 +579,30 @@ export default function DemoSessionsPage() {
                 <p className="text-xl font-bold text-white">{filteredSessions.length}</p>
               </div>
             </div>
-            <div className="text-right">
-              <p className="text-[10px] text-neutral-500 uppercase font-semibold">Current Filter</p>
-              <p className="text-sm font-medium text-amber-400">{filterDate === "All" ? "All Time" : filterDate}</p>
+            <div className="flex items-center gap-4 text-right">
+              <div>
+                <p className="text-[10px] text-neutral-500 uppercase font-semibold">Current Filter</p>
+                <p className="text-sm font-medium text-amber-400">{filterDate === "All" ? "All Time" : filterDate}</p>
+              </div>
+              
+              {!isTeacher && (
+                <div className="flex bg-neutral-900 border border-neutral-800 p-1 rounded-xl">
+                  <button
+                    onClick={() => setViewMode("table")}
+                    className={`p-1.5 rounded-lg transition-colors ${viewMode === "table" ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-white"}`}
+                    title="Table View"
+                  >
+                    <List className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode("grid")}
+                    className={`p-1.5 rounded-lg transition-colors ${viewMode === "grid" ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-white"}`}
+                    title="Grid View"
+                  >
+                    <LayoutGrid className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -608,7 +634,7 @@ export default function DemoSessionsPage() {
               </button>
             )}
           </div>
-        ) : isTeacher ? (
+        ) : isTeacher || viewMode === "grid" ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 bg-neutral-900/30">
             {filteredSessions.map((session) => {
               const sessionDate = new Date(session.date);
@@ -703,6 +729,15 @@ export default function DemoSessionsPage() {
                       )}
 
                       <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                        {!isTeacher && (
+                          <button
+                            onClick={() => setViewingSession(session)}
+                            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 rounded-lg transition-colors border border-blue-500/25"
+                            title="View Full Details"
+                          >
+                            <Eye className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {canManageSlots && (
                           <button
                             onClick={() => openEdit(session)}
@@ -774,10 +809,11 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.admissionConfirmed || "Pending"}</td>
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
+                      <button onClick={() => setViewingSession(session)} className="text-blue-400 hover:text-blue-300" title="View Details"><Eye className="w-4 h-4" /></button>
                       {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
                         <>
-                          <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white" title="Edit Session"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
                         </>
                       )}
                     </td>
@@ -1464,6 +1500,145 @@ export default function DemoSessionsPage() {
                     "Confirm Delete"
                   )}
                 </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* View Details Modal */}
+      <AnimatePresence>
+        {viewingSession && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="flex items-center justify-between p-6 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
+                <div>
+                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                    <Info className="w-5 h-5 text-blue-500" />
+                    Demo Session Details
+                  </h2>
+                </div>
+                <button
+                  onClick={() => setViewingSession(null)}
+                  className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-xl transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                 {/* Basic Info */}
+                 <div>
+                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                     <User className="w-4 h-4 text-amber-500" /> Student Information
+                   </h3>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Name</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.studentName}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Email</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.studentEmail || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Age</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.age || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Customer / Parent Name</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.customerName || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Phone Number</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.phoneNumber || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Place</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.place || "-"}</p>
+                     </div>
+                   </div>
+                 </div>
+
+                 {/* Class Details */}
+                 <div>
+                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                     <Video className="w-4 h-4 text-amber-500" /> Class Details
+                   </h3>
+                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Subject</p>
+                       <p className="text-sm text-amber-400 font-bold mt-1">{viewingSession.subject}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Teacher</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.teacher?.name || "Unassigned"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Status</p>
+                       <p className="text-sm font-medium mt-1">
+                         <span className={`px-2 py-1 rounded-md text-xs font-bold border ${viewingSession.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : viewingSession.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                           {viewingSession.status}
+                         </span>
+                       </p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Date</p>
+                       <p className="text-sm text-white font-medium mt-1">{format(new Date(viewingSession.date), "dd MMM yyyy")}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Time</p>
+                       <p className="text-sm text-white font-medium mt-1">{formatTimeAMPM(viewingSession.startTime)} - {formatTimeAMPM(viewingSession.endTime)}</p>
+                     </div>
+                     <div className="col-span-2 md:col-span-1">
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Meeting Link</p>
+                       {viewingSession.meetingLink ? (
+                         <a href={viewingSession.meetingLink} target="_blank" rel="noreferrer" className="text-sm text-blue-400 hover:text-blue-300 font-medium mt-1 break-all flex items-center gap-1">
+                           <LinkIcon className="w-3 h-3" /> Join Link
+                         </a>
+                       ) : (
+                         <p className="text-sm text-neutral-500 font-medium mt-1">-</p>
+                       )}
+                     </div>
+                     <div className="col-span-2 md:col-span-3 mt-2">
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Notes / Remarks</p>
+                       <div className="bg-neutral-950/50 border border-neutral-800 p-3 rounded-lg mt-1">
+                         <p className="text-sm text-neutral-300 whitespace-pre-wrap">{viewingSession.notes || "No notes provided."}</p>
+                       </div>
+                     </div>
+                   </div>
+                 </div>
+
+                 {/* Admission Tracker */}
+                 <div>
+                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                     <AlignLeft className="w-4 h-4 text-amber-500" /> Admission Tracker
+                   </h3>
+                   <div className="grid grid-cols-2 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Fee Discussed</p>
+                       <p className="text-sm text-white font-medium mt-1">
+                         {canViewFee(viewingSession.salesExecutive) ? (viewingSession.feeDiscussed || "-") : <span className="text-neutral-500 italic">Hidden</span>}
+                       </p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">No. of Hours</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.numberOfSessions || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Sales Executive</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.salesExecutive || "-"}</p>
+                     </div>
+                     <div>
+                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
+                       <p className="text-sm text-white font-medium mt-1">{viewingSession.admissionConfirmed || "Pending"}</p>
+                     </div>
+                   </div>
+                 </div>
               </div>
             </motion.div>
           </div>
