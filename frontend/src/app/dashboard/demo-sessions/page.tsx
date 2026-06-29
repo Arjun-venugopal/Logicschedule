@@ -161,6 +161,11 @@ export default function DemoSessionsPage() {
     queryFn: async () => (await api.get("/demo-slots")).data,
   });
 
+  const { data: salesPeople = [] } = useQuery<any[]>({
+    queryKey: ["salesPeople"],
+    queryFn: async () => (await api.get("/sales")).data,
+  });
+
   const createSlotMutation = useMutation({
     mutationFn: (data: any) => api.post("/demo-slots", data),
     onSuccess: () => {
@@ -1165,13 +1170,18 @@ export default function DemoSessionsPage() {
                       )}
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
-                        <input
-                          type="text"
-                          placeholder="Executive Name"
+                        <select
                           value={form.salesExecutive}
                           onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
+                        >
+                          <option value="">Select Sales Executive</option>
+                          {salesPeople.map((sp: any) => (
+                            <option key={sp._id} value={sp.name}>
+                              {sp.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">No. of Hours</label>

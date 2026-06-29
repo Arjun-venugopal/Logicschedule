@@ -33,7 +33,20 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
 
     const demoSessions = await DemoSession.find(query)
       .populate('teacher', 'name email status availability');
-    res.json(demoSessions);
+
+    // Mask fee details for Sales Person if they are not the assigned salesExecutive
+    const maskedSessions = demoSessions.map((session: any) => {
+      const sessionObj = session.toObject();
+      if (req.user && req.user.role === 'Sales Person') {
+        const isAssigned = sessionObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
+        if (!isAssigned) {
+          sessionObj.feeDiscussed = 'Hidden';
+        }
+      }
+      return sessionObj;
+    });
+
+    res.json(maskedSessions);
   } catch (error: any) {
     console.error('Get demo sessions error:', error.message);
     res.status(500).json({ message: 'Server error' });
@@ -133,7 +146,17 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     const populated = await demoSession.populate('teacher', 'name email status availability');
-    res.status(201).json(populated);
+    
+    // Mask fee details for response
+    const responseObj = populated.toObject();
+    if (req.user && req.user.role === 'Sales Person') {
+      const isAssigned = responseObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
+      if (!isAssigned) {
+        responseObj.feeDiscussed = 'Hidden';
+      }
+    }
+    
+    res.status(201).json(responseObj);
   } catch (error: any) {
     console.error('Create demo session error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
@@ -176,7 +199,11 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.phoneNumber = req.body.phoneNumber !== undefined ? req.body.phoneNumber : demoSession.phoneNumber;
       demoSession.place = req.body.place !== undefined ? req.body.place : demoSession.place;
       demoSession.age = req.body.age !== undefined ? req.body.age : demoSession.age;
-      demoSession.feeDiscussed = req.body.feeDiscussed !== undefined ? req.body.feeDiscussed : demoSession.feeDiscussed;
+      
+      if (req.body.feeDiscussed !== undefined && req.body.feeDiscussed !== 'Hidden') {
+        demoSession.feeDiscussed = req.body.feeDiscussed;
+      }
+      
       demoSession.admissionConfirmed = req.body.admissionConfirmed || demoSession.admissionConfirmed;
       demoSession.salesExecutive = req.body.salesExecutive !== undefined ? req.body.salesExecutive : demoSession.salesExecutive;
       demoSession.classAssignedTutor = req.body.classAssignedTutor || demoSession.classAssignedTutor;
@@ -254,7 +281,17 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     const populated = await updated.populate('teacher', 'name email status availability');
-    res.json(populated);
+    
+    // Mask fee details for response
+    const responseObj = populated.toObject();
+    if (req.user && req.user.role === 'Sales Person') {
+      const isAssigned = responseObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
+      if (!isAssigned) {
+        responseObj.feeDiscussed = 'Hidden';
+      }
+    }
+    
+    res.json(responseObj);
   } catch (error: any) {
     console.error('Update demo session error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
