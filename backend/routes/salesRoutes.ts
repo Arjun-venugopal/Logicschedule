@@ -11,7 +11,7 @@ const router = express.Router();
 
 router.use(protect);
 // We allow either Admin/Super Admin, Sub Admin with salesPeople read permissions, OR Sales Person (for dropdowns)
-router.get('/', (req, res, next) => {
+router.get('/', (req: any, res, next) => {
   if (req.user && req.user.role === 'Sales Person') {
     next();
   } else {
