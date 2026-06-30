@@ -36,7 +36,7 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
 
     // Mask fee details for Sales Person if they are not the assigned salesExecutive
     const maskedSessions = demoSessions.map((session: any) => {
-      const sessionObj = session.toObject();
+      const sessionObj = { ...session };
       if (req.user && req.user.role === 'Sales Person') {
         const isAssigned = sessionObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
         if (!isAssigned) {
@@ -111,6 +111,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       endTime,
       meetingLink: meetingLink || '',
       notes: notes || '',
+      cancellationReason: req.body.cancellationReason || '',
       conflict: isConflict,
       numberOfSessions: numberOfSessions !== undefined ? numberOfSessions : null,
       createdBy: req.user ? req.user._id.toString() : null,
@@ -148,7 +149,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     const populated = await demoSession.populate('teacher', 'name email status availability');
     
     // Mask fee details for response
-    const responseObj = populated.toObject();
+    const responseObj = { ...populated };
     if (req.user && req.user.role === 'Sales Person') {
       const isAssigned = responseObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
       if (!isAssigned) {
@@ -218,6 +219,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.status = req.body.status || demoSession.status;
       demoSession.meetingLink = req.body.meetingLink !== undefined ? req.body.meetingLink : demoSession.meetingLink;
       demoSession.notes = req.body.notes !== undefined ? req.body.notes : demoSession.notes;
+      demoSession.cancellationReason = req.body.cancellationReason !== undefined ? req.body.cancellationReason : demoSession.cancellationReason;
 
       // Recalculate conflict for this demo session
       const dateObj = new Date(demoSession.date);
@@ -246,6 +248,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       if (req.body.status !== undefined) demoSession.status = req.body.status;
       if (req.body.meetingLink !== undefined) demoSession.meetingLink = req.body.meetingLink;
       if (req.body.notes !== undefined) demoSession.notes = req.body.notes;
+      if (req.body.cancellationReason !== undefined) demoSession.cancellationReason = req.body.cancellationReason;
     }
 
     const updated = await demoSession.save();
@@ -283,7 +286,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const populated = await updated.populate('teacher', 'name email status availability');
     
     // Mask fee details for response
-    const responseObj = populated.toObject();
+    const responseObj = { ...populated };
     if (req.user && req.user.role === 'Sales Person') {
       const isAssigned = responseObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
       if (!isAssigned) {

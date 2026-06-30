@@ -260,7 +260,7 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     }
 
     // Check authorization: Admin can see anything, Teacher can only see their own performance
-    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin') {
+    if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin' && req.user.role !== 'Sub Admin') {
       if (teacher.user.toString() !== req.user._id.toString()) {
         res.status(403).json({ message: 'Forbidden: You can only view your own performance' });
         return;

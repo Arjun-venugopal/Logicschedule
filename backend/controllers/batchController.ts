@@ -147,7 +147,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
 
     const populated = await batch.populate('assignedTeacher', 'name email');
-    res.status(201).json({ ...populated.toObject(), schedulesGenerated: generated });
+    res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), schedulesGenerated: generated });
   } catch (error: any) {
     console.error('Create batch error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

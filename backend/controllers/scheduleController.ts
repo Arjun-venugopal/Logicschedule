@@ -94,7 +94,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
     const schedule = await Schedule.findById(req.params.id as string);
 
     if (schedule) {
-      const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin';
+      const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
       let isAssignedTeacher = false;
       
       const teacherProfile = await Teacher.findOne({ user: req.user._id });

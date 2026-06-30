@@ -73,6 +73,7 @@ import demoRoutes from './routes/demoRoutes';
 import demoSlotRoutes from './routes/demoSlotRoutes';
 import userRoutes from './routes/userRoutes';
 import salesRoutes from './routes/salesRoutes';
+import demoReportRoutes from './routes/demoReportRoutes';
 import { notFound, errorHandler } from './middleware/errorMiddleware';
 
 app.use('/auth', authRoutes);
@@ -85,6 +86,7 @@ app.use('/demo-sessions', demoRoutes);
 app.use('/demo-slots', demoSlotRoutes);
 app.use('/users', userRoutes);
 app.use('/sales-people', salesRoutes);
+app.use('/demo-reports', demoReportRoutes);
 
 app.get('/', (req, res) => {
   res.send('API is running...');

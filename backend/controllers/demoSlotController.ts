@@ -92,7 +92,7 @@ export const createDemoSlot = async (req: any, res: Response): Promise<void> => 
     });
 
     const populated = await demoSlot.populate('teacher', 'name email status');
-    res.status(201).json({ ...populated.toObject(), isBooked: false });
+    res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), isBooked: false });
   } catch (error: any) {
     console.error('Create demo slot error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

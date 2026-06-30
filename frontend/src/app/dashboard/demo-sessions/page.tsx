@@ -24,11 +24,13 @@ import {
   AlertCircle,
   Eye,
   LayoutGrid,
-  List
+  List,
+  FileText
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import DemoReportModal from "@/components/demo/DemoReportModal";
 
 interface Teacher {
   _id: string;
@@ -63,6 +65,7 @@ interface DemoSession {
   status: "Scheduled" | "Completed" | "Cancelled";
   meetingLink?: string;
   notes?: string;
+  cancellationReason?: string;
   conflict?: boolean;
   createdBy?: string;
 }
@@ -88,6 +91,7 @@ type DemoSessionForm = {
   status: "Scheduled" | "Completed" | "Cancelled";
   meetingLink: string;
   notes: string;
+  cancellationReason: string;
 };
 
 const emptyForm = (): DemoSessionForm => ({
@@ -111,6 +115,7 @@ const emptyForm = (): DemoSessionForm => ({
   status: "Scheduled",
   meetingLink: "",
   notes: "",
+  cancellationReason: "",
 });
 
 export default function DemoSessionsPage() {
@@ -130,6 +135,7 @@ export default function DemoSessionsPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
   const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
+  const [reportSession, setReportSession] = useState<DemoSession | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
@@ -168,7 +174,7 @@ export default function DemoSessionsPage() {
 
   const { data: salesPeople = [] } = useQuery<any[]>({
     queryKey: ["salesPeople"],
-    queryFn: async () => (await api.get("/sales")).data,
+    queryFn: async () => (await api.get("/sales-people")).data,
   });
 
   const createSlotMutation = useMutation({
@@ -279,6 +285,7 @@ export default function DemoSessionsPage() {
       status: d.status,
       meetingLink: d.meetingLink || "",
       notes: d.notes || "",
+      cancellationReason: d.cancellationReason || "",
     });
     setEditingId(d._id);
     setModal({ open: true, mode: "edit" });
@@ -747,6 +754,15 @@ export default function DemoSessionsPage() {
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         )}
+                        {session.status === "Completed" && (
+                          <button
+                            onClick={() => setReportSession(session)}
+                            className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 hover:text-purple-300 rounded-lg transition-colors border border-purple-500/25"
+                            title="Student Performance Report"
+                          >
+                            <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                         {!isTeacher && canManageSlots && (
                           <button
                             onClick={() => setDeleteConfirm(session._id)}
@@ -815,6 +831,9 @@ export default function DemoSessionsPage() {
                           <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white" title="Edit Session"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
                         </>
+                      )}
+                      {session.status === "Completed" && (
+                        <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
                       )}
                     </td>
                   </tr>
@@ -1096,6 +1115,21 @@ export default function DemoSessionsPage() {
                         <option value="Cancelled">Cancelled</option>
                       </select>
                     </div>
+
+                    {/* Cancellation Reason (Teacher View) */}
+                    {form.status === "Cancelled" && (
+                      <div className="space-y-1.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl">
+                        <label className="text-xs font-semibold text-red-400">Reason for Cancellation</label>
+                        <textarea
+                          required
+                          rows={2}
+                          placeholder="Please provide a reason..."
+                          value={form.cancellationReason}
+                          onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
+                          className="w-full bg-neutral-900 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors resize-none"
+                        />
+                      </div>
+                    )}
 
                     {/* Virtual Meeting Link */}
                     <div className="space-y-1.5">
@@ -1414,6 +1448,23 @@ export default function DemoSessionsPage() {
                         </select>
                       </div>
                     )}
+
+                    {/* Cancellation Reason */}
+                    {(form.status === "Cancelled" || form.admissionConfirmed === "No") && (
+                      <div className="space-y-1.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
+                        <label className="text-xs font-semibold text-red-400">
+                          {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection"}
+                        </label>
+                        <textarea
+                          required
+                          rows={2}
+                          placeholder="Please provide a reason..."
+                          value={form.cancellationReason}
+                          onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
+                          className="w-full bg-neutral-900 border border-red-500/30 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors resize-none"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -1637,6 +1688,16 @@ export default function DemoSessionsPage() {
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
                        <p className="text-sm text-white font-medium mt-1">{viewingSession.admissionConfirmed || "Pending"}</p>
                      </div>
+
+                     {/* Display cancellation reason if it exists */}
+                     {viewingSession.cancellationReason && (
+                       <div className="col-span-1 md:col-span-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
+                         <span className="text-[10px] uppercase font-semibold text-red-400 block">
+                           {viewingSession.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Rejection"}
+                         </span>
+                         <p className="text-sm text-white font-medium mt-1 whitespace-pre-wrap">{viewingSession.cancellationReason}</p>
+                       </div>
+                     )}
                    </div>
                  </div>
               </div>
@@ -1644,6 +1705,14 @@ export default function DemoSessionsPage() {
           </div>
         )}
       </AnimatePresence>
+
+      {reportSession && (
+        <DemoReportModal
+          session={reportSession as any}
+          onClose={() => setReportSession(null)}
+          readOnly={isSalesPerson}
+        />
+      )}
     </div>
   );
 }
