@@ -309,7 +309,7 @@ export default function SubAdminManager() {
 
                   <div>
                     <h4 className="text-white font-medium mb-3">Module Permissions</h4>
-                    <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden">
+                    <div className="bg-neutral-950 border border-neutral-800 rounded-xl overflow-hidden overflow-x-auto">
                       <table className="w-full text-sm text-left">
                         <thead className="bg-neutral-900 border-b border-neutral-800">
                           <tr>

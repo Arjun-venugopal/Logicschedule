@@ -11,7 +11,8 @@ import { useSearchStore } from "@/store/searchStore";
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { user, token, logout } = useAuthStore();
   const { searchQuery, setSearchQuery } = useSearchStore();
@@ -22,7 +23,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     setMounted(true);
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (!mobile) setSidebarOpen(true);
+    };
+    checkMobile();
+    window.addEventListener("resize", checkMobile);
     if (!token) router.push("/login");
+    return () => window.removeEventListener("resize", checkMobile);
   }, [token, router]);
 
   const handleLogout = () => {
@@ -70,21 +79,35 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white flex overflow-hidden">
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isMobile && sidebarOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 bg-black/60 z-40 md:hidden backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
       {/* Sidebar */}
       <motion.aside
         initial={false}
-        animate={{ width: sidebarOpen ? 240 : 64 }}
+        animate={{ width: isMobile ? (sidebarOpen ? 280 : 0) : (sidebarOpen ? 240 : 64) }}
         transition={{ duration: 0.2, ease: "easeInOut" }}
-        className="h-screen bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 relative z-20 overflow-hidden"
+        className={`h-screen bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 z-50 overflow-hidden ${isMobile ? "fixed inset-y-0 left-0" : "relative"}`}
       >
         {/* Sidebar Header */}
-        <div className="h-16 flex items-center border-b border-neutral-800 shrink-0 px-4">
-          <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1.5 rounded-lg hover:bg-neutral-800 transition-colors shrink-0"
-          >
-            <Menu className="w-5 h-5 text-neutral-400" />
-          </button>
+        <div className="h-16 flex items-center justify-between border-b border-neutral-800 shrink-0 px-4">
+          <div className="flex items-center">
+            <button
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+              className="p-1.5 rounded-lg hover:bg-neutral-800 transition-colors shrink-0 hidden md:block"
+            >
+              <Menu className="w-5 h-5 text-neutral-400" />
+            </button>
           <AnimatePresence>
             {sidebarOpen && (
               <motion.div
@@ -101,6 +124,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               </motion.div>
             )}
           </AnimatePresence>
+          </div>
+          {isMobile && (
+            <button onClick={() => setSidebarOpen(false)} className="p-1.5 rounded-lg hover:bg-neutral-800 transition-colors shrink-0 text-neutral-400">
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
         </div>
 
         {/* Nav Items */}
@@ -175,16 +204,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </motion.aside>
 
       {/* Main */}
-      <main className="flex-1 flex flex-col h-screen overflow-hidden">
+      <main className="flex-1 flex flex-col h-screen overflow-hidden w-full">
         {/* Top Bar */}
-        <header className="h-16 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-6 shrink-0">
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-2 text-sm text-neutral-400">
-            <span className="text-neutral-600">App</span>
-            <ChevronRight className="w-3.5 h-3.5 text-neutral-700" />
-            <span className="text-white font-medium capitalize">
-              {pathname.split("/").pop() || "dashboard"}
-            </span>
+        <header className="h-16 bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4 md:px-6 shrink-0 gap-4">
+          {/* Mobile Menu & Breadcrumb */}
+          <div className="flex items-center gap-2 md:gap-3">
+            {isMobile && (
+              <button onClick={() => setSidebarOpen(true)} className="p-2 -ml-2 rounded-lg text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors shrink-0">
+                <Menu className="w-5 h-5" />
+              </button>
+            )}
+            <div className="flex items-center gap-1.5 md:gap-2 text-sm text-neutral-400 truncate">
+              <span className="text-neutral-600 hidden sm:inline">App</span>
+              <ChevronRight className="w-3.5 h-3.5 text-neutral-700 hidden sm:inline" />
+              <span className="text-white font-medium capitalize truncate">
+                {pathname.split("/").pop() || "dashboard"}
+              </span>
+            </div>
           </div>
 
           {/* Search + Actions */}
@@ -207,7 +243,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </header>
 
         {/* Page Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 w-full">
           {children}
         </div>
       </main>

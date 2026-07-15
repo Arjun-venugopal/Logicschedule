@@ -302,7 +302,7 @@ export default function StudentsPage() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto p-0">
+          <div className="flex-1 overflow-auto p-0 w-full">
             {isLoading ? (
               <div className="h-full flex flex-col items-center justify-center text-neutral-500">
                 <Loader2 className="w-8 h-8 animate-spin text-amber-500 mb-4" />

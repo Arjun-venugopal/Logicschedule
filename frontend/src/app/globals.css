@@ -21,11 +21,11 @@
     font-family: var(--font-roboto), sans-serif;
   }
   body {
-    @apply bg-neutral-950 text-neutral-50;
+    @apply bg-neutral-950 text-neutral-50 overflow-x-hidden;
     font-family: var(--font-roboto), sans-serif;
   }
   html {
-    @apply font-sans;
+    @apply font-sans overflow-x-hidden;
     font-family: var(--font-roboto), sans-serif;
   }
   ::-webkit-scrollbar {

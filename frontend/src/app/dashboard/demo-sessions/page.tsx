@@ -617,7 +617,7 @@ export default function DemoSessionsPage() {
 
       {/* Main List */}
       {activeTab === "sessions" && (
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden overflow-x-auto w-full">
           {isLoadingDemo ? (
             <div className="py-16 text-center text-neutral-500">
             <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />

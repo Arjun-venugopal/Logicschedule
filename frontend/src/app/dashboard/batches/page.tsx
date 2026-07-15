@@ -256,7 +256,7 @@ export default function BatchesPage() {
 
       {/* Filters */}
       {user?.role !== "Teacher" && (
-        <div className="flex items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
           <div className="flex-1 md:max-w-xs">
             <select
               value={filterTeacher}

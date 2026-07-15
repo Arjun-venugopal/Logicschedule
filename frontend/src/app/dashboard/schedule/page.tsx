@@ -278,14 +278,14 @@ export default function SchedulePage() {
   return (
     <div className="flex flex-col gap-4" style={{ height: "calc(100vh - 112px)" }}>
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
+      <div className="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">{isTeacher ? "My Schedule" : "Schedule"}</h1>
           <p className="text-neutral-400 text-sm mt-0.5">
             {isTeacher ? "View your classes · Click an event to add completed subject & notes" : "Click a cell to add · Click an event to edit"}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 md:gap-3">
           {/* View Mode Toggles */}
           <div className="hidden md:flex items-center bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden p-1 mr-2">
             {(["day", "week", "month"] as const).map((mode) => (
@@ -351,7 +351,7 @@ export default function SchedulePage() {
 
       {/* Filters (Admin only) */}
       {!isTeacher && (
-        <div className="flex items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
+        <div className="flex flex-col md:flex-row md:items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
           <div className="flex-1 md:max-w-xs">
             <select
               value={filterTeacher}
