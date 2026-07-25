@@ -1,5 +1,5 @@
 import express from 'express';
-import { getTeachers, createTeacher, updateTeacher, deleteTeacher, getTeacherProfile, updateTeacherProfile, getTeacherPerformance } from '../controllers/teacherController';
+import { getTeachers, createTeacher, updateTeacher, deleteTeacher, getTeacherProfile, updateTeacherProfile, getTeacherPerformance, getTeacherTimings } from '../controllers/teacherController';
 import { protect, permissionCheck } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -8,6 +8,7 @@ router.route('/')
   .get(protect, getTeachers)
   .post(protect, permissionCheck('teachers', 'write'), createTeacher);
 
+router.get('/timings', protect, getTeacherTimings);
 router.get('/profile', protect, getTeacherProfile);
 router.put('/profile', protect, updateTeacherProfile);
 router.get('/:id/performance', protect, getTeacherPerformance);

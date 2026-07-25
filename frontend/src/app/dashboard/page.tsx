@@ -4,6 +4,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
+import Link from "next/link";
 import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
@@ -185,10 +186,16 @@ export default function DashboardPage() {
           className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col"
         >
           <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-white">Live Status</h3>
-            <span className="text-[10px] px-2 py-1 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-              Real-time
-            </span>
+            <div>
+              <h3 className="font-semibold text-white">Live Status & Timings</h3>
+              <p className="text-[10px] text-neutral-500">Real-time availability</p>
+            </div>
+            <Link
+              href="/dashboard/teachers"
+              className="text-[11px] px-2.5 py-1 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium hover:bg-amber-500/20 transition-colors flex items-center gap-1"
+            >
+              Timing Table →
+            </Link>
           </div>
 
           <div className="flex-1 space-y-2 overflow-y-auto">

@@ -4,8 +4,9 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2 } from "lucide-react";
+import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List } from "lucide-react";
 import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
+import { TeacherTimingTable } from "@/components/teachers/TeacherTimingTable";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -30,6 +31,7 @@ export default function TeachersPage() {
     }
   }, [user, router]);
 
+  const [activeTab, setActiveTab] = useState<"timing" | "directory">("timing");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; tempPassword: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -149,19 +151,47 @@ export default function TeachersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Teachers</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">Manage teaching staff and access credentials</p>
+          <h1 className="text-2xl font-bold text-white">Teachers Module</h1>
+          <p className="text-neutral-400 text-sm mt-0.5">Real-time availability timings, schedule tracking & staff management</p>
         </div>
-        {hasWriteAccess && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
-          >
-            <UserPlus className="w-4 h-4" /> Add Teacher
-          </button>
-        )}
+
+        <div className="flex items-center gap-3">
+          {/* Main View Tabs */}
+          <div className="flex items-center p-1 bg-neutral-900 border border-neutral-800 rounded-xl">
+            <button
+              onClick={() => setActiveTab("timing")}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "timing"
+                  ? "bg-amber-500 text-black shadow-md"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Timer className="w-4 h-4" /> Live Timings & Status
+            </button>
+            <button
+              onClick={() => setActiveTab("directory")}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "directory"
+                  ? "bg-amber-500 text-black shadow-md"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <List className="w-4 h-4" /> Teacher Directory
+            </button>
+          </div>
+
+          {hasWriteAccess && (
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs shadow-lg shadow-amber-500/20 shrink-0"
+            >
+              <UserPlus className="w-4 h-4" /> Add Teacher
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Credentials Banner */}
@@ -207,8 +237,12 @@ export default function TeachersPage() {
         )}
       </AnimatePresence>
 
-      {/* Teachers Table */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden overflow-x-auto">
+      {/* Tab 1: Teacher Timing Table */}
+      {activeTab === "timing" ? (
+        <TeacherTimingTable />
+      ) : (
+        /* Tab 2: Teachers Directory Table */
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden overflow-x-auto">
         {isLoading ? (
           <div className="py-16 text-center text-neutral-500">
             <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -344,6 +378,7 @@ export default function TeachersPage() {
           </table>
         )}
       </div>
+      )}
 
       {/* Add Teacher Modal */}
       <AnimatePresence>

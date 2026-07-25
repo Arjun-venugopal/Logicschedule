@@ -440,3 +440,200 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
+// @desc    Get detailed real-time teacher timings & availability
+// @route   GET /teachers/timings
+// @access  Private
+export const getTeacherTimings = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const targetDateStr = (req.query.date as string) || new Date().toISOString();
+    const targetDate = new Date(targetDateStr);
+    
+    const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
+    const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+
+    const now = new Date();
+    const isToday = targetDate.toDateString() === now.toDateString();
+    const currentTotalMinutes = isToday ? now.getHours() * 60 + now.getMinutes() : -1;
+
+    const teachers = await Teacher.find({}).populate('user', 'name email role').lean();
+
+    const schedules = await Schedule.find({
+      date: { $gte: dayStart, $lte: dayEnd },
+      status: { $in: ['Scheduled', 'Completed'] }
+    }).populate('batch', 'name subject').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean();
+
+    const demos = await DemoSession.find({
+      date: { $gte: dayStart, $lte: dayEnd },
+      status: { $in: ['Scheduled', 'Completed'] }
+    }).populate('teacher', 'name email').lean();
+
+    let freeCount = 0;
+    let inClassCount = 0;
+    let startingSoonCount = 0;
+    let onLeaveCount = 0;
+
+    const resultTeachers = teachers.map((teacher: any) => {
+      const teacherIdStr = teacher._id.toString();
+
+      // Gather today's schedules & demos for this teacher
+      const teacherSchedules = schedules.filter((s: any) => 
+        (s.teacher && (s.teacher._id || s.teacher).toString() === teacherIdStr) ||
+        (s.replacementTeacher && (s.replacementTeacher._id || s.replacementTeacher).toString() === teacherIdStr)
+      );
+
+      const teacherDemos = demos.filter((d: any) => 
+        d.teacher && (d.teacher._id || d.teacher).toString() === teacherIdStr
+      );
+
+      // Map to standardized item format
+      const items: any[] = [];
+
+      teacherSchedules.forEach((s: any) => {
+        if (!s.startTime || !s.endTime) return;
+        const [sh, sm] = s.startTime.split(':').map(Number);
+        const [eh, em] = s.endTime.split(':').map(Number);
+        let startMin = sh * 60 + sm;
+        let endMin = eh * 60 + em;
+        if (endMin < startMin) endMin += 1440;
+
+        items.push({
+          id: s._id,
+          type: 'Class',
+          batchName: s.batch?.name || s.subject || 'Regular Class',
+          subject: s.batch?.subject || s.subject || teacher.subjectExpertise?.[0] || 'General',
+          startTime: s.startTime,
+          endTime: s.endTime,
+          startMin,
+          endMin,
+          status: s.status,
+          meetingLink: s.meetingLink || '',
+          isReplacement: s.replacementTeacher && (s.replacementTeacher._id || s.replacementTeacher).toString() === teacherIdStr
+        });
+      });
+
+      teacherDemos.forEach((d: any) => {
+        if (!d.startTime || !d.endTime) return;
+        const [sh, sm] = d.startTime.split(':').map(Number);
+        const [eh, em] = d.endTime.split(':').map(Number);
+        let startMin = sh * 60 + sm;
+        let endMin = eh * 60 + em;
+        if (endMin < startMin) endMin += 1440;
+
+        items.push({
+          id: d._id,
+          type: 'Demo',
+          batchName: `Demo: ${d.studentName || 'Student'}`,
+          subject: d.subject || teacher.subjectExpertise?.[0] || 'Demo',
+          startTime: d.startTime,
+          endTime: d.endTime,
+          startMin,
+          endMin,
+          status: d.status,
+          meetingLink: d.meetingLink || '',
+          isReplacement: false
+        });
+      });
+
+      // Sort items by startMin
+      items.sort((a, b) => a.startMin - b.startMin);
+
+      let currentClass: any = null;
+      let nextClass: any = null;
+      let minutesLeftInCurrentClass: number | null = null;
+      let minutesToNextClass: number | null = null;
+      let currentClassProgress = 0;
+
+      if (isToday && currentTotalMinutes >= 0) {
+        // Find current class
+        const ongoing = items.find(i => currentTotalMinutes >= i.startMin && currentTotalMinutes <= i.endMin);
+        if (ongoing) {
+          currentClass = ongoing;
+          minutesLeftInCurrentClass = ongoing.endMin - currentTotalMinutes;
+          const duration = ongoing.endMin - ongoing.startMin;
+          currentClassProgress = duration > 0 ? Math.min(100, Math.max(0, Math.round(((currentTotalMinutes - ongoing.startMin) / duration) * 100))) : 100;
+        }
+
+        // Find next class
+        const upcoming = items.find(i => i.startMin > currentTotalMinutes);
+        if (upcoming) {
+          nextClass = upcoming;
+          minutesToNextClass = upcoming.startMin - currentTotalMinutes;
+        }
+      }
+
+      // Determine live status
+      let liveStatus: 'On Leave' | 'In Class' | 'Class Starting Soon' | 'Free' = 'Free';
+
+      if (teacher.status === 'On Leave') {
+        liveStatus = 'On Leave';
+        onLeaveCount++;
+      } else if (currentClass) {
+        liveStatus = 'In Class';
+        inClassCount++;
+      } else if (nextClass && minutesToNextClass !== null && minutesToNextClass <= 60 && minutesToNextClass >= 0) {
+        liveStatus = 'Class Starting Soon';
+        startingSoonCount++;
+      } else {
+        liveStatus = 'Free';
+        freeCount++;
+      }
+
+      const todayClassesCount = items.length;
+      const completedClassesCount = isToday 
+        ? items.filter(i => i.endMin < currentTotalMinutes || i.status === 'Completed').length
+        : items.filter(i => i.status === 'Completed').length;
+
+      return {
+        _id: teacher._id,
+        name: teacher.name,
+        email: teacher.email,
+        phone: teacher.phone,
+        subjectExpertise: teacher.subjectExpertise || [],
+        experience: teacher.experience || 0,
+        employmentType: teacher.employmentType || 'Full Time',
+        status: teacher.status || 'Available', // Raw DB status
+        liveStatus,
+        currentClass: currentClass ? {
+          title: currentClass.batchName,
+          subject: currentClass.subject,
+          type: currentClass.type,
+          startTime: currentClass.startTime,
+          endTime: currentClass.endTime,
+          minutesLeft: minutesLeftInCurrentClass,
+          progress: currentClassProgress,
+          meetingLink: currentClass.meetingLink
+        } : null,
+        nextClass: nextClass ? {
+          title: nextClass.batchName,
+          subject: nextClass.subject,
+          type: nextClass.type,
+          startTime: nextClass.startTime,
+          endTime: nextClass.endTime,
+          startsInMinutes: minutesToNextClass,
+          meetingLink: nextClass.meetingLink
+        } : null,
+        todayClassesCount,
+        completedClassesCount,
+        todayScheduleItems: items
+      };
+    });
+
+    res.json({
+      summary: {
+        totalTeachers: teachers.length,
+        freeCount,
+        inClassCount,
+        startingSoonCount,
+        onLeaveCount
+      },
+      currentTotalMinutes,
+      isToday,
+      teachers: resultTeachers
+    });
+  } catch (error: any) {
+    console.error('Get teacher timings error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+

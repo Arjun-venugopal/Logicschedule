@@ -7,9 +7,6 @@ const nextConfig = {
     // Disable Next.js image optimization API since static export runs without a Node server
     unoptimized: true,
   },
-  turbopack: {
-    root: __dirname,
-  },
   eslint: {
     // Ignore linting during build to save memory on Render's free tier
     ignoreDuringBuilds: true,
