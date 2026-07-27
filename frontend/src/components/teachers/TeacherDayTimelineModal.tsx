@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Calendar, Clock, BookOpen, Video, ExternalLink, UserCheck, AlertCircle, CheckCircle2 } from "lucide-react";
+import { X, Calendar, Clock, BookOpen, Video, ExternalLink, UserCheck } from "lucide-react";
 
 interface TimelineItem {
   id: string;

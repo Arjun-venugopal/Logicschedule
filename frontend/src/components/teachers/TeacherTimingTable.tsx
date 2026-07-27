@@ -11,18 +11,15 @@ import {
   RefreshCw,
   Calendar,
   CheckCircle2,
-  AlertCircle,
   PlayCircle,
   UserX,
   UserCheck,
   Eye,
   Timer,
-  BookOpen,
-  ChevronRight,
-  Sparkles,
-  ExternalLink
+  BookOpen
 } from "lucide-react";
 import { TeacherDayTimelineModal } from "./TeacherDayTimelineModal";
+import { TeacherWeeklyAvailabilityModal } from "./TeacherWeeklyAvailabilityModal";
 import { usePermissions } from "@/hooks/usePermissions";
 
 interface TeacherTimingData {
@@ -34,6 +31,10 @@ interface TeacherTimingData {
   experience?: number;
   employmentType?: string;
   status: string; // Raw DB status (Available / On Leave)
+  availability?: Array<{
+    day: string;
+    slots: Array<{ startTime: string; endTime: string }>;
+  }>;
   liveStatus: "Free" | "In Class" | "Class Starting Soon" | "On Leave";
   currentClass: {
     title: string;
@@ -70,6 +71,7 @@ export function TeacherTimingTable() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "Free" | "In Class" | "Class Starting Soon" | "On Leave">("ALL");
   const [selectedTimelineTeacher, setSelectedTimelineTeacher] = useState<TeacherTimingData | null>(null);
+  const [selectedWeeklyAvailTeacher, setSelectedWeeklyAvailTeacher] = useState<TeacherTimingData | null>(null);
 
   // Fetch teacher timings
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -544,6 +546,16 @@ export function TeacherTimingTable() {
                       {/* Actions & Timeline */}
                       <td className="py-4 px-5 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {/* View Weekly Availability */}
+                          <button
+                            onClick={() => setSelectedWeeklyAvailTeacher(t)}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-emerald-400 hover:text-emerald-300 rounded-lg text-xs font-medium transition-colors border border-neutral-700"
+                            title="View Teacher Weekly Availability Schedule"
+                          >
+                            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Weekly Availability</span>
+                          </button>
+
                           {/* View Day Timeline */}
                           <button
                             onClick={() => setSelectedTimelineTeacher(t)}
@@ -599,6 +611,14 @@ export function TeacherTimingTable() {
         onClose={() => setSelectedTimelineTeacher(null)}
         teacher={selectedTimelineTeacher}
         selectedDate={selectedDate}
+      />
+
+      {/* Teacher Weekly Availability Modal */}
+      <TeacherWeeklyAvailabilityModal
+        isOpen={!!selectedWeeklyAvailTeacher}
+        onClose={() => setSelectedWeeklyAvailTeacher(null)}
+        teacher={selectedWeeklyAvailTeacher}
+        canEdit={hasWriteAccess}
       />
     </div>
   );

@@ -4,9 +4,10 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List } from "lucide-react";
+import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List, Calendar } from "lucide-react";
 import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
 import { TeacherTimingTable } from "@/components/teachers/TeacherTimingTable";
+import { TeacherWeeklyAvailabilityModal } from "@/components/teachers/TeacherWeeklyAvailabilityModal";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -37,6 +38,7 @@ export default function TeachersPage() {
   const [copied, setCopied] = useState<string | null>(null);
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [performanceTeacherId, setPerformanceTeacherId] = useState<string | null>(null);
+  const [weeklyAvailTeacher, setWeeklyAvailTeacher] = useState<any>(null);
   const [editTeacher, setEditTeacher] = useState<any>(null); // For editing
   const [formData, setFormData] = useState({
     name: "",
@@ -345,6 +347,13 @@ export default function TeachersPage() {
                     <td className="py-3.5 px-5">
                       <div className="flex items-center gap-2">
                         <button
+                          onClick={() => setWeeklyAvailTeacher(teacher)}
+                          className="p-2 hover:bg-emerald-500/10 rounded-lg transition-colors text-neutral-500 hover:text-emerald-400"
+                          title="View Weekly Availability Schedule"
+                        >
+                          <Calendar className="w-4 h-4 text-emerald-400" />
+                        </button>
+                        <button
                           onClick={() => setPerformanceTeacherId(teacher._id)}
                           className="p-2 hover:bg-amber-500/10 rounded-lg transition-colors text-neutral-500 hover:text-amber-400"
                           title="View Performance"
@@ -558,6 +567,14 @@ export default function TeachersPage() {
           <TeacherPerformanceModal teacherId={performanceTeacherId} onClose={() => setPerformanceTeacherId(null)} />
         )}
       </AnimatePresence>
+
+      {/* Teacher Weekly Availability Modal */}
+      <TeacherWeeklyAvailabilityModal
+        isOpen={!!weeklyAvailTeacher}
+        onClose={() => setWeeklyAvailTeacher(null)}
+        teacher={weeklyAvailTeacher}
+        canEdit={hasWriteAccess}
+      />
     </div>
   );
 }

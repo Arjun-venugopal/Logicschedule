@@ -593,6 +593,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
         experience: teacher.experience || 0,
         employmentType: teacher.employmentType || 'Full Time',
         status: teacher.status || 'Available', // Raw DB status
+        availability: teacher.availability || [],
         liveStatus,
         currentClass: currentClass ? {
           title: currentClass.batchName,

@@ -18,7 +18,10 @@ export const usePermissions = () => {
   };
 
   const canWrite = (module: string) => {
-    if (isTeacher) return true; // Handled per component if teachers have limitations
+    if (isTeacher) {
+      if (module === "batches" || module === "teachers" || module === "salesPeople") return false;
+      return true;
+    }
     if (isAdmin) return true;
     if (isSalesPerson) return module === "demoSessions";
     if (isSubAdmin) return permissions[module]?.write === true;

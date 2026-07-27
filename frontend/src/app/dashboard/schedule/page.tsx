@@ -904,33 +904,52 @@ export default function SchedulePage() {
 
                 {/* Attendance */}
                 {isTeacher && modal.mode === "edit" && students.length > 0 && (
-                  <div className="pt-2">
-                    <label className="block text-sm font-medium text-neutral-300 mb-2">
-                      Attendance
-                    </label>
-                    <div className="max-h-40 overflow-y-auto space-y-2 pr-2">
+                  <div className="pt-2 border-t border-neutral-800/80">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                        Student Attendance
+                      </label>
+                      <span className="text-[10px] text-neutral-500">
+                        Check box to mark Present
+                      </span>
+                    </div>
+                    <div className="max-h-44 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
                       {students.map((student: any) => {
                         const existingRecord = form.attendance?.find(a => a.studentId === student._id);
                         const isPresent = existingRecord ? existingRecord.isPresent : true;
                         return (
-                          <div key={student._id} className="flex items-center justify-between p-2 rounded-lg bg-neutral-800/50 border border-neutral-700/50">
-                            <span className="text-sm text-neutral-200">{student.name}</span>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const currentAttendance = form.attendance || [];
-                                const newAttendance = currentAttendance.filter(a => a.studentId !== student._id);
-                                newAttendance.push({ studentId: student._id, isPresent: !isPresent });
-                                setForm({ ...form, attendance: newAttendance });
-                              }}
-                              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                                isPresent ? "bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30" : "bg-red-500/20 text-red-400 hover:bg-red-500/30"
-                              }`}
-                            >
+                          <label
+                            key={student._id}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                              isPresent
+                                ? "bg-emerald-500/10 border-emerald-500/30"
+                                : "bg-neutral-800/40 border-neutral-700/60 opacity-80"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isPresent}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  const currentAttendance = form.attendance || [];
+                                  const newAttendance = currentAttendance.filter(a => a.studentId !== student._id);
+                                  newAttendance.push({ studentId: student._id, isPresent: checked });
+                                  setForm({ ...form, attendance: newAttendance });
+                                }}
+                                className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
+                              />
+                              <span className="text-sm font-medium text-white">{student.name}</span>
+                            </div>
+                            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md ${
+                              isPresent
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-neutral-800 text-neutral-400 border border-neutral-700"
+                            }`}>
                               {isPresent ? "Present" : "Absent"}
-                            </button>
-                          </div>
-                        )
+                            </span>
+                          </label>
+                        );
                       })}
                     </div>
                   </div>
