@@ -166,7 +166,19 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
     teacher.availability      = req.body.availability ?? teacher.availability;
     teacher.workloadPercentage = req.body.workloadPercentage ?? teacher.workloadPercentage;
 
+    if (req.body.tempPassword || req.body.password) {
+      const newPwd = req.body.tempPassword || req.body.password;
+      teacher.tempPassword = newPwd;
+      if (teacher.user) {
+        const userId = typeof teacher.user === 'object' ? teacher.user._id || teacher.user.id : teacher.user;
+        if (userId) {
+          await User.update(userId, { password: newPwd });
+        }
+      }
+    }
+
     const updated = await teacher.save();
+
     res.json(updated);
   } catch (error: any) {
     console.error('Update teacher error:', error.message);
@@ -446,14 +458,23 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
 // @access  Private
 export const getTeacherTimings = async (req: Request, res: Response): Promise<void> => {
   try {
-    const targetDateStr = (req.query.date as string) || new Date().toISOString();
-    const targetDate = new Date(targetDateStr);
-    
-    const dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
-    const dayEnd   = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+    let dayStart: Date;
+    let dayEnd: Date;
+
+    if (req.query.startDate && req.query.endDate) {
+      dayStart = new Date(req.query.startDate as string);
+      dayStart.setHours(0, 0, 0, 0);
+      dayEnd = new Date(req.query.endDate as string);
+      dayEnd.setHours(23, 59, 59, 999);
+    } else {
+      const targetDateStr = (req.query.date as string) || new Date().toISOString();
+      const targetDate = new Date(targetDateStr);
+      dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
+      dayEnd = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+    }
 
     const now = new Date();
-    const isToday = targetDate.toDateString() === now.toDateString();
+    const isToday = now >= dayStart && now <= dayEnd;
     const currentTotalMinutes = isToday ? now.getHours() * 60 + now.getMinutes() : -1;
 
     const teachers = await Teacher.find({}).populate('user', 'name email role').lean();
@@ -500,6 +521,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
         items.push({
           id: s._id,
           type: 'Class',
+          date: s.date,
           batchName: s.batch?.name || s.subject || 'Regular Class',
           subject: s.batch?.subject || s.subject || teacher.subjectExpertise?.[0] || 'General',
           startTime: s.startTime,
@@ -523,6 +545,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
         items.push({
           id: d._id,
           type: 'Demo',
+          date: d.date,
           batchName: `Demo: ${d.studentName || 'Student'}`,
           subject: d.subject || teacher.subjectExpertise?.[0] || 'Demo',
           startTime: d.startTime,
@@ -537,6 +560,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
 
       // Sort items by startMin
       items.sort((a, b) => a.startMin - b.startMin);
+
 
       let currentClass: any = null;
       let nextClass: any = null;

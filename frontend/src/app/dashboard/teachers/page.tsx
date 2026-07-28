@@ -8,6 +8,7 @@ import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, 
 import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
 import { TeacherTimingTable } from "@/components/teachers/TeacherTimingTable";
 import { TeacherWeeklyAvailabilityModal } from "@/components/teachers/TeacherWeeklyAvailabilityModal";
+import { AllTeachersAvailabilityCalendar } from "@/components/teachers/AllTeachersAvailabilityCalendar";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -32,7 +33,8 @@ export default function TeachersPage() {
     }
   }, [user, router]);
 
-  const [activeTab, setActiveTab] = useState<"timing" | "directory">("timing");
+  const [activeTab, setActiveTab] = useState<"timing" | "availability-calendar" | "directory">("timing");
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; tempPassword: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -139,13 +141,14 @@ export default function TeachersPage() {
       address: teacher.address || "",
       employmentType: teacher.employmentType || "Full Time",
       hourlyRate: teacher.hourlyRate || "",
-      tempPassword: "",
+      tempPassword: teacher.tempPassword || "",
       experience: teacher.experience || 0,
       status: teacher.status || "Available",
       subjectExpertise: teacher.subjectExpertise || [],
     });
     setIsModalOpen(true);
   };
+
 
   if (user && user.role === "Teacher") {
     return null;
@@ -172,6 +175,16 @@ export default function TeachersPage() {
               }`}
             >
               <Timer className="w-4 h-4" /> Live Timings & Status
+            </button>
+            <button
+              onClick={() => setActiveTab("availability-calendar")}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                activeTab === "availability-calendar"
+                  ? "bg-amber-500 text-black shadow-md"
+                  : "text-neutral-400 hover:text-white"
+              }`}
+            >
+              <Calendar className="w-4 h-4" /> Availability Calendar
             </button>
             <button
               onClick={() => setActiveTab("directory")}
@@ -239,11 +252,14 @@ export default function TeachersPage() {
         )}
       </AnimatePresence>
 
-      {/* Tab 1: Teacher Timing Table */}
+      {/* Main View Container */}
       {activeTab === "timing" ? (
         <TeacherTimingTable />
+      ) : activeTab === "availability-calendar" ? (
+        <AllTeachersAvailabilityCalendar />
       ) : (
-        /* Tab 2: Teachers Directory Table */
+        /* Tab 3: Teachers Directory Table */
+
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden overflow-x-auto">
         {isLoading ? (
           <div className="py-16 text-center text-neutral-500">
@@ -494,22 +510,25 @@ export default function TeachersPage() {
                   </div>
                 </div>
 
-                {/* Temp Password */}
-                {isSuperAdminOrAdmin && !editTeacher && (
+                {/* Teacher Password */}
+                {isSuperAdminOrAdmin && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-sm font-medium text-neutral-300">Temporary Password</label>
+                      <label className="text-sm font-medium text-neutral-300">
+                        {editTeacher ? "Account Password" : "Temporary Password"}
+                      </label>
                       <button
                         type="button"
                         onClick={() => setFormData({ ...formData, tempPassword: generatePassword() })}
                         className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
                       >
-                        <RefreshCw className="w-3 h-3" /> Regenerate
+                        <RefreshCw className="w-3 h-3" /> {editTeacher ? "Generate New" : "Regenerate"}
                       </button>
                     </div>
                     <div className="relative">
                       <input
                         type="text"
+                        placeholder="Enter password..."
                         value={formData.tempPassword}
                         onChange={(e) => setFormData({ ...formData, tempPassword: e.target.value })}
                         className="w-full bg-neutral-800 border border-amber-500/30 rounded-xl px-3 py-2.5 pr-10 text-sm text-amber-400 font-mono outline-none focus:border-amber-500 transition-all"
@@ -518,13 +537,19 @@ export default function TeachersPage() {
                         type="button"
                         onClick={() => handleCopy(formData.tempPassword, "modal")}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-amber-400"
+                        title="Copy Password"
                       >
                         {copied === "modal" ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                       </button>
                     </div>
-                    <p className="text-xs text-neutral-500 mt-1">Auto-generated. Teacher must change it on first login.</p>
+                    <p className="text-xs text-neutral-500 mt-1">
+                      {editTeacher
+                        ? "Editing this password will immediately update the teacher's login credentials."
+                        : "Auto-generated. Share this password with the teacher for initial login."}
+                    </p>
                   </div>
                 )}
+
 
                 {(createTeacherMutation.isError || updateTeacherMutation.isError) && (
                   <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

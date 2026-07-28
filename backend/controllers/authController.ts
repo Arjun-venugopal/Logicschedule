@@ -155,15 +155,14 @@ export const changePassword = async (req: any, res: Response): Promise<void> => 
         mustChangePassword: false,
       });
 
-      // Clear tempPassword from Teacher profile if it exists
-      if (user.role === 'Teacher') {
+      // Update tempPassword on Teacher profile so Admin view stays in sync with the updated password
+      if (user.role === 'Teacher' || user.role === 'Sub Admin') {
         const teacher = await Teacher.findOne({ user: user._id });
         if (teacher) {
-          // teacher.tempPassword = '';
-          // await teacher.save(); // Needs Teacher model refactor
-          // await Teacher.update(teacher._id, { tempPassword: '' });
+          await Teacher.findByIdAndUpdate(teacher._id, { tempPassword: newPassword });
         }
       }
+
 
       res.json({ message: 'Password updated successfully' });
     } else {
@@ -174,3 +173,4 @@ export const changePassword = async (req: any, res: Response): Promise<void> => 
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
