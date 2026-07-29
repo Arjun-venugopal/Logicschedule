@@ -614,9 +614,23 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
 
       let currentClass: any = null;
       let nextClass: any = null;
+      let lastCompletedClass: any = null;
       let minutesLeftInCurrentClass: number | null = null;
       let minutesToNextClass: number | null = null;
       let currentClassProgress = 0;
+
+      const finishedItems = items.filter(i => isToday ? (i.endMin < currentTotalMinutes || i.status === 'Completed') : i.status === 'Completed');
+      if (finishedItems.length > 0) {
+        const lastFinished = finishedItems[finishedItems.length - 1];
+        lastCompletedClass = {
+          title: lastFinished.batchName,
+          subject: lastFinished.subject,
+          type: lastFinished.type,
+          startTime: lastFinished.startTime,
+          endTime: lastFinished.endTime,
+          status: 'Class Finished'
+        };
+      }
 
       if (isToday && currentTotalMinutes >= 0) {
         // Find current class
@@ -660,9 +674,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       }
 
       const todayClassesCount = items.length;
-      const completedClassesCount = isToday 
-        ? items.filter(i => i.endMin < currentTotalMinutes || i.status === 'Completed').length
-        : items.filter(i => i.status === 'Completed').length;
+      const completedClassesCount = finishedItems.length;
 
       return {
         _id: teacher._id,
@@ -688,6 +700,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
           progress: currentClassProgress,
           meetingLink: currentClass.meetingLink
         } : null,
+        lastCompletedClass,
         nextClass: nextClass ? {
           title: nextClass.batchName,
           subject: nextClass.subject,

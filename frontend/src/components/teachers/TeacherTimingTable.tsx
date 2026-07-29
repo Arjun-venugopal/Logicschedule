@@ -496,6 +496,23 @@ export function TeacherTimingTable() {
                               />
                             </div>
                           </div>
+                        ) : (t as any).lastCompletedClass ? (
+                          <div className="space-y-1 max-w-xs">
+                            <div className="flex items-center gap-2">
+                              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-300 uppercase border border-emerald-500/30 flex items-center gap-1">
+                                <CheckCircle2 className="w-3 h-3 text-emerald-400" /> Class Finished
+                              </span>
+                              <span className="font-semibold text-neutral-200 truncate text-xs">
+                                {(t as any).lastCompletedClass.title}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-neutral-400 font-mono flex items-center gap-1.5">
+                              <Clock className="w-3 h-3 text-neutral-500" />
+                              <span>
+                                Ended at {formatTime((t as any).lastCompletedClass.endTime)} ({(t as any).lastCompletedClass.subject})
+                              </span>
+                            </div>
+                          </div>
                         ) : (
                           <span className="text-neutral-500 italic text-xs">No active class right now</span>
                         )}
@@ -515,6 +532,10 @@ export function TeacherTimingTable() {
                               </span>
                             </div>
                           </div>
+                        ) : (t as any).lastCompletedClass ? (
+                          <span className="text-emerald-400/90 font-medium text-xs flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> All classes finished for today
+                          </span>
                         ) : (
                           <span className="text-neutral-500 text-xs">No more classes scheduled today</span>
                         )}

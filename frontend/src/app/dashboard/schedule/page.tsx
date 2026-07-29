@@ -536,11 +536,11 @@ export default function SchedulePage() {
                             {/* Status badge */}
                             {event.status !== "Scheduled" && (
                               <span className={`absolute top-1.5 right-1.5 text-[8px] px-1 py-0.5 rounded font-semibold ${
-                                event.status === "Completed" ? "bg-emerald-500/30 text-emerald-300" :
+                                event.status === "Completed" ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40" :
                                 event.status === "Cancelled" ? "bg-red-500/30 text-red-300" :
                                 "bg-neutral-500/30 text-neutral-300"
                               }`}>
-                                {event.status}
+                                {event.status === "Completed" ? "✓ Class Finished" : event.status}
                               </span>
                             )}
 

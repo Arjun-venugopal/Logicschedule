@@ -103,6 +103,8 @@ export const getDashboardStats = async (req: any, res: Response) => {
 
       let ongoingSched: any = null;
       let minutesLeft: number | null = null;
+      let upcomingSched: any = null;
+      let startsInMinutes: number | null = null;
 
       for (const s of todaySchedules) {
         const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
@@ -112,30 +114,42 @@ export const getDashboardStats = async (req: any, res: Response) => {
           const startMin = sh * 60 + sm;
           let endMin = eh * 60 + em;
           if (endMin < startMin) endMin += 1440;
+          
           if (currentTotalMinutes >= startMin && currentTotalMinutes <= endMin) {
             ongoingSched = s;
             minutesLeft = endMin - currentTotalMinutes;
             break;
+          } else if (startMin > currentTotalMinutes) {
+            const diff = startMin - currentTotalMinutes;
+            if (startsInMinutes === null || diff < startsInMinutes) {
+              upcomingSched = s;
+              startsInMinutes = diff;
+            }
           }
         }
       }
 
       const isInClass = !!ongoingSched;
+      const isStartingSoon = !isInClass && startsInMinutes !== null && startsInMinutes <= 60;
 
       const effectiveStatus = (dateStatus === 'On Leave' || dateStatus === 'Off Duty')
         ? dateStatus
-        : isInClass ? 'In Class' : dateStatus;
+        : isInClass ? 'In Class'
+        : isStartingSoon ? 'Class Starting Soon'
+        : dateStatus;
 
       const dot = effectiveStatus === 'In Class' ? 'bg-amber-500' :
+        effectiveStatus === 'Class Starting Soon' ? 'bg-amber-400' :
         effectiveStatus === 'Available' ? 'bg-emerald-500' :
         (effectiveStatus === 'On Leave' || effectiveStatus === 'Off Duty') ? 'bg-neutral-600' : 'bg-blue-500';
 
       return {
         _id: t._id,
         name: t.name,
-        subject: ongoingSched?.batch?.name || ongoingSched?.subject || t.subjectExpertise?.[0] || '—',
+        subject: ongoingSched?.batch?.name || ongoingSched?.subject || upcomingSched?.batch?.name || t.subjectExpertise?.[0] || '—',
         status: effectiveStatus,
         minutesLeft,
+        startsInMinutes,
         dot,
       };
     });

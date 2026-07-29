@@ -228,17 +228,22 @@ export default function DashboardPage() {
                       <div className={`w-1.5 h-1.5 rounded-full ${dotColor(t.dot)} ${t.dot === "bg-amber-500" ? "animate-pulse" : ""}`} />
                       <span className={`text-[10px] font-medium whitespace-nowrap ${
                         t.status === "In Class"  ? "text-amber-400 font-semibold"   :
+                        t.status === "Class Starting Soon" ? "text-amber-300 font-semibold" :
                         t.status === "Available" ? "text-emerald-400" :
                         "text-neutral-400"
                       }`}>
                         {t.status}
                       </span>
                     </div>
-                    {t.status === "In Class" && t.minutesLeft !== null && t.minutesLeft !== undefined && (
+                    {t.status === "In Class" && t.minutesLeft !== null && t.minutesLeft !== undefined ? (
                       <span className="text-[9px] text-amber-400 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-semibold">
                         ⏳ {t.minutesLeft}m left
                       </span>
-                    )}
+                    ) : t.startsInMinutes !== null && t.startsInMinutes !== undefined && t.startsInMinutes <= 60 ? (
+                      <span className="text-[9px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold animate-pulse">
+                        ⏱️ Starts in {t.startsInMinutes}m
+                      </span>
+                    ) : null}
                   </div>
                 </div>
               ))
