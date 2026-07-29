@@ -6,6 +6,42 @@ import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import Student from '../models/Student';
 
+export function formatDateToYYYYMMDD(dateVal: Date | string): string {
+  if (!dateVal) return new Date().toLocaleDateString('en-CA');
+  if (typeof dateVal === 'string') {
+    if (dateVal.includes('T')) {
+      const parsed = new Date(dateVal);
+      if (!isNaN(parsed.getTime())) {
+        const y = parsed.getFullYear();
+        const m = String(parsed.getMonth() + 1).padStart(2, '0');
+        const d = String(parsed.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      }
+      return dateVal.split('T')[0];
+    }
+    return dateVal;
+  }
+  const y = dateVal.getFullYear();
+  const m = String(dateVal.getMonth() + 1).padStart(2, '0');
+  const d = String(dateVal.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+export function getTeacherStatusForDate(teacher: any, dateVal: Date | string): { status: string; reason?: string } {
+  const dateStr = formatDateToYYYYMMDD(dateVal);
+  if (teacher?.dutyStatusSchedule && Array.isArray(teacher.dutyStatusSchedule)) {
+    const activeEntry = teacher.dutyStatusSchedule.find((item: any) => {
+      const start = formatDateToYYYYMMDD(item.startDate);
+      const end = formatDateToYYYYMMDD(item.endDate || item.startDate);
+      return dateStr >= start && dateStr <= end;
+    });
+    if (activeEntry) {
+      return { status: activeEntry.status, reason: activeEntry.reason };
+    }
+  }
+  return { status: teacher.status || 'Available' };
+}
+
 // @desc    Get all teachers
 // @route   GET /teachers
 // @access  Private
@@ -17,6 +53,7 @@ export const getTeachers = async (req: Request, res: Response) => {
     const now = new Date();
     const todayStart = new Date(now.setHours(0,0,0,0));
     const todayEnd = new Date(now.setHours(23,59,59,999));
+    const todayStr = formatDateToYYYYMMDD(new Date());
     
     // Use actual current hour and minute for comparison
     const currentDate = new Date();
@@ -33,14 +70,23 @@ export const getTeachers = async (req: Request, res: Response) => {
     });
 
     const result = teachers.map((teacher: any) => {
-      // If the teacher was manually set to 'On Leave', we respect it.
-      if (teacher.status === 'On Leave') return teacher;
+      const { status: dateStatus, reason: statusReason } = getTeacherStatusForDate(teacher, todayStr);
+
+      // If teacher has date-based or manual 'On Leave' or 'Off Duty', respect it.
+      if (dateStatus === 'On Leave' || dateStatus === 'Off Duty' || dateStatus === 'Half Day') {
+        return {
+          ...teacher,
+          status: dateStatus,
+          dutyStatusReason: statusReason,
+          dutyStatusSchedule: teacher.dutyStatusSchedule || []
+        };
+      }
 
       let isBusy = false;
       
       // Check classes
       for (const sched of todaySchedules) {
-        if (sched.teacher.toString() === teacher._id.toString()) {
+        if (sched.teacher && sched.teacher.toString() === teacher._id.toString()) {
           const [sh, sm] = sched.startTime.split(':').map(Number);
           const [eh, em] = sched.endTime.split(':').map(Number);
           const startMin = sh * 60 + sm;
@@ -55,7 +101,7 @@ export const getTeachers = async (req: Request, res: Response) => {
       // Check demos
       if (!isBusy) {
         for (const demo of todayDemos) {
-          if (demo.teacher.toString() === teacher._id.toString()) {
+          if (demo.teacher && demo.teacher.toString() === teacher._id.toString()) {
             const [sh, sm] = demo.startTime.split(':').map(Number);
             const [eh, em] = demo.endTime.split(':').map(Number);
             const startMin = sh * 60 + sm;
@@ -70,7 +116,9 @@ export const getTeachers = async (req: Request, res: Response) => {
 
       return {
         ...teacher,
-        status: isBusy ? 'In Class' : 'Available'
+        status: isBusy ? 'In Class' : dateStatus,
+        dutyStatusReason: statusReason,
+        dutyStatusSchedule: teacher.dutyStatusSchedule || []
       };
     });
 
@@ -164,6 +212,7 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
     teacher.experience        = req.body.experience ?? teacher.experience;
     teacher.status            = req.body.status ?? teacher.status;
     teacher.availability      = req.body.availability ?? teacher.availability;
+    teacher.dutyStatusSchedule = req.body.dutyStatusSchedule ?? teacher.dutyStatusSchedule;
     teacher.workloadPercentage = req.body.workloadPercentage ?? teacher.workloadPercentage;
 
     if (req.body.tempPassword || req.body.password) {
@@ -237,6 +286,7 @@ export const updateTeacherProfile = async (req: any, res: Response): Promise<voi
     if (req.body.phone !== undefined) teacher.phone = req.body.phone;
     if (req.body.status !== undefined) teacher.status = req.body.status;
     if (req.body.availability !== undefined) teacher.availability = req.body.availability;
+    if (req.body.dutyStatusSchedule !== undefined) teacher.dutyStatusSchedule = req.body.dutyStatusSchedule;
 
     const updated = await teacher.save();
     res.json(updated);
@@ -587,10 +637,16 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       }
 
       // Determine live status
-      let liveStatus: 'On Leave' | 'In Class' | 'Class Starting Soon' | 'Free' = 'Free';
+      const dateStr = (req.query.date as string)
+        ? (req.query.date as string).split('T')[0]
+        : dayStart.toISOString().split('T')[0];
 
-      if (teacher.status === 'On Leave') {
-        liveStatus = 'On Leave';
+      const { status: activeDateStatus, reason: activeStatusReason } = getTeacherStatusForDate(teacher, dateStr);
+
+      let liveStatus: 'On Leave' | 'Off Duty' | 'In Class' | 'Class Starting Soon' | 'Free' = 'Free';
+
+      if (activeDateStatus === 'On Leave' || activeDateStatus === 'Off Duty') {
+        liveStatus = activeDateStatus as any;
         onLeaveCount++;
       } else if (currentClass) {
         liveStatus = 'In Class';
@@ -616,7 +672,10 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
         subjectExpertise: teacher.subjectExpertise || [],
         experience: teacher.experience || 0,
         employmentType: teacher.employmentType || 'Full Time',
-        status: teacher.status || 'Available', // Raw DB status
+        status: activeDateStatus, // Effective status for target date
+        rawStatus: teacher.status || 'Available',
+        dutyStatusSchedule: teacher.dutyStatusSchedule || [],
+        dutyStatusReason: activeStatusReason || '',
         availability: teacher.availability || [],
         liveStatus,
         currentClass: currentClass ? {

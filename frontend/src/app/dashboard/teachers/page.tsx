@@ -52,7 +52,15 @@ export default function TeachersPage() {
     tempPassword: generatePassword(),
     experience: 0,
     status: "Available",
+    dutyStatusSchedule: [] as any[],
     subjectExpertise: [] as string[],
+  });
+
+  const [newDutySchedule, setNewDutySchedule] = useState({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+    status: "On Leave",
+    reason: ""
   });
 
   const { data: teachers, isLoading } = useQuery({
@@ -84,12 +92,14 @@ export default function TeachersPage() {
         hourlyRate: data.employmentType === "Part Time" ? data.hourlyRate : 0,
         subjectExpertise: data.subjectExpertise,
         tempPassword: data.tempPassword,
+        status: data.status,
+        dutyStatusSchedule: data.dutyStatusSchedule,
       })).data,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       setCreatedCreds({ email: formData.email, tempPassword: formData.tempPassword });
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", subjectExpertise: [] });
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
     },
   });
 
@@ -103,7 +113,7 @@ export default function TeachersPage() {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       setEditTeacher(null);
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", subjectExpertise: [] });
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
     },
   });
 
@@ -129,7 +139,39 @@ export default function TeachersPage() {
   const statusColor = (status: string) => {
     if (status === "Available") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
     if (status === "Busy") return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+    if (status === "Half Day") return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+    if (status === "Off Duty") return "bg-purple-500/10 text-purple-400 border-purple-500/20";
+    if (status === "On Leave") return "bg-red-500/10 text-red-400 border-red-500/20";
     return "bg-neutral-700/50 text-neutral-400 border-neutral-600/30";
+  };
+
+  const handleAddDutyScheduleInModal = () => {
+    if (!newDutySchedule.startDate || !newDutySchedule.endDate) return;
+    if (newDutySchedule.startDate > newDutySchedule.endDate) return;
+    const newItem = {
+      id: Date.now().toString(),
+      startDate: newDutySchedule.startDate,
+      endDate: newDutySchedule.endDate,
+      status: newDutySchedule.status,
+      reason: newDutySchedule.reason.trim()
+    };
+    setFormData(prev => ({
+      ...prev,
+      dutyStatusSchedule: [...(prev.dutyStatusSchedule || []), newItem]
+    }));
+    setNewDutySchedule({
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: new Date().toISOString().split("T")[0],
+      status: "On Leave",
+      reason: ""
+    });
+  };
+
+  const handleRemoveDutyScheduleInModal = (id: string) => {
+    setFormData(prev => ({
+      ...prev,
+      dutyStatusSchedule: (prev.dutyStatusSchedule || []).filter((item: any) => item.id !== id)
+    }));
   };
 
   const openEditModal = (teacher: any) => {
@@ -144,6 +186,7 @@ export default function TeachersPage() {
       tempPassword: teacher.tempPassword || "",
       experience: teacher.experience || 0,
       status: teacher.status || "Available",
+      dutyStatusSchedule: teacher.dutyStatusSchedule || [],
       subjectExpertise: teacher.subjectExpertise || [],
     });
     setIsModalOpen(true);
@@ -319,9 +362,20 @@ export default function TeachersPage() {
                     </td>
                     <td className="py-3.5 px-5 text-sm text-neutral-400">{teacher.email}</td>
                     <td className="py-3.5 px-5">
-                      <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(teacher.status)}`}>
-                        {teacher.status || "Available"}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(teacher.status)}`}>
+                          {teacher.status || "Available"}
+                        </span>
+                        {teacher.dutyStatusSchedule && teacher.dutyStatusSchedule.length > 0 && (
+                          <span
+                            className="text-[10px] px-2 py-0.5 rounded-md bg-neutral-800 text-amber-400 border border-neutral-700 font-mono flex items-center gap-1 cursor-help"
+                            title={teacher.dutyStatusSchedule.map((s: any) => `${s.startDate} to ${s.endDate}: ${s.status} (${s.reason || "No note"})`).join("\n")}
+                          >
+                            <Calendar className="w-3 h-3 text-amber-400" />
+                            {teacher.dutyStatusSchedule.length} Date {teacher.dutyStatusSchedule.length === 1 ? "Schedule" : "Schedules"}
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-5">
                       <div className="flex flex-wrap gap-1">
@@ -419,7 +473,7 @@ export default function TeachersPage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl"
             >
               <div className="flex items-center justify-between p-6 border-b border-neutral-800">
                 <h2 className="text-lg font-bold text-white">{editTeacher ? "Edit Teacher" : "Add New Teacher"}</h2>
@@ -483,7 +537,7 @@ export default function TeachersPage() {
                       />
                     </div>
                   )}
-                  
+
                   <div className="col-span-2">
                     <label className="block text-sm font-medium text-neutral-300 mb-1.5">Address</label>
                     <textarea
@@ -508,6 +562,101 @@ export default function TeachersPage() {
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all placeholder-neutral-600"
                     />
                   </div>
+                </div>
+
+                {/* Date-Based Duty Status & Scheduled Leaves */}
+                <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                      Date-Based Duty Schedule Manager
+                    </h4>
+                    <span className="text-[10px] text-neutral-500 font-mono">
+                      {formData.dutyStatusSchedule?.length || 0} items
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    <div>
+                      <label className="text-[10px] font-medium text-neutral-400">Start Date</label>
+                      <input
+                        type="date"
+                        value={newDutySchedule.startDate}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, startDate: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-neutral-400">End Date</label>
+                      <input
+                        type="date"
+                        value={newDutySchedule.endDate}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, endDate: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-neutral-400">Status</label>
+                      <select
+                        value={newDutySchedule.status}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, status: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                      >
+                        <option value="On Leave">On Leave</option>
+                        <option value="Available">Available</option>
+                        <option value="Busy">Busy</option>
+                        <option value="Half Day">Half Day</option>
+                        <option value="Off Duty">Off Duty</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-medium text-neutral-400">Reason / Note</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Medical"
+                        value={newDutySchedule.reason}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, reason: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500 placeholder-neutral-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end">
+                    <button
+                      type="button"
+                      onClick={handleAddDutyScheduleInModal}
+                      className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" /> Add Date Status
+                    </button>
+                  </div>
+
+                  {/* Scheduled Items List */}
+                  {formData.dutyStatusSchedule && formData.dutyStatusSchedule.length > 0 && (
+                    <div className="space-y-1.5 max-h-32 overflow-y-auto pt-1">
+                      {formData.dutyStatusSchedule.map((item: any) => (
+                        <div key={item.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-2 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-semibold border ${statusColor(item.status)}`}>
+                              {item.status}
+                            </span>
+                            <span className="text-white font-mono text-[11px]">
+                              {item.startDate === item.endDate ? item.startDate : `${item.startDate} ~ ${item.endDate}`}
+                            </span>
+                            {item.reason && <span className="text-neutral-400 text-[10px] italic">({item.reason})</span>}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveDutyScheduleInModal(item.id)}
+                            className="text-neutral-500 hover:text-red-400 p-1 transition-colors"
+                            title="Delete schedule"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 {/* Teacher Password */}

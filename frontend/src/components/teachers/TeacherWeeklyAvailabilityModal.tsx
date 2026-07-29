@@ -29,6 +29,7 @@ interface TeacherWeeklyAvailabilityModalProps {
     subjectExpertise?: string[];
     employmentType?: string;
     status?: string;
+    dutyStatusSchedule?: any[];
     availability?: DayAvailability[];
   } | null;
   canEdit?: boolean;
@@ -251,6 +252,15 @@ export function TeacherWeeklyAvailabilityModal({
                   {totalWeeklyHours} Hours / Week
                 </span>
               </div>
+              {teacher.dutyStatusSchedule && teacher.dutyStatusSchedule.length > 0 && (
+                <div className="flex items-center gap-1.5" title={teacher.dutyStatusSchedule.map((s: any) => `${s.startDate} to ${s.endDate}: ${s.status} (${s.reason || "No note"})`).join("\n")}>
+                  <span className="text-neutral-500">Scheduled Duty Status:</span>
+                  <span className="font-semibold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 flex items-center gap-1 cursor-help">
+                    <Calendar className="w-3 h-3 text-blue-400" />
+                    {teacher.dutyStatusSchedule.length} Date {teacher.dutyStatusSchedule.length === 1 ? "Schedule" : "Schedules"}
+                  </span>
+                </div>
+              )}
             </div>
             {teacher.subjectExpertise && teacher.subjectExpertise.length > 0 && (
               <div className="flex items-center gap-1">

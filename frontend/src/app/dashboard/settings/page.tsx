@@ -7,6 +7,7 @@ import { useAuthStore } from "@/store/authStore";
 import SubAdminManager from "./SubAdminManager";
 import { motion, AnimatePresence } from "framer-motion";
 import {
+  Calendar,
   User,
   Mail,
   Phone,
@@ -31,6 +32,14 @@ interface DayAvailability {
   slots: Slot[];
 }
 
+interface DutyStatusScheduleItem {
+  id: string;
+  startDate: string;
+  endDate: string;
+  status: string;
+  reason?: string;
+}
+
 const DAYS_OF_WEEK = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 export default function SettingsPage() {
@@ -42,6 +51,14 @@ export default function SettingsPage() {
   const [phone, setPhone] = useState("");
   const [status, setStatus] = useState("Available");
   const [availability, setAvailability] = useState<DayAvailability[]>([]);
+  const [dutyStatusSchedule, setDutyStatusSchedule] = useState<DutyStatusScheduleItem[]>([]);
+  const [newDutySchedule, setNewDutySchedule] = useState({
+    startDate: new Date().toISOString().split("T")[0],
+    endDate: new Date().toISOString().split("T")[0],
+    status: "On Leave",
+    reason: ""
+  });
+
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -67,6 +84,7 @@ export default function SettingsPage() {
     if (teacherProfile) {
       setPhone(teacherProfile.phone || "");
       setStatus(teacherProfile.status || "Available");
+      setDutyStatusSchedule(teacherProfile.dutyStatusSchedule || []);
       
       // Normalize availability structure
       const initialAvail = DAYS_OF_WEEK.map(dayName => {
@@ -82,7 +100,7 @@ export default function SettingsPage() {
 
   // Mutations
   const updateProfileMutation = useMutation({
-    mutationFn: (data: { phone: string; status: string; availability: DayAvailability[] }) =>
+    mutationFn: (data: { phone: string; status: string; availability: DayAvailability[]; dutyStatusSchedule: DutyStatusScheduleItem[] }) =>
       api.put("/teachers/profile", data),
     onSuccess: () => {
       refetch();
@@ -94,6 +112,36 @@ export default function SettingsPage() {
       setSaveError(err.response?.data?.message || "Failed to save profile changes.");
     }
   });
+
+  const handleAddDutySchedule = () => {
+    if (!newDutySchedule.startDate || !newDutySchedule.endDate) {
+      setSaveError("Please select both start date and end date.");
+      return;
+    }
+    if (newDutySchedule.startDate > newDutySchedule.endDate) {
+      setSaveError("Start date cannot be after end date.");
+      return;
+    }
+    const newItem: DutyStatusScheduleItem = {
+      id: Date.now().toString(),
+      startDate: newDutySchedule.startDate,
+      endDate: newDutySchedule.endDate,
+      status: newDutySchedule.status,
+      reason: newDutySchedule.reason.trim()
+    };
+    setDutyStatusSchedule(prev => [...prev, newItem]);
+    setNewDutySchedule({
+      startDate: new Date().toISOString().split("T")[0],
+      endDate: new Date().toISOString().split("T")[0],
+      status: "On Leave",
+      reason: ""
+    });
+    setSaveError(null);
+  };
+
+  const handleRemoveDutySchedule = (id: string) => {
+    setDutyStatusSchedule(prev => prev.filter(item => item.id !== id));
+  };
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -119,7 +167,8 @@ export default function SettingsPage() {
     updateProfileMutation.mutate({
       phone,
       status,
-      availability: filteredAvailability
+      availability: filteredAvailability,
+      dutyStatusSchedule
     });
   };
 
@@ -290,9 +339,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
 
-                <div className="grid md:grid-cols-2 gap-4">
+                <div>
                   {/* Phone */}
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 max-w-md">
                     <label className="block text-sm font-medium text-neutral-300 flex items-center gap-1.5">
                       <Phone className="w-4 h-4 text-neutral-500" />
                       Phone Number
@@ -305,27 +354,148 @@ export default function SettingsPage() {
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all"
                     />
                   </div>
+                </div>
+              </div>
 
-                  {/* Status */}
-                  <div className="space-y-1.5">
-                    <label className="block text-sm font-medium text-neutral-300 flex items-center gap-1.5">
-                      <Clock className="w-4 h-4 text-neutral-500" />
-                      Duty Status
-                    </label>
-                    <select
-                      value={status}
-                      onChange={(e) => setStatus(e.target.value)}
-                      className={`w-full bg-neutral-800 border rounded-xl px-3 py-2.5 text-sm outline-none focus:border-amber-500 transition-colors ${
-                        status === "Available" ? "text-emerald-400 border-emerald-500/20" :
-                        status === "Busy" ? "text-amber-400 border-amber-500/20" :
-                        "text-neutral-400 border-neutral-700"
-                      }`}
-                    >
-                      <option value="Available">Available (Duty Active)</option>
-                      <option value="Busy">Busy (Currently in Session)</option>
-                      <option value="On Leave">On Leave</option>
-                    </select>
+              {/* Date-Based Duty Status & Scheduled Leaves Manager */}
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-semibold text-white flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-amber-500" />
+                      Date-Based Duty Status & Scheduled Leaves
+                    </h3>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Schedule your duty status or leaves for specific dates or date ranges.
+                    </p>
                   </div>
+                </div>
+
+                {/* Form to add date-based duty status */}
+                <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-4 space-y-3">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Date-Based Duty Schedule
+                  </h4>
+                  
+                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                    {/* Start Date */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-neutral-400">Start Date</label>
+                      <input
+                        type="date"
+                        value={newDutySchedule.startDate}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, startDate: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* End Date */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-neutral-400">End Date</label>
+                      <input
+                        type="date"
+                        value={newDutySchedule.endDate}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, endDate: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500"
+                      />
+                    </div>
+
+                    {/* Status */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-neutral-400">Duty Status</label>
+                      <select
+                        value={newDutySchedule.status}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, status: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500"
+                      >
+                        <option value="On Leave">On Leave</option>
+                        <option value="Available">Available (Duty Active)</option>
+                        <option value="Busy">Busy (In Session)</option>
+                        <option value="Half Day">Half Day</option>
+                        <option value="Off Duty">Off Duty</option>
+                      </select>
+                    </div>
+
+                    {/* Reason / Notes */}
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-neutral-400">Reason / Notes</label>
+                      <input
+                        type="text"
+                        placeholder="e.g. Vacation, Medical, Personal"
+                        value={newDutySchedule.reason}
+                        onChange={(e) => setNewDutySchedule({ ...newDutySchedule, reason: e.target.value })}
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500 placeholder-neutral-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex justify-end pt-1">
+                    <button
+                      type="button"
+                      onClick={handleAddDutySchedule}
+                      className="px-4 py-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      Add Date Schedule
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of active & scheduled date-based statuses */}
+                <div className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                    Scheduled Date-Based Statuses ({dutyStatusSchedule.length})
+                  </h4>
+                  {dutyStatusSchedule.length === 0 ? (
+                    <div className="bg-neutral-950/20 border border-neutral-800/80 rounded-xl p-4 text-center text-xs text-neutral-500 italic">
+                      No date-based duty status schedules added. Default status will apply.
+                    </div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {dutyStatusSchedule.map((item) => {
+                        const isSingleDate = item.startDate === item.endDate;
+                        const statusBg =
+                          item.status === "Available" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                          item.status === "Busy" ? "bg-amber-500/10 text-amber-400 border-amber-500/30" :
+                          item.status === "Half Day" ? "bg-blue-500/10 text-blue-400 border-blue-500/30" :
+                          item.status === "Off Duty" ? "bg-purple-500/10 text-purple-400 border-purple-500/30" :
+                          "bg-red-500/10 text-red-400 border-red-500/30"; // On Leave
+
+                        return (
+                          <div
+                            key={item.id}
+                            className="bg-neutral-800/40 border border-neutral-750 rounded-xl p-3 flex items-start justify-between gap-3"
+                          >
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold border ${statusBg}`}>
+                                  {item.status}
+                                </span>
+                                <span className="text-xs text-white font-medium flex items-center gap-1">
+                                  <Calendar className="w-3 h-3 text-neutral-400" />
+                                  {isSingleDate ? item.startDate : `${item.startDate} to ${item.endDate}`}
+                                </span>
+                              </div>
+                              {item.reason && (
+                                <p className="text-xs text-neutral-400 italic">
+                                  Note: {item.reason}
+                                </p>
+                              )}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDutySchedule(item.id)}
+                              className="p-1 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
+                              title="Remove schedule"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               </div>
 

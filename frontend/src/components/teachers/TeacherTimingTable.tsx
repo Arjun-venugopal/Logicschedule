@@ -35,7 +35,9 @@ interface TeacherTimingData {
     day: string;
     slots: Array<{ startTime: string; endTime: string }>;
   }>;
-  liveStatus: "Free" | "In Class" | "Class Starting Soon" | "On Leave";
+  dutyStatusReason?: string;
+  dutyStatusSchedule?: any[];
+  liveStatus: "Free" | "In Class" | "Class Starting Soon" | "On Leave" | "Off Duty";
   currentClass: {
     title: string;
     subject: string;
@@ -456,9 +458,9 @@ export function TeacherTimingTable() {
                           </span>
                         )}
                         {isOnLeave && (
-                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700 text-xs font-medium">
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700 text-xs font-medium" title={t.dutyStatusReason ? `Reason: ${t.dutyStatusReason}` : "On Leave"}>
                             <UserX className="w-3.5 h-3.5 text-neutral-500" />
-                            On Leave
+                            On Leave {t.dutyStatusReason ? `(${t.dutyStatusReason})` : ""}
                           </span>
                         )}
                       </td>

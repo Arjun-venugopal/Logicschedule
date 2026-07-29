@@ -48,8 +48,10 @@ interface TeacherTimingData {
   experience?: number;
   employmentType?: string;
   status: string; // Raw DB status: Available / On Leave
+  dutyStatusSchedule?: any[];
+  dutyStatusReason?: string;
   availability?: DayAvailability[];
-  liveStatus: "Free" | "In Class" | "Class Starting Soon" | "On Leave";
+  liveStatus: "Free" | "In Class" | "Class Starting Soon" | "On Leave" | "Off Duty";
   todayScheduleItems?: Array<{
     id: string;
     type: "Class" | "Demo";
@@ -127,6 +129,30 @@ export function AllTeachersAvailabilityCalendar() {
     return Array.from(set);
   }, [teachers]);
 
+  // Helper to check if teacher is on leave / off duty for a given YYYY-MM-DD date string
+  const isTeacherOnLeaveForDate = (teacher: TeacherTimingData, dateStr: string) => {
+    if (teacher.dutyStatusSchedule && Array.isArray(teacher.dutyStatusSchedule)) {
+      const activeEntry = teacher.dutyStatusSchedule.find((item: any) => {
+        const start = item.startDate;
+        const end = item.endDate || item.startDate;
+        return dateStr >= start && dateStr <= end;
+      });
+      if (activeEntry) {
+        return {
+          isOnLeave: activeEntry.status === "On Leave" || activeEntry.status === "Off Duty" || activeEntry.status === "Half Day",
+          status: activeEntry.status,
+          reason: activeEntry.reason
+        };
+      }
+    }
+    const isOnLeave = teacher.status === "On Leave" || teacher.status === "Off Duty";
+    return {
+      isOnLeave,
+      status: teacher.status || "Available",
+      reason: teacher.dutyStatusReason
+    };
+  };
+
   // Filtered teachers list
   const filteredTeachers = useMemo(() => {
     return teachers.filter((teacher) => {
@@ -141,10 +167,13 @@ export function AllTeachersAvailabilityCalendar() {
       const matchesSubject =
         selectedSubject === "ALL" || teacher.subjectExpertise?.includes(selectedSubject);
 
+      const todayStr = new Date().toLocaleDateString("en-CA");
+      const todayLeave = isTeacherOnLeaveForDate(teacher, todayStr);
+
       const matchesStatus =
         selectedStatus === "ALL" ||
-        (selectedStatus === "On Leave" && teacher.status === "On Leave") ||
-        (selectedStatus === "Available" && teacher.status !== "On Leave") ||
+        (selectedStatus === "On Leave" && todayLeave.isOnLeave) ||
+        (selectedStatus === "Available" && !todayLeave.isOnLeave) ||
         teacher.liveStatus === selectedStatus;
 
       return matchesSearch && matchesTeacher && matchesSubject && matchesStatus;
@@ -209,22 +238,20 @@ export function AllTeachersAvailabilityCalendar() {
             <div className="bg-neutral-950 p-1 rounded-xl border border-neutral-800 flex items-center gap-1">
               <button
                 onClick={() => setViewMode("weekly-matrix")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                  viewMode === "weekly-matrix"
-                    ? "bg-amber-500 text-black shadow-md"
-                    : "text-neutral-400 hover:text-white"
-                }`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === "weekly-matrix"
+                  ? "bg-amber-500 text-black shadow-md"
+                  : "text-neutral-400 hover:text-white"
+                  }`}
               >
                 <Layers className="w-3.5 h-3.5" />
                 Weekly Matrix
               </button>
               <button
                 onClick={() => setViewMode("daily-timeline")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${
-                  viewMode === "daily-timeline"
-                    ? "bg-amber-500 text-black shadow-md"
-                    : "text-neutral-400 hover:text-white"
-                }`}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === "daily-timeline"
+                  ? "bg-amber-500 text-black shadow-md"
+                  : "text-neutral-400 hover:text-white"
+                  }`}
               >
                 <Clock className="w-3.5 h-3.5" />
                 Daily Timeline
@@ -373,9 +400,8 @@ export function AllTeachersAvailabilityCalendar() {
                     return (
                       <th
                         key={dayName}
-                        className={`py-3 px-3 font-semibold text-center border-r border-neutral-800/60 min-w-[150px] ${
-                          isTodayStr ? "bg-amber-500/10 text-amber-400" : ""
-                        }`}
+                        className={`py-3 px-3 font-semibold text-center border-r border-neutral-800/60 min-w-[150px] ${isTodayStr ? "bg-amber-500/10 text-amber-400" : ""
+                          }`}
                       >
                         <div className="text-xs font-bold">{dayName}</div>
                         <div className="text-[10px] text-neutral-500 font-normal">
@@ -388,7 +414,8 @@ export function AllTeachersAvailabilityCalendar() {
               </thead>
               <tbody className="divide-y divide-neutral-800 text-xs">
                 {filteredTeachers.map((teacher) => {
-                  const isOnLeave = teacher.status === "On Leave";
+                  const todayStr = new Date().toLocaleDateString("en-CA");
+                  const todayLeave = isTeacherOnLeaveForDate(teacher, todayStr);
 
                   return (
                     <tr key={teacher._id} className="hover:bg-neutral-800/40 transition-colors group">
@@ -403,16 +430,15 @@ export function AllTeachersAvailabilityCalendar() {
                               <h4 className="font-semibold text-white truncate max-w-[130px]">{teacher.name}</h4>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <span
-                                  className={`w-2 h-2 rounded-full ${
-                                    isOnLeave
-                                      ? "bg-amber-500"
-                                      : teacher.liveStatus === "In Class"
+                                  className={`w-2 h-2 rounded-full ${todayLeave.isOnLeave
+                                    ? "bg-amber-500"
+                                    : teacher.liveStatus === "In Class"
                                       ? "bg-rose-500 animate-pulse"
                                       : "bg-emerald-500"
-                                  }`}
+                                    }`}
                                 />
                                 <span className="text-[10px] text-neutral-400 truncate">
-                                  {isOnLeave ? "On Leave" : teacher.subjectExpertise?.[0] || "Faculty"}
+                                  {todayLeave.isOnLeave ? todayLeave.status : teacher.subjectExpertise?.[0] || "Faculty"}
                                 </span>
                               </div>
                             </div>
@@ -435,6 +461,7 @@ export function AllTeachersAvailabilityCalendar() {
                       {weekDates.map(({ dayName, dateStr }) => {
                         const dayAvail = teacher.availability?.find((a) => a.day === dayName);
                         const hasSlots = dayAvail && dayAvail.slots && dayAvail.slots.length > 0;
+                        const dayLeaveInfo = isTeacherOnLeaveForDate(teacher, dateStr);
 
                         // Filter scheduled items on this specific date
                         const dayItems = teacher.todayScheduleItems?.filter((item) => {
@@ -449,9 +476,19 @@ export function AllTeachersAvailabilityCalendar() {
                             onClick={() => setSelectedTimelineTeacher(teacher)}
                             className="py-2.5 px-3 border-r border-neutral-800/60 align-top cursor-pointer hover:bg-neutral-800/80 transition-colors"
                           >
-                            {isOnLeave ? (
-                              <div className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg p-2 text-center text-[10px] font-medium">
-                                On Leave
+                            {dayLeaveInfo.isOnLeave ? (
+                              <div
+                                className="bg-amber-500/10 border border-amber-500/20 text-amber-400 rounded-lg p-2 text-center text-[10px] font-medium"
+                                title={dayLeaveInfo.reason ? `Reason: ${dayLeaveInfo.reason}` : dayLeaveInfo.status}
+                              >
+                                <div className="font-bold uppercase tracking-wider text-[9px] text-amber-400">
+                                  {dayLeaveInfo.status || "On Leave"}
+                                </div>
+                                {dayLeaveInfo.reason && (
+                                  <div className="text-[9px] text-neutral-300 italic truncate mt-0.5">
+                                    {dayLeaveInfo.reason}
+                                  </div>
+                                )}
                               </div>
                             ) : (
                               <div className="space-y-1.5">
@@ -485,11 +522,10 @@ export function AllTeachersAvailabilityCalendar() {
                                     {dayItems.map((item) => (
                                       <div
                                         key={item.id}
-                                        className={`rounded px-1.5 py-1 text-[10px] border ${
-                                          item.type === "Demo"
-                                            ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
-                                            : "bg-rose-500/10 border-rose-500/20 text-rose-300"
-                                        }`}
+                                        className={`rounded px-1.5 py-1 text-[10px] border ${item.type === "Demo"
+                                          ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
+                                          : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                                          }`}
                                       >
                                         <div className="font-semibold truncate">{item.batchName}</div>
                                         <div className="text-[9px] opacity-80 font-mono">
@@ -545,23 +581,31 @@ export function AllTeachersAvailabilityCalendar() {
                       return hour >= sh && hour < eh;
                     });
 
+                    const selectedDateStr = selectedDate.toISOString().split("T")[0];
+                    const dateScheduleEntry = teacher.dutyStatusSchedule?.find((item: any) => {
+                      const start = item.startDate;
+                      const end = item.endDate || item.startDate;
+                      return selectedDateStr >= start && selectedDateStr <= end;
+                    });
+                    const isOnLeave = dateScheduleEntry
+                      ? dateScheduleEntry.status === "On Leave" || dateScheduleEntry.status === "Off Duty"
+                      : teacher.status === "On Leave";
+
                     return (
                       <div
                         key={hour}
-                        className={`h-7 rounded text-[9px] font-mono flex items-center justify-center border transition-all ${
-                          teacher.status === "On Leave"
-                            ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
-                            : isAvailable
+                        className={`h-7 rounded text-[9px] font-mono flex items-center justify-center border transition-all ${isOnLeave
+                          ? "bg-amber-500/10 border-amber-500/20 text-amber-400"
+                          : isAvailable
                             ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300 font-bold"
                             : "bg-neutral-900 border-neutral-800 text-neutral-600"
-                        }`}
-                        title={`${teacher.name} @ ${hourStr}: ${
-                          teacher.status === "On Leave"
-                            ? "On Leave"
-                            : isAvailable
+                          }`}
+                        title={`${teacher.name} @ ${hourStr}: ${isOnLeave
+                          ? `On Leave (${dateScheduleEntry?.reason || "Scheduled"})`
+                          : isAvailable
                             ? "Available"
                             : "Not Available"
-                        }`}
+                          }`}
                       >
                         {hour}:00
                       </div>

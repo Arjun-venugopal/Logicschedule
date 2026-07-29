@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
+import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
 
 // @desc    Get dashboard stats
 // @route   GET /stats
@@ -84,7 +85,7 @@ export const getDashboardStats = async (req: any, res: Response) => {
     });
 
     // --- Live teacher status ---
-    const teachers = await Teacher.find({}).select('name status subjectExpertise');
+    const teachers = await Teacher.find({}).select('name status subjectExpertise dutyStatusSchedule');
     
     let todaySchedulesQuery: any = {
       date: { $gte: todayStart, $lte: todayEnd },
@@ -99,16 +100,25 @@ export const getDashboardStats = async (req: any, res: Response) => {
         .filter(Boolean)
     );
 
+    const todayStr = formatDateToYYYYMMDD(new Date());
+
     const liveTeachers = teachers.map((t: any) => {
+      const { status: dateStatus } = getTeacherStatusForDate(t, todayStr);
       const hasClass = activeTeacherIds.has(t._id.toString());
-      const dot = hasClass ? 'bg-amber-500' :
-        t.status === 'Available' ? 'bg-emerald-500' :
-        t.status === 'On Leave'  ? 'bg-neutral-600' : 'bg-red-500';
+      
+      const effectiveStatus = (dateStatus === 'On Leave' || dateStatus === 'Off Duty')
+        ? dateStatus
+        : hasClass ? 'In Class' : dateStatus;
+
+      const dot = effectiveStatus === 'In Class' ? 'bg-amber-500' :
+        effectiveStatus === 'Available' ? 'bg-emerald-500' :
+        (effectiveStatus === 'On Leave' || effectiveStatus === 'Off Duty') ? 'bg-neutral-600' : 'bg-blue-500';
+
       return {
         _id: t._id,
         name: t.name,
         subject: t.subjectExpertise?.[0] || '—',
-        status: hasClass ? 'In Class' : t.status || 'Available',
+        status: effectiveStatus,
         dot,
       };
     });
