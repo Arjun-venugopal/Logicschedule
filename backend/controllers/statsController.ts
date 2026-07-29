@@ -89,26 +89,42 @@ export const getDashboardStats = async (req: any, res: Response) => {
     
     let todaySchedulesQuery: any = {
       date: { $gte: todayStart, $lte: todayEnd },
-      status: 'Scheduled'
+      status: { $in: ['Scheduled', 'Completed'] }
     };
-    const todaySchedules = await Schedule.find(todaySchedulesQuery).populate('teacher', 'name');
+    const todaySchedules = await Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject');
 
-    // Build a set of teacher IDs that have a class today
-    const activeTeacherIds = new Set(
-      todaySchedules
-        .map((s: any) => s.teacher?._id?.toString())
-        .filter(Boolean)
-    );
-
+    const currentDate = new Date();
+    const currentTotalMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
     const todayStr = formatDateToYYYYMMDD(new Date());
 
     const liveTeachers = teachers.map((t: any) => {
       const { status: dateStatus } = getTeacherStatusForDate(t, todayStr);
-      const hasClass = activeTeacherIds.has(t._id.toString());
-      
+      const teacherIdStr = t._id.toString();
+
+      let ongoingSched: any = null;
+      let minutesLeft: number | null = null;
+
+      for (const s of todaySchedules) {
+        const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
+        if (sTeacherId === teacherIdStr && s.startTime && s.endTime) {
+          const [sh, sm] = s.startTime.split(':').map(Number);
+          const [eh, em] = s.endTime.split(':').map(Number);
+          const startMin = sh * 60 + sm;
+          let endMin = eh * 60 + em;
+          if (endMin < startMin) endMin += 1440;
+          if (currentTotalMinutes >= startMin && currentTotalMinutes <= endMin) {
+            ongoingSched = s;
+            minutesLeft = endMin - currentTotalMinutes;
+            break;
+          }
+        }
+      }
+
+      const isInClass = !!ongoingSched;
+
       const effectiveStatus = (dateStatus === 'On Leave' || dateStatus === 'Off Duty')
         ? dateStatus
-        : hasClass ? 'In Class' : dateStatus;
+        : isInClass ? 'In Class' : dateStatus;
 
       const dot = effectiveStatus === 'In Class' ? 'bg-amber-500' :
         effectiveStatus === 'Available' ? 'bg-emerald-500' :
@@ -117,8 +133,9 @@ export const getDashboardStats = async (req: any, res: Response) => {
       return {
         _id: t._id,
         name: t.name,
-        subject: t.subjectExpertise?.[0] || '—',
+        subject: ongoingSched?.batch?.name || ongoingSched?.subject || t.subjectExpertise?.[0] || '—',
         status: effectiveStatus,
+        minutesLeft,
         dot,
       };
     });

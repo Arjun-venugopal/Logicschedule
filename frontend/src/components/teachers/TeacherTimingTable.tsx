@@ -442,7 +442,7 @@ export function TeacherTimingTable() {
                         {isInClass && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 text-xs font-semibold shadow-sm shadow-red-500/10">
                             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                            In Class Now
+                            In Class Now {t.currentClass?.minutesLeft !== null && t.currentClass?.minutesLeft !== undefined ? `(${t.currentClass.minutesLeft}m left)` : ""}
                           </span>
                         )}
                         {isStartingSoon && (
