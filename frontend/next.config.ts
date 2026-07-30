@@ -1,6 +1,8 @@
+import path from "path";
 import type { NextConfig } from "next";
 
 const nextConfig = {
+  outputFileTracingRoot: path.resolve(__dirname, "../"),
   // Enable static HTML export to generate the 'out' directory for Render Static Site
   output: 'export',
   images: {

@@ -7,8 +7,18 @@ interface AuthState {
   logout: () => void;
 }
 
+const getInitialUser = () => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const item = localStorage.getItem('user');
+    return item ? JSON.parse(item) : null;
+  } catch (e) {
+    return null;
+  }
+};
+
 export const useAuthStore = create<AuthState>((set) => ({
-  user: typeof window !== 'undefined' && localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user') || 'null') : null,
+  user: getInitialUser(),
   token: typeof window !== 'undefined' ? localStorage.getItem('token') : null,
   setAuth: (user, token) => {
     if (typeof window !== 'undefined') {

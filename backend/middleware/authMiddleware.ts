@@ -18,7 +18,11 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
       token = req.headers.authorization.split(' ')[1];
       const decoded: any = jwt.verify(token, config.JWT_SECRET);
       req.user = await User.findById(decoded.id);
-      if (req.user) delete req.user.password;
+      if (!req.user) {
+        res.status(401).json({ message: 'User account no longer exists' });
+        return;
+      }
+      delete req.user.password;
       next();
       return;
     } catch (error) {
@@ -35,7 +39,7 @@ export const admin = (req: AuthRequest, res: Response, next: NextFunction): void
   if (req.user && (req.user.role === 'Admin' || req.user.role === 'Super Admin')) {
     next();
   } else {
-    res.status(401).json({ message: 'Not authorized as an admin' });
+    res.status(403).json({ message: 'Forbidden: Admin access required' });
   }
 };
 

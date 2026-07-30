@@ -51,8 +51,8 @@ export const getTeachers = async (req: Request, res: Response) => {
     
     // Calculate current dynamic availability
     const now = new Date();
-    const todayStart = new Date(now.setHours(0,0,0,0));
-    const todayEnd = new Date(now.setHours(23,59,59,999));
+    const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
+    const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
     const todayStr = formatDateToYYYYMMDD(new Date());
     
     // Use actual current hour and minute for comparison
@@ -323,7 +323,8 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
 
     // Check authorization: Admin can see anything, Teacher can only see their own performance
     if (req.user.role !== 'Admin' && req.user.role !== 'Super Admin' && req.user.role !== 'Sub Admin') {
-      if (teacher.user.toString() !== req.user._id.toString()) {
+      const teacherUserId = (teacher.user?._id || teacher.user)?.toString();
+      if (teacherUserId !== req.user._id.toString()) {
         res.status(403).json({ message: 'Forbidden: You can only view your own performance' });
         return;
       }
@@ -334,15 +335,14 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     if (timeRange && timeRange !== 'all') {
       const now = new Date();
       if (timeRange === 'day') {
-        const start = new Date(now.setHours(0,0,0,0));
-        const end = new Date(now.setHours(23,59,59,999));
+        const start = new Date(now); start.setHours(0,0,0,0);
+        const end = new Date(now); end.setHours(23,59,59,999);
         dateFilter = { $gte: start, $lte: end };
       } else if (timeRange === 'week') {
-        const start = new Date(now.setDate(now.getDate() - now.getDay()));
-        start.setHours(0,0,0,0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 6);
-        end.setHours(23,59,59,999);
+        const dayOfWeek = now.getDay();
+        const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+        const start = new Date(now); start.setDate(now.getDate() + diffToMonday); start.setHours(0,0,0,0);
+        const end = new Date(start); end.setDate(start.getDate() + 6); end.setHours(23,59,59,999);
         dateFilter = { $gte: start, $lte: end };
       } else if (timeRange === 'month') {
         const start = new Date(now.getFullYear(), now.getMonth(), 1);

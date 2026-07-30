@@ -396,7 +396,8 @@ export function AllTeachersAvailabilityCalendar() {
                     Faculty Member
                   </th>
                   {weekDates.map(({ dayName, dateStr }) => {
-                    const isTodayStr = dateStr === new Date().toISOString().split("T")[0];
+                    const todayLocalStr = new Date().toLocaleDateString("en-CA");
+                    const isTodayStr = dateStr === todayLocalStr;
                     return (
                       <th
                         key={dayName}
@@ -466,7 +467,11 @@ export function AllTeachersAvailabilityCalendar() {
                         // Filter scheduled items on this specific date
                         const dayItems = teacher.todayScheduleItems?.filter((item) => {
                           if (!item.date) return false;
-                          const itemDateStr = new Date(item.date).toISOString().split("T")[0];
+                          const itemDateStr = typeof item.date === "string" && item.date.includes("T") 
+                            ? item.date.split("T")[0] 
+                            : typeof item.date === "string" 
+                            ? item.date 
+                            : new Date(item.date).toLocaleDateString("en-CA");
                           return itemDateStr === dateStr;
                         }) || [];
 
@@ -581,7 +586,7 @@ export function AllTeachersAvailabilityCalendar() {
                       return hour >= sh && hour < eh;
                     });
 
-                    const selectedDateStr = selectedDate.toISOString().split("T")[0];
+                    const selectedDateStr = selectedDate.toLocaleDateString("en-CA");
                     const dateScheduleEntry = teacher.dutyStatusSchedule?.find((item: any) => {
                       const start = item.startDate;
                       const end = item.endDate || item.startDate;
@@ -633,7 +638,7 @@ export function AllTeachersAvailabilityCalendar() {
           isOpen={!!selectedTimelineTeacher}
           onClose={() => setSelectedTimelineTeacher(null)}
           teacher={selectedTimelineTeacher as any}
-          selectedDate={selectedDate.toISOString().split("T")[0]}
+          selectedDate={selectedDate.toLocaleDateString("en-CA")}
         />
       )}
 

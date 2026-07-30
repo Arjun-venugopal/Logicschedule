@@ -87,7 +87,8 @@ export const getBatches = async (req: any, res: Response) => {
     const totalCountMap: Record<string, number> = {};
     
     allSchedules.forEach((s: any) => {
-      const bId = s.batch?._id ? s.batch._id.toString() : s.batch.toString();
+      const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+      if (!bId) return;
       totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
       if (s.status === 'Completed') {
         completedCountMap[bId] = (completedCountMap[bId] || 0) + 1;

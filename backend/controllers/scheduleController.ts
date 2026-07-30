@@ -98,9 +98,12 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
       let isAssignedTeacher = false;
       
       const teacherProfile = await Teacher.findOne({ user: req.user._id });
-      if (teacherProfile && (schedule.teacher.toString() === teacherProfile._id.toString() || 
-          (schedule.replacementTeacher && schedule.replacementTeacher.toString() === teacherProfile._id.toString()))) {
-        isAssignedTeacher = true;
+      if (teacherProfile) {
+        const schedTeacherId = (schedule.teacher?._id || schedule.teacher)?.toString();
+        const schedReplId = schedule.replacementTeacher ? (schedule.replacementTeacher?._id || schedule.replacementTeacher)?.toString() : null;
+        if (schedTeacherId === teacherProfile._id.toString() || (schedReplId && schedReplId === teacherProfile._id.toString())) {
+          isAssignedTeacher = true;
+        }
       }
 
       console.log(`[updateSchedule] User role: ${req.user.role}, isAdmin: ${isAdmin}, isAssignedTeacher: ${isAssignedTeacher}`);

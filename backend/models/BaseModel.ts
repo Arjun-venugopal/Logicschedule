@@ -128,7 +128,8 @@ export class BaseModel {
         if (isCount) {
           return await this._executeCount(queryObj);
         }
-        if (isFindById && id) {
+        if (isFindById) {
+          if (!id) return null;
           const doc = await this.collection.doc(id).get();
           if (!doc.exists) return null;
           let result = convertTimestamps({ _id: doc.id, ...doc.data() });
@@ -465,7 +466,7 @@ export class BaseModel {
   }
 
   findById(id: string): any {
-    if (!id) return this._makeLazyQuery({}, false, true, false);
+    if (!id) return this._makeLazyQuery({}, false, false, true, '');
     return this._makeLazyQuery({}, false, false, true, id);
   }
 
