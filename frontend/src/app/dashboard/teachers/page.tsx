@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List, Calendar } from "lucide-react";
 import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
@@ -71,15 +71,16 @@ export default function TeachersPage() {
 
   const { searchQuery } = useSearchStore();
 
-  const filteredTeachers = teachers?.filter((t: any) => {
-    if (!searchQuery) return true;
+  const filteredTeachers = useMemo(() => {
+    if (!teachers) return [];
+    if (!searchQuery) return teachers;
     const lowerSearch = searchQuery.toLowerCase();
-    return (
+    return teachers.filter((t: any) =>
       (t.name || "").toLowerCase().includes(lowerSearch) ||
       (t.email || "").toLowerCase().includes(lowerSearch) ||
       (t.subjectExpertise || []).some((s: string) => s.toLowerCase().includes(lowerSearch))
     );
-  }) || [];
+  }, [teachers, searchQuery]);
 
   const createTeacherMutation = useMutation({
     mutationFn: async (data: typeof formData) =>

@@ -21,7 +21,7 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
 
   const start = new Date(startDate);
   const end   = new Date(endDate);
-  const selectedDayIndexes = (days as string[]).map((d) => DAY_INDEX[d]);
+  const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
 
   // Pre-fetch all schedules for this batch in the date range to avoid N+1 queries in the loop
   const existingSchedules = await Schedule.find({
@@ -35,7 +35,7 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
   const cursor = new Date(start);
 
   while (cursor <= end) {
-    if (selectedDayIndexes.includes(cursor.getDay())) {
+    if (selectedDayIndexes.has(cursor.getDay())) {
       const cursorTime = new Date(cursor).getTime();
 
       if (!existingTimes.has(cursorTime)) {

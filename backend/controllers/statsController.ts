@@ -19,31 +19,20 @@ export const getDashboardStats = async (req: any, res: Response) => {
       teacherProfile = await Teacher.findOne({ user: req.user._id });
     }
 
-    // --- Core counts ---
-    let totalTeachers  = await Teacher.countDocuments();
-    let totalBatches   = 0;
-    let activeBatches  = 0;
-    let conflicts      = 0;
-    let todayClasses   = 0;
+    // --- Core counts (Parallelized with Promise.all) ---
+    const teacherFilter = (isTeacher && teacherProfile) ? { assignedTeacher: teacherProfile._id } : {};
+    const conflictFilter = (isTeacher && teacherProfile) ? { teacher: teacherProfile._id, conflict: true } : { conflict: true };
+    const todayClassesFilter = (isTeacher && teacherProfile)
+      ? { teacher: teacherProfile._id, date: { $gte: todayStart, $lte: todayEnd }, status: 'Scheduled' }
+      : { date: { $gte: todayStart, $lte: todayEnd }, status: 'Scheduled' };
 
-    if (isTeacher && teacherProfile) {
-      totalBatches = await Batch.countDocuments({ assignedTeacher: teacherProfile._id });
-      activeBatches = await Batch.countDocuments({ assignedTeacher: teacherProfile._id, status: 'Active' });
-      conflicts = await Schedule.countDocuments({ teacher: teacherProfile._id, conflict: true });
-      todayClasses = await Schedule.countDocuments({
-        teacher: teacherProfile._id,
-        date: { $gte: todayStart, $lte: todayEnd },
-        status: 'Scheduled',
-      });
-    } else {
-      totalBatches   = await Batch.countDocuments();
-      activeBatches  = await Batch.countDocuments({ status: 'Active' });
-      conflicts      = await Schedule.countDocuments({ conflict: true });
-      todayClasses = await Schedule.countDocuments({
-        date: { $gte: todayStart, $lte: todayEnd },
-        status: 'Scheduled',
-      });
-    }
+    const [totalTeachers, totalBatches, activeBatches, conflicts, todayClasses] = await Promise.all([
+      Teacher.countDocuments(),
+      Batch.countDocuments(teacherFilter),
+      Batch.countDocuments({ ...teacherFilter, status: 'Active' }),
+      Schedule.countDocuments(conflictFilter),
+      Schedule.countDocuments(todayClassesFilter),
+    ]);
 
     // --- Hours scheduled this week ---
     const dayOfWeek = now.getDay();
@@ -95,6 +84,20 @@ export const getDashboardStats = async (req: any, res: Response) => {
     };
     const todaySchedules = await Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject');
 
+    // Hash map grouping today's schedules by teacher ID for O(1) lookup
+    const teacherSchedulesMap = new Map<string, any[]>();
+    for (const s of todaySchedules) {
+      const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
+      if (sTeacherId) {
+        let list = teacherSchedulesMap.get(sTeacherId);
+        if (!list) {
+          list = [];
+          teacherSchedulesMap.set(sTeacherId, list);
+        }
+        list.push(s);
+      }
+    }
+
     const currentDate = new Date();
     const currentTotalMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
     const todayStr = formatDateToYYYYMMDD(new Date());
@@ -102,15 +105,15 @@ export const getDashboardStats = async (req: any, res: Response) => {
     const liveTeachers = teachers.map((t: any) => {
       const { status: dateStatus } = getTeacherStatusForDate(t, todayStr);
       const teacherIdStr = t._id.toString();
+      const teacherTodaySchedules = teacherSchedulesMap.get(teacherIdStr) || [];
 
       let ongoingSched: any = null;
       let minutesLeft: number | null = null;
       let upcomingSched: any = null;
       let startsInMinutes: number | null = null;
 
-      for (const s of todaySchedules) {
-        const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
-        if (sTeacherId === teacherIdStr && s.startTime && s.endTime) {
+      for (const s of teacherTodaySchedules) {
+        if (s.startTime && s.endTime) {
           const [sh, sm] = s.startTime.split(':').map(Number);
           const [eh, em] = s.endTime.split(':').map(Number);
           const startMin = sh * 60 + sm;

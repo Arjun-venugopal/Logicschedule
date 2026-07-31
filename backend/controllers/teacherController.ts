@@ -61,7 +61,7 @@ export const getTeachers = async (req: Request, res: Response) => {
 
     const todaySchedules = await Schedule.find({
       date: { $gte: todayStart, $lte: todayEnd },
-      status: { $in: ['Scheduled', 'Completed'] } // Include both to be safe if a class is running
+      status: { $in: ['Scheduled', 'Completed'] }
     });
 
     const todayDemos = await DemoSession.find({
@@ -69,8 +69,30 @@ export const getTeachers = async (req: Request, res: Response) => {
       status: { $in: ['Scheduled', 'Completed'] }
     });
 
+    // Hash Maps for O(1) per-teacher schedules and demos lookups
+    const schedulesByTeacher = new Map<string, any[]>();
+    for (const sched of todaySchedules) {
+      const tId = sched.teacher?._id?.toString() || sched.teacher?.toString();
+      if (tId) {
+        let list = schedulesByTeacher.get(tId);
+        if (!list) { list = []; schedulesByTeacher.set(tId, list); }
+        list.push(sched);
+      }
+    }
+
+    const demosByTeacher = new Map<string, any[]>();
+    for (const demo of todayDemos) {
+      const tId = demo.teacher?._id?.toString() || demo.teacher?.toString();
+      if (tId) {
+        let list = demosByTeacher.get(tId);
+        if (!list) { list = []; demosByTeacher.set(tId, list); }
+        list.push(demo);
+      }
+    }
+
     const result = teachers.map((teacher: any) => {
       const { status: dateStatus, reason: statusReason } = getTeacherStatusForDate(teacher, todayStr);
+      const teacherIdStr = teacher._id.toString();
 
       // If teacher has date-based or manual 'On Leave' or 'Off Duty', respect it.
       if (dateStatus === 'On Leave' || dateStatus === 'Off Duty' || dateStatus === 'Half Day') {
@@ -83,10 +105,11 @@ export const getTeachers = async (req: Request, res: Response) => {
       }
 
       let isBusy = false;
+      const teacherSchedules = schedulesByTeacher.get(teacherIdStr) || [];
       
       // Check classes
-      for (const sched of todaySchedules) {
-        if (sched.teacher && sched.teacher.toString() === teacher._id.toString()) {
+      for (const sched of teacherSchedules) {
+        if (sched.startTime && sched.endTime) {
           const [sh, sm] = sched.startTime.split(':').map(Number);
           const [eh, em] = sched.endTime.split(':').map(Number);
           const startMin = sh * 60 + sm;
@@ -100,8 +123,9 @@ export const getTeachers = async (req: Request, res: Response) => {
 
       // Check demos
       if (!isBusy) {
-        for (const demo of todayDemos) {
-          if (demo.teacher && demo.teacher.toString() === teacher._id.toString()) {
+        const teacherDemos = demosByTeacher.get(teacherIdStr) || [];
+        for (const demo of teacherDemos) {
+          if (demo.startTime && demo.endTime) {
             const [sh, sm] = demo.startTime.split(':').map(Number);
             const [eh, em] = demo.endTime.split(':').map(Number);
             const startMin = sh * 60 + sm;

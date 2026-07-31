@@ -1,16 +1,18 @@
 "use client";
 
+import { useState, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw } from "lucide-react";
+import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
+  const [showAllLiveTeachers, setShowAllLiveTeachers] = useState(false);
 
   const { data: stats, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard-stats"],
@@ -18,7 +20,7 @@ export default function DashboardPage() {
     refetchInterval: 30_000, // auto-refresh every 30s
   });
 
-  const statCards = [
+  const statCards = useMemo(() => [
     ...(isAdmin ? [{
       label: "Total Teachers",
       value: stats?.totalTeachers ?? "—",
@@ -53,9 +55,9 @@ export default function DashboardPage() {
       bg: stats?.conflicts > 0 ? "bg-red-500/10" : "bg-emerald-500/10",
       border: stats?.conflicts > 0 ? "border-red-500/20" : "border-emerald-500/20",
     }] : []),
-  ];
+  ], [isAdmin, stats]);
 
-  const weekData = stats?.weekData ?? [
+  const weekData = useMemo(() => stats?.weekData ?? [
     { day: "Mon", classes: 0 },
     { day: "Tue", classes: 0 },
     { day: "Wed", classes: 0 },
@@ -63,9 +65,9 @@ export default function DashboardPage() {
     { day: "Fri", classes: 0 },
     { day: "Sat", classes: 0 },
     { day: "Sun", classes: 0 },
-  ];
+  ], [stats?.weekData]);
 
-  const liveTeachers = stats?.liveTeachers ?? [];
+  const liveTeachers = useMemo(() => stats?.liveTeachers ?? [], [stats?.liveTeachers]);
 
   const dotColor = (dot: string) => {
     if (dot === "bg-amber-500") return "bg-amber-500";
@@ -209,44 +211,63 @@ export default function DashboardPage() {
                 <p className="text-xs text-neutral-600">No teachers found</p>
               </div>
             ) : (
-              liveTeachers.map((t: any, i: number) => (
-                <div
-                  key={t._id || i}
-                  className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-7 h-7 rounded-full brand-gradient flex items-center justify-center text-xs font-bold text-black shrink-0">
-                      {t.name.charAt(0)}
+              <>
+                {(showAllLiveTeachers ? liveTeachers : liveTeachers.slice(0, 4)).map((t: any, i: number) => (
+                  <div
+                    key={t._id || i}
+                    className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded-full brand-gradient flex items-center justify-center text-xs font-bold text-black shrink-0">
+                        {t.name.charAt(0)}
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-white">{t.name}</p>
+                        <p className="text-[10px] text-neutral-500">{t.subject}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-medium text-white">{t.name}</p>
-                      <p className="text-[10px] text-neutral-500">{t.subject}</p>
+                    <div className="flex flex-col items-end gap-0.5">
+                      <div className="flex items-center gap-1.5">
+                        <div className={`w-1.5 h-1.5 rounded-full ${dotColor(t.dot)} ${t.dot === "bg-amber-500" ? "animate-pulse" : ""}`} />
+                        <span className={`text-[10px] font-medium whitespace-nowrap ${
+                          t.status === "In Class"  ? "text-amber-400 font-semibold"   :
+                          t.status === "Class Starting Soon" ? "text-amber-300 font-semibold" :
+                          t.status === "Available" ? "text-emerald-400" :
+                          "text-neutral-400"
+                        }`}>
+                          {t.status}
+                        </span>
+                      </div>
+                      {t.status === "In Class" && t.minutesLeft !== null && t.minutesLeft !== undefined ? (
+                        <span className="text-[9px] text-amber-400 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-semibold">
+                          ⏳ {t.minutesLeft}m left
+                        </span>
+                      ) : t.startsInMinutes !== null && t.startsInMinutes !== undefined && t.startsInMinutes <= 60 ? (
+                        <span className="text-[9px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold animate-pulse">
+                          ⏱️ Starts in {t.startsInMinutes}m
+                        </span>
+                      ) : null}
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-0.5">
-                    <div className="flex items-center gap-1.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${dotColor(t.dot)} ${t.dot === "bg-amber-500" ? "animate-pulse" : ""}`} />
-                      <span className={`text-[10px] font-medium whitespace-nowrap ${
-                        t.status === "In Class"  ? "text-amber-400 font-semibold"   :
-                        t.status === "Class Starting Soon" ? "text-amber-300 font-semibold" :
-                        t.status === "Available" ? "text-emerald-400" :
-                        "text-neutral-400"
-                      }`}>
-                        {t.status}
-                      </span>
-                    </div>
-                    {t.status === "In Class" && t.minutesLeft !== null && t.minutesLeft !== undefined ? (
-                      <span className="text-[9px] text-amber-400 font-mono bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 font-semibold">
-                        ⏳ {t.minutesLeft}m left
-                      </span>
-                    ) : t.startsInMinutes !== null && t.startsInMinutes !== undefined && t.startsInMinutes <= 60 ? (
-                      <span className="text-[9px] text-amber-300 font-mono bg-amber-500/20 px-1.5 py-0.5 rounded border border-amber-500/30 font-bold animate-pulse">
-                        ⏱️ Starts in {t.startsInMinutes}m
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-              ))
+                ))}
+
+                {liveTeachers.length > 4 && (
+                  <button
+                    onClick={() => setShowAllLiveTeachers(!showAllLiveTeachers)}
+                    className="w-full mt-3 py-2 text-center text-xs text-amber-400 font-medium bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 rounded-xl transition-colors flex items-center justify-center gap-1.5"
+                  >
+                    {showAllLiveTeachers ? (
+                      <>
+                        View Less <ChevronUp className="w-3.5 h-3.5" />
+                      </>
+                    ) : (
+                      <>
+                        View More ({liveTeachers.length - 4} more) <ChevronDown className="w-3.5 h-3.5" />
+                      </>
+                    )}
+                  </button>
+                )}
+              </>
             )}
           </div>
         </motion.div>

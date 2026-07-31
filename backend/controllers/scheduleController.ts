@@ -179,16 +179,26 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
 export const getSchedulesByStudent = async (req: Request, res: Response): Promise<void> => {
   try {
     const studentId = req.params.studentId;
-    const schedules = await Schedule.find({ status: 'Completed' })
-      .populate('teacher', 'name email')
-      .populate('batch', 'name subject');
-      
-    const studentSchedules = schedules.filter((s: any) => {
-      if (!s.attendance) return false;
-      return s.attendance.some((a: any) => (a.studentId?._id || a.studentId) === studentId);
+    const allCompleted = await Schedule.find({ status: 'Completed' });
+
+    const matchingSchedules = allCompleted.filter((s: any) => {
+      if (!s.attendance || !Array.isArray(s.attendance)) return false;
+      return s.attendance.some((a: any) => {
+        const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+        return id === studentId;
+      });
     });
-    
-    res.json(studentSchedules);
+
+    const populated = await Promise.all(
+      matchingSchedules.map((s: any) =>
+        s.populate([
+          { path: 'teacher', select: 'name email' },
+          { path: 'batch', select: 'name subject' }
+        ])
+      )
+    );
+
+    res.json(populated);
   } catch (error) {
     console.error('Error fetching student schedules:', error);
     res.status(500).json({ message: 'Server error' });

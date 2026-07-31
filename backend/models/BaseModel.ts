@@ -147,16 +147,47 @@ export class BaseModel {
           return result;
         }
 
-        // Apply populates to all results
+        // Apply populates to all results efficiently using pre-batched cache
         results = results.map(r => this._attachMethods(r));
         if (chain._populates.length > 0) {
           const populateCache: Record<string, Promise<any>> = {};
+          const db = getDb();
+
+          // Pre-collect unique document IDs for each path
+          for (const pop of chain._populates) {
+            const path = pop.path;
+            let collectionName = '';
+            if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher') collectionName = 'teachers';
+            else if (path === 'batch') collectionName = 'batches';
+            else if (path === 'user') collectionName = 'users';
+
+            if (collectionName) {
+              const uniqueIds = new Set<string>();
+              for (const r of results) {
+                const idVal = r[path];
+                if (typeof idVal === 'string' && idVal.trim()) {
+                  uniqueIds.add(idVal);
+                }
+              }
+
+              // Fire off non-blocking pre-fetches into populateCache
+              uniqueIds.forEach((id) => {
+                const cacheKey = `${collectionName}_${id}`;
+                if (!populateCache[cacheKey]) {
+                  populateCache[cacheKey] = db.collection(collectionName).doc(id).get().then((ref: any) => {
+                    return ref.exists ? convertTimestamps({ _id: ref.id, ...ref.data() }) : null;
+                  });
+                }
+              });
+            }
+          }
+
           results = await Promise.all(results.map((r: any) => this._applyPopulates(r, chain._populates, populateCache)));
         }
         return results;
       }
     };
-    
+
     return chain;
   }
 
@@ -225,7 +256,7 @@ export class BaseModel {
       if (!doc[path]) continue;
 
       let collectionName = '';
-      if (path === 'assignedTeacher' || path === 'teacher') collectionName = 'teachers';
+      if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher') collectionName = 'teachers';
       else if (path === 'batch') collectionName = 'batches';
       else if (path === 'user') collectionName = 'users';
       else if (path === 'pastBatches.batch') collectionName = 'batches'; // nested arrays are harder, let's skip for now or implement simply

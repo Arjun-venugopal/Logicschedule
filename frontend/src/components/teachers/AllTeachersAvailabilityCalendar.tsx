@@ -629,6 +629,7 @@ export function AllTeachersAvailabilityCalendar() {
           isOpen={!!selectedWeeklyTeacher}
           onClose={() => setSelectedWeeklyTeacher(null)}
           teacher={selectedWeeklyTeacher as any}
+          canEdit={hasWriteAccess}
         />
       )}
 

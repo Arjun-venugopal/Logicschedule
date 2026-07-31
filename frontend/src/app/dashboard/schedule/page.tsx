@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, BookOpen, Calendar, AlignLeft, Info, Search } from "lucide-react";
@@ -236,35 +236,51 @@ export default function SchedulePage() {
     }
   };
 
-  // Match schedule to a day+hour cell
-  const getEventForCell = (dayDate: Date, hour: number) => {
-    return schedules.find((s: any) => {
-      const sDate = new Date(s.date);
-      const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
-      const matchesTime = isSameDay(sDate, dayDate) && sHour === hour;
-      
-      if (!matchesTime) return false;
-      
+  // Memoized filtered schedules and O(1) lookup maps
+  const filteredSchedules = useMemo(() => {
+    return schedules.filter((s: any) => {
       if (!isTeacher) {
         if (filterTeacher && (s.teacher?._id || s.teacher) !== filterTeacher) return false;
         if (filterBatch && (s.batch?._id || s.batch) !== filterBatch) return false;
       }
-      
       return true;
     });
+  }, [schedules, isTeacher, filterTeacher, filterBatch]);
+
+  const { cellEventMap, dayEventsMap } = useMemo(() => {
+    const cellMap = new Map<string, PopulatedScheduleEntry>();
+    const dayMap = new Map<string, PopulatedScheduleEntry[]>();
+
+    for (const s of filteredSchedules) {
+      if (!s.date) continue;
+      const sDateStr = format(new Date(s.date), "yyyy-MM-dd");
+      const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
+
+      // Cell key format: "yyyy-MM-dd_hour"
+      cellMap.set(`${sDateStr}_${sHour}`, s);
+
+      // Day events
+      let list = dayMap.get(sDateStr);
+      if (!list) {
+        list = [];
+        dayMap.set(sDateStr, list);
+      }
+      list.push(s);
+    }
+
+    return { cellEventMap: cellMap, dayEventsMap: dayMap };
+  }, [filteredSchedules]);
+
+  // Match schedule to a day+hour cell with O(1) complexity
+  const getEventForCell = (dayDate: Date, hour: number) => {
+    const key = `${format(dayDate, "yyyy-MM-dd")}_${hour}`;
+    return cellEventMap.get(key);
   };
 
   const getEventsForDay = (dayDate: Date) => {
-    return schedules.filter((s: any) => {
-      const sDate = new Date(s.date);
-      if (!isSameDay(sDate, dayDate)) return false;
-      
-      if (!isTeacher) {
-        if (filterTeacher && (s.teacher?._id || s.teacher) !== filterTeacher) return false;
-        if (filterBatch && (s.batch?._id || s.batch) !== filterBatch) return false;
-      }
-      return true;
-    }).sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
+    const key = format(dayDate, "yyyy-MM-dd");
+    const list = dayEventsMap.get(key) || [];
+    return [...list].sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
   };
 
   const colorForIndex = (id: string) => {

@@ -44,6 +44,14 @@ export function TeacherWeeklyAvailabilityModal({
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
   const [editAvailability, setEditAvailability] = useState<DayAvailability[]>([]);
+  const [editStatus, setEditStatus] = useState<string>("Available");
+  const [editDutySchedule, setEditDutySchedule] = useState<any[]>([]);
+  const [newDutyItem, setNewDutyItem] = useState({
+    startDate: new Date().toLocaleDateString("en-CA"),
+    endDate: new Date().toLocaleDateString("en-CA"),
+    status: "On Leave",
+    reason: ""
+  });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -58,6 +66,8 @@ export function TeacherWeeklyAvailabilityModal({
         };
       });
       setEditAvailability(normalized);
+      setEditStatus(teacher.status || "Available");
+      setEditDutySchedule(teacher.dutyStatusSchedule ? [...teacher.dutyStatusSchedule] : []);
       setIsEditing(false);
       setErrorMsg(null);
       setSuccessMsg(null);
@@ -65,22 +75,21 @@ export function TeacherWeeklyAvailabilityModal({
   }, [teacher]);
 
   const updateTeacherMutation = useMutation({
-    mutationFn: async (filteredAvailability: DayAvailability[]) => {
+    mutationFn: async (payload: { availability: DayAvailability[]; status: string; dutyStatusSchedule: any[] }) => {
       if (!teacher) return;
-      return api.put(`/teachers/${teacher._id}`, {
-        availability: filteredAvailability,
-      });
+      return api.put(`/teachers/${teacher._id}`, payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
-      setSuccessMsg("Teacher weekly availability updated successfully!");
+      queryClient.invalidateQueries({ queryKey: ["all-teacher-availability"] });
+      setSuccessMsg("Teacher duty times and status updated successfully!");
       setIsEditing(false);
       setErrorMsg(null);
       setTimeout(() => setSuccessMsg(null), 3000);
     },
     onError: (err: any) => {
-      setErrorMsg(err.response?.data?.message || "Failed to update teacher availability.");
+      setErrorMsg(err.response?.data?.message || "Failed to update teacher duty configuration.");
     },
   });
 
@@ -169,6 +178,32 @@ export function TeacherWeeklyAvailabilityModal({
     );
   };
 
+  const handleAddDutyItem = () => {
+    if (!newDutyItem.startDate || !newDutyItem.endDate) return;
+    if (newDutyItem.startDate > newDutyItem.endDate) {
+      setErrorMsg("Start date cannot be after end date.");
+      return;
+    }
+    const item = {
+      id: Date.now().toString(),
+      startDate: newDutyItem.startDate,
+      endDate: newDutyItem.endDate,
+      status: newDutyItem.status,
+      reason: newDutyItem.reason.trim(),
+    };
+    setEditDutySchedule((prev) => [...prev, item]);
+    setNewDutyItem({
+      startDate: new Date().toLocaleDateString("en-CA"),
+      endDate: new Date().toLocaleDateString("en-CA"),
+      status: "On Leave",
+      reason: "",
+    });
+  };
+
+  const handleRemoveDutyItem = (id: string) => {
+    setEditDutySchedule((prev) => prev.filter((item) => item.id !== id));
+  };
+
   const handleSave = () => {
     setErrorMsg(null);
     for (const dayAvail of editAvailability) {
@@ -185,7 +220,11 @@ export function TeacherWeeklyAvailabilityModal({
     }
 
     const filtered = editAvailability.filter((a) => a.slots.length > 0);
-    updateTeacherMutation.mutate(filtered);
+    updateTeacherMutation.mutate({
+      availability: filtered,
+      status: editStatus,
+      dutyStatusSchedule: editDutySchedule,
+    });
   };
 
   return (
@@ -286,6 +325,128 @@ export function TeacherWeeklyAvailabilityModal({
             <div className="mx-6 mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex items-center gap-2 text-xs text-emerald-400">
               <CheckCircle2 className="w-4 h-4 shrink-0" />
               <span>{successMsg}</span>
+            </div>
+          )}
+
+          {/* Duty Status & Date-Based Schedule Section (Edit Mode) */}
+          {isEditing && (
+            <div className="mx-6 mt-4 p-4 bg-neutral-950 border border-neutral-800 rounded-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800">
+                <div>
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                    Faculty Base Duty Status
+                  </h3>
+                  <p className="text-[11px] text-neutral-400 mt-0.5">
+                    Set primary status (Available, On Leave, Off Duty, Half Day)
+                  </p>
+                </div>
+                <select
+                  value={editStatus}
+                  onChange={(e) => setEditStatus(e.target.value)}
+                  className="bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-amber-500 font-semibold"
+                >
+                  <option value="Available">Available</option>
+                  <option value="On Leave">On Leave</option>
+                  <option value="Off Duty">Off Duty</option>
+                  <option value="Half Day">Half Day</option>
+                  <option value="Busy">Busy</option>
+                </select>
+              </div>
+
+              {/* Date-Based Schedule Manager */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    Date-Based Duty Schedule Manager
+                  </h4>
+                  <span className="text-[10px] text-neutral-500 font-mono">
+                    {editDutySchedule.length} scheduled items
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div>
+                    <label className="text-[10px] font-medium text-neutral-400">Start Date</label>
+                    <input
+                      type="date"
+                      value={newDutyItem.startDate}
+                      onChange={(e) => setNewDutyItem({ ...newDutyItem, startDate: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-neutral-400">End Date</label>
+                    <input
+                      type="date"
+                      value={newDutyItem.endDate}
+                      onChange={(e) => setNewDutyItem({ ...newDutyItem, endDate: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-neutral-400">Status</label>
+                    <select
+                      value={newDutyItem.status}
+                      onChange={(e) => setNewDutyItem({ ...newDutyItem, status: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    >
+                      <option value="On Leave">On Leave</option>
+                      <option value="Off Duty">Off Duty</option>
+                      <option value="Half Day">Half Day</option>
+                      <option value="Available">Available</option>
+                      <option value="Busy">Busy</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-medium text-neutral-400">Reason / Note</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Vacation"
+                      value={newDutyItem.reason}
+                      onChange={(e) => setNewDutyItem({ ...newDutyItem, reason: e.target.value })}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-amber-500 placeholder-neutral-600"
+                    />
+                  </div>
+                </div>
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleAddDutyItem}
+                    className="px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 font-semibold rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" /> Add Date Status
+                  </button>
+                </div>
+
+                {/* Scheduled Duty Items List */}
+                {editDutySchedule.length > 0 && (
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto pt-1">
+                    {editDutySchedule.map((item) => (
+                      <div key={item.id} className="bg-neutral-900 border border-neutral-800 rounded-lg p-2 flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[10px] px-2 py-0.5 rounded font-semibold border bg-amber-500/10 text-amber-400 border-amber-500/20">
+                            {item.status}
+                          </span>
+                          <span className="text-white font-mono text-[11px]">
+                            {item.startDate === item.endDate ? item.startDate : `${item.startDate} ~ ${item.endDate}`}
+                          </span>
+                          {item.reason && <span className="text-neutral-400 text-[10px] italic">({item.reason})</span>}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveDutyItem(item.id)}
+                          className="text-neutral-500 hover:text-red-400 p-1 transition-colors"
+                          title="Delete status item"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
