@@ -100,6 +100,14 @@ export default function SchedulePage() {
   const { canWrite } = usePermissions();
   const hasWriteAccess = canWrite("schedule");
 
+  const canEditSchedule = (s: any) => {
+    if (isTeacher) return true;
+    if (hasWriteAccess) return true;
+    if (s?.teacher?._id === user?._id || s?.teacher === user?._id) return true;
+    if (s?.replacementTeacher?._id === user?._id || s?.replacementTeacher === user?._id) return true;
+    return false;
+  };
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit"; prefillDate?: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
@@ -574,7 +582,7 @@ export default function SchedulePage() {
                                   <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
                                 </a>
                               )}
-                              {hasWriteAccess && (
+                              {canEditSchedule(event) && (
                                 <>
                                   <button
                                     onClick={(e) => { e.stopPropagation(); openEdit(event); }}

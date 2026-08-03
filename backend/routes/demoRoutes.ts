@@ -9,7 +9,7 @@ router.route('/')
   .post(protect, permissionCheck('demoSessions', 'write'), createDemoSession);
 
 router.route('/:id')
-  .put(protect, permissionCheck('demoSessions', 'write'), updateDemoSession)
+  .put(protect, updateDemoSession)
   .delete(protect, permissionCheck('demoSessions', 'write'), deleteDemoSession);
 
 export default router;

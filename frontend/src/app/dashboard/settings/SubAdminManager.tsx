@@ -12,6 +12,7 @@ const MODULES = [
   { key: "batches", label: "Batches" },
   { key: "teachers", label: "Teachers" },
   { key: "students", label: "Students" },
+  { key: "salesPeople", label: "Sales People" },
   { key: "demoSessions", label: "Demo Sessions" },
   { key: "classNotes", label: "Class Notes" },
   { key: "attendance", label: "Attendance" },

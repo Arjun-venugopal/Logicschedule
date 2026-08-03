@@ -127,6 +127,14 @@ export default function DemoSessionsPage() {
   const hasWriteAccess = canWrite("demoSessions");
   const canManageSlots = !isSalesPerson && hasWriteAccess;
 
+  const canEditSession = (session: DemoSession) => {
+    if (isTeacher) return true;
+    if (hasWriteAccess) return true;
+    if (session.createdBy === user?._id) return true;
+    if (user?.name && session.salesExecutive?.trim().toLowerCase() === user.name.trim().toLowerCase()) return true;
+    return false;
+  };
+
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit" } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState<DemoSessionForm>(emptyForm());
@@ -745,7 +753,7 @@ export default function DemoSessionsPage() {
                             <Eye className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {canManageSlots && (
+                        {canEditSession(session) && (
                           <button
                             onClick={() => openEdit(session)}
                             className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
@@ -826,10 +834,12 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
                       <button onClick={() => setViewingSession(session)} className="text-blue-400 hover:text-blue-300" title="View Details"><Eye className="w-4 h-4" /></button>
-                      {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
+                      {canEditSession(session) && (
                         <>
                           <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white" title="Edit Session"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
+                          {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
+                            <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
+                          )}
                         </>
                       )}
                       {session.status === "Completed" && (
@@ -1242,23 +1252,21 @@ export default function DemoSessionsPage() {
                           />
                         </div>
                       )}
-                      {!isSalesPerson && (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
-                          <select
-                            value={form.salesExecutive}
-                            onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
-                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
-                          >
-                            <option value="">Select Sales Executive</option>
-                            {salesPeople.map((sp: any) => (
-                              <option key={sp._id} value={sp.name}>
-                                {sp.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
+                        <select
+                          value={form.salesExecutive}
+                          onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
+                        >
+                          <option value="">Select Sales Executive</option>
+                          {salesPeople.map((sp: any) => (
+                            <option key={sp._id} value={sp.name}>
+                              {sp.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">No. of Hours</label>
                         <input

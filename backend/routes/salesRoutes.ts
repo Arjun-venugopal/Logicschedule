@@ -10,9 +10,9 @@ import {
 const router = express.Router();
 
 router.use(protect);
-// We allow either Admin/Super Admin, Sub Admin with salesPeople read permissions, OR Sales Person (for dropdowns)
+// We allow Admin/Super Admin, Sub Admin, or Sales Person to fetch list of sales people (for dropdowns)
 router.get('/', (req: any, res, next) => {
-  if (req.user && req.user.role === 'Sales Person') {
+  if (req.user && (req.user.role === 'Sales Person' || req.user.role === 'Sub Admin' || req.user.role === 'Admin' || req.user.role === 'Super Admin')) {
     next();
   } else {
     permissionCheck('salesPeople', 'read')(req, res, next);
