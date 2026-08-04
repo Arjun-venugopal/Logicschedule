@@ -18,6 +18,8 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
   const [demoStatus, setDemoStatus] = useState("all");
   const [batchStatus, setBatchStatus] = useState("all");
   const [studentId, setStudentId] = useState("all");
+  const [selectedDay, setSelectedDay] = useState("all");
+  const [specificDate, setSpecificDate] = useState("");
   const [activeDetailView, setActiveDetailView] = useState<'demos' | 'batches' | 'classes' | 'students'>('demos');
 
   const clearFilters = () => {
@@ -25,12 +27,14 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
     setDemoStatus("all");
     setBatchStatus("all");
     setStudentId("all");
+    setSelectedDay("all");
+    setSpecificDate("");
   };
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ["teacher-performance", teacherId, timeRange, demoStatus, batchStatus, studentId],
+    queryKey: ["teacher-performance", teacherId, timeRange, demoStatus, batchStatus, studentId, specificDate],
     queryFn: async () => (await api.get(`/teachers/${teacherId}/performance`, {
-      params: { timeRange, demoStatus, batchStatus, studentId }
+      params: { timeRange, demoStatus, batchStatus, studentId, specificDate }
     })).data,
   });
 
@@ -62,6 +66,20 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
   }
 
   const { teacher, stats, demoSessions = [], assignedStudents = [], filteredBatches = [], filteredSchedules = [] } = data;
+
+  const filteredDemoSessions = (demoSessions || []).filter((demo: any) => {
+    if (selectedDay !== "all") {
+      if (!demo.date) return false;
+      const dayName = format(parseISO(demo.date), "EEEE");
+      if (dayName !== selectedDay) return false;
+    }
+    if (specificDate) {
+      if (!demo.date) return false;
+      const dStr = format(parseISO(demo.date), "yyyy-MM-dd");
+      if (dStr !== specificDate) return false;
+    }
+    return true;
+  });
 
   const pieChartData = [
     { name: "Completed", value: stats.completedClasses },
@@ -133,6 +151,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
               <option value="all">All Demos</option>
               <option value="Completed">Completed</option>
               <option value="Pending">Pending</option>
+              <option value="Rescheduled">Rescheduled</option>
               <option value="Cancelled">Cancelled</option>
             </select>
 
@@ -158,6 +177,29 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                 <option key={s._id} value={s._id}>{s.name}</option>
               ))}
             </select>
+
+            <select
+              value={selectedDay}
+              onChange={(e) => setSelectedDay(e.target.value)}
+              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto"
+            >
+              <option value="all">All Days</option>
+              <option value="Monday">Monday</option>
+              <option value="Tuesday">Tuesday</option>
+              <option value="Wednesday">Wednesday</option>
+              <option value="Thursday">Thursday</option>
+              <option value="Friday">Friday</option>
+              <option value="Saturday">Saturday</option>
+              <option value="Sunday">Sunday</option>
+            </select>
+
+            <input
+              type="date"
+              value={specificDate}
+              onChange={(e) => setSpecificDate(e.target.value)}
+              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto text-neutral-300 [&::-webkit-calendar-picker-indicator]:invert"
+              title="Filter by Exact Date"
+            />
 
             <button
               onClick={clearFilters}
@@ -401,15 +443,15 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             {activeDetailView === 'demos' && (
               <>
                 <h3 className="font-semibold text-white flex items-center gap-2 pb-2">
-                  <Video className="w-4 h-4 text-orange-500" /> Demo Sessions ({demoSessions.length})
+                  <Video className="w-4 h-4 text-orange-500" /> Demo Sessions ({filteredDemoSessions.length})
                 </h3>
                 <div className="space-y-3">
-                  {demoSessions.length === 0 ? (
+                  {filteredDemoSessions.length === 0 ? (
                     <div className="py-6 text-center text-neutral-500 bg-neutral-800/20 rounded-xl border border-neutral-850 text-sm">
                       No demo sessions found for the selected filters.
                     </div>
                   ) : (
-                    demoSessions.map((demo: any) => (
+                    filteredDemoSessions.map((demo: any) => (
                       <div key={demo._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 hover:bg-neutral-800/60 transition-colors">
                         <div className="flex items-start justify-between mb-3">
                           <div>
@@ -417,6 +459,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                               <h4 className="text-sm font-bold text-white">{demo.studentName}</h4>
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 demo.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
+                                demo.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" :
                                 demo.status === "Pending" || demo.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border border-amber-500/20" :
                                 "bg-red-500/10 text-red-400 border border-red-500/20"
                               }`}>

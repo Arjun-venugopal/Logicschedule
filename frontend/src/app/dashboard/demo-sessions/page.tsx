@@ -62,7 +62,7 @@ interface DemoSession {
   date: string;
   startTime: string;
   endTime: string;
-  status: "Scheduled" | "Completed" | "Cancelled";
+  status: "Scheduled" | "Completed" | "Cancelled" | "Rescheduled";
   meetingLink?: string;
   notes?: string;
   cancellationReason?: string;
@@ -88,10 +88,13 @@ type DemoSessionForm = {
   date: string;
   startTime: string;
   endTime: string;
-  status: "Scheduled" | "Completed" | "Cancelled";
+  status: "Scheduled" | "Completed" | "Cancelled" | "Rescheduled";
   meetingLink: string;
   notes: string;
   cancellationReason: string;
+  rescheduleDate?: string;
+  rescheduleStartTime?: string;
+  rescheduleEndTime?: string;
 };
 
 const emptyForm = (): DemoSessionForm => ({
@@ -116,6 +119,9 @@ const emptyForm = (): DemoSessionForm => ({
   meetingLink: "",
   notes: "",
   cancellationReason: "",
+  rescheduleDate: "",
+  rescheduleStartTime: "",
+  rescheduleEndTime: "",
 });
 
 export default function DemoSessionsPage() {
@@ -142,6 +148,8 @@ export default function DemoSessionsPage() {
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
+  const [filterDay, setFilterDay] = useState<string>("All");
+  const [filterSpecificDate, setFilterSpecificDate] = useState<string>("");
   const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
   const [reportSession, setReportSession] = useState<DemoSession | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
@@ -294,6 +302,9 @@ export default function DemoSessionsPage() {
       meetingLink: d.meetingLink || "",
       notes: d.notes || "",
       cancellationReason: d.cancellationReason || "",
+      rescheduleDate: d.date ? format(new Date(d.date), "yyyy-MM-dd") : "",
+      rescheduleStartTime: d.startTime || "09:00",
+      rescheduleEndTime: d.endTime || "10:00",
     });
     setEditingId(d._id);
     setModal({ open: true, mode: "edit" });
@@ -307,10 +318,16 @@ export default function DemoSessionsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const payload = { ...form };
+    if (payload.status === "Rescheduled") {
+      if (payload.rescheduleDate) payload.date = payload.rescheduleDate;
+      if (payload.rescheduleStartTime) payload.startTime = payload.rescheduleStartTime;
+      if (payload.rescheduleEndTime) payload.endTime = payload.rescheduleEndTime;
+    }
     if (modal?.mode === "edit" && editingId) {
-      updateDemoMutation.mutate({ id: editingId, data: form });
+      updateDemoMutation.mutate({ id: editingId, data: payload });
     } else {
-      createDemoMutation.mutate(form);
+      createDemoMutation.mutate(payload);
     }
   };
 
@@ -427,6 +444,20 @@ export default function DemoSessionsPage() {
       if (filterDate === "This Month" && !isSameMonth(dDate, today)) return false;
     }
 
+    // Day of week filter
+    if (filterDay && filterDay !== "All") {
+      if (!d.date) return false;
+      const dayName = format(new Date(d.date), "EEEE");
+      if (dayName !== filterDay) return false;
+    }
+
+    // Specific date filter
+    if (filterSpecificDate) {
+      if (!d.date) return false;
+      const sDate = format(new Date(d.date), "yyyy-MM-dd");
+      if (sDate !== filterSpecificDate) return false;
+    }
+
     return true;
   });
 
@@ -441,6 +472,16 @@ export default function DemoSessionsPage() {
       if (filterDate === "Today" && !isSameDay(sDate, today)) return false;
       if (filterDate === "This Week" && !isSameWeek(sDate, today)) return false;
       if (filterDate === "This Month" && !isSameMonth(sDate, today)) return false;
+    }
+    if (filterDay && filterDay !== "All") {
+      if (!slot.date) return false;
+      const dayName = format(new Date(slot.date), "EEEE");
+      if (dayName !== filterDay) return false;
+    }
+    if (filterSpecificDate) {
+      if (!slot.date) return false;
+      const sDate = format(new Date(slot.date), "yyyy-MM-dd");
+      if (sDate !== filterSpecificDate) return false;
     }
     return true;
   });
@@ -528,7 +569,7 @@ export default function DemoSessionsPage() {
       </div>
 
       {/* Filters */}
-      {!isTeacher && activeTab === "sessions" && (
+      {activeTab === "sessions" && (
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
             <div className="flex-1 min-w-[120px] max-w-[150px]">
@@ -543,20 +584,47 @@ export default function DemoSessionsPage() {
                 <option value="This Month">This Month</option>
               </select>
             </div>
-            <div className="flex-1 md:max-w-xs">
+            <div className="flex-1 min-w-[120px] max-w-[150px]">
               <select
-                value={filterTeacher}
-                onChange={(e) => setFilterTeacher(e.target.value)}
+                value={filterDay}
+                onChange={(e) => setFilterDay(e.target.value)}
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
               >
-                <option value="">All Teachers</option>
-                {teachers.map((t) => (
-                  <option key={t._id} value={t._id}>
-                    {t.name}
-                  </option>
-                ))}
+                <option value="All">All Days</option>
+                <option value="Monday">Monday</option>
+                <option value="Tuesday">Tuesday</option>
+                <option value="Wednesday">Wednesday</option>
+                <option value="Thursday">Thursday</option>
+                <option value="Friday">Friday</option>
+                <option value="Saturday">Saturday</option>
+                <option value="Sunday">Sunday</option>
               </select>
             </div>
+            <div className="flex-1 min-w-[140px] max-w-[170px]">
+              <input
+                type="date"
+                value={filterSpecificDate}
+                onChange={(e) => setFilterSpecificDate(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all text-neutral-300 [&::-webkit-calendar-picker-indicator]:invert"
+                title="Filter by Exact Date"
+              />
+            </div>
+            {!isTeacher && (
+              <div className="flex-1 md:max-w-xs">
+                <select
+                  value={filterTeacher}
+                  onChange={(e) => setFilterTeacher(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                >
+                  <option value="">All Teachers</option>
+                  {teachers.map((t) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 md:max-w-xs">
               <select
                 value={filterStatus}
@@ -566,15 +634,18 @@ export default function DemoSessionsPage() {
                 <option value="">All Statuses</option>
                 <option value="Scheduled">Scheduled</option>
                 <option value="Completed">Completed</option>
+                <option value="Rescheduled">Rescheduled</option>
                 <option value="Cancelled">Cancelled</option>
               </select>
             </div>
-            {(filterTeacher || filterStatus || filterDate !== "All") && (
+            {(filterTeacher || filterStatus || filterDate !== "All" || filterDay !== "All" || filterSpecificDate) && (
               <button
                 onClick={() => {
                   setFilterTeacher("");
                   setFilterStatus("");
                   setFilterDate("All");
+                  setFilterDay("All");
+                  setFilterSpecificDate("");
                 }}
                 className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
               >
@@ -653,10 +724,11 @@ export default function DemoSessionsPage() {
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 bg-neutral-900/30">
             {filteredSessions.map((session) => {
               const sessionDate = new Date(session.date);
-              const statusColors = {
+              const statusColors: Record<string, string> = {
                 Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
                 Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
                 Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
+                Rescheduled: "bg-purple-500/10 text-purple-400 border-purple-500/20",
               };
 
               return (
@@ -826,7 +898,7 @@ export default function DemoSessionsPage() {
                     </td>
                     <td className="px-4 py-3">{session.numberOfSessions || "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${session.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${session.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : session.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
                         {session.status}
                       </span>
                     </td>
@@ -1122,9 +1194,51 @@ export default function DemoSessionsPage() {
                       >
                         <option value="Scheduled">Scheduled</option>
                         <option value="Completed">Completed</option>
+                        <option value="Rescheduled">Rescheduled</option>
                         <option value="Cancelled">Cancelled</option>
                       </select>
                     </div>
+
+                    {/* Reschedule Date & Time (Teacher View) */}
+                    {form.status === "Rescheduled" && (
+                      <div className="space-y-3 p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl">
+                        <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4" /> Reschedule Date & Time
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">New Date *</label>
+                            <input
+                              type="date"
+                              required
+                              value={form.rescheduleDate || form.date}
+                              onChange={(e) => setForm({ ...form, rescheduleDate: e.target.value, date: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">Start Time *</label>
+                            <input
+                              type="time"
+                              required
+                              value={form.rescheduleStartTime || form.startTime}
+                              onChange={(e) => setForm({ ...form, rescheduleStartTime: e.target.value, startTime: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">End Time *</label>
+                            <input
+                              type="time"
+                              required
+                              value={form.rescheduleEndTime || form.endTime}
+                              onChange={(e) => setForm({ ...form, rescheduleEndTime: e.target.value, endTime: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
 
                     {/* Cancellation Reason (Teacher View) */}
                     {form.status === "Cancelled" && (
@@ -1452,8 +1566,50 @@ export default function DemoSessionsPage() {
                         >
                           <option value="Scheduled">Scheduled</option>
                           <option value="Completed">Completed</option>
+                          <option value="Rescheduled">Rescheduled</option>
                           <option value="Cancelled">Cancelled</option>
                         </select>
+                      </div>
+                    )}
+
+                    {/* Reschedule Date & Time (Admin View) */}
+                    {form.status === "Rescheduled" && (
+                      <div className="space-y-3 p-3.5 bg-purple-500/10 border border-purple-500/20 rounded-xl mt-2">
+                        <label className="text-xs font-semibold text-purple-300 flex items-center gap-1.5">
+                          <Calendar className="w-4 h-4" /> Reschedule Date & Time
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">New Date *</label>
+                            <input
+                              type="date"
+                              required
+                              value={form.rescheduleDate || form.date}
+                              onChange={(e) => setForm({ ...form, rescheduleDate: e.target.value, date: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">Start Time *</label>
+                            <input
+                              type="time"
+                              required
+                              value={form.rescheduleStartTime || form.startTime}
+                              onChange={(e) => setForm({ ...form, rescheduleStartTime: e.target.value, startTime: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] text-neutral-400 font-semibold block mb-1">End Time *</label>
+                            <input
+                              type="time"
+                              required
+                              value={form.rescheduleEndTime || form.endTime}
+                              onChange={(e) => setForm({ ...form, rescheduleEndTime: e.target.value, endTime: e.target.value })}
+                              className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
                       </div>
                     )}
 

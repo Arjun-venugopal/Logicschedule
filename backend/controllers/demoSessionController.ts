@@ -244,11 +244,37 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
       demoSession.conflict = !!scheduleConflict || !!demoConflict;
     } else {
-      // Teacher edits: only allowed to change status, meetingLink, and notes
+      // Teacher edits: allowed to change status, meetingLink, notes, cancellationReason, date, startTime, endTime
       if (req.body.status !== undefined) demoSession.status = req.body.status;
+      if (req.body.date !== undefined) demoSession.date = new Date(req.body.date);
+      if (req.body.startTime !== undefined) demoSession.startTime = req.body.startTime;
+      if (req.body.endTime !== undefined) demoSession.endTime = req.body.endTime;
       if (req.body.meetingLink !== undefined) demoSession.meetingLink = req.body.meetingLink;
       if (req.body.notes !== undefined) demoSession.notes = req.body.notes;
       if (req.body.cancellationReason !== undefined) demoSession.cancellationReason = req.body.cancellationReason;
+
+      // Recalculate conflict for this demo session
+      const dateObj = new Date(demoSession.date);
+      const scheduleConflict = await Schedule.findOne({
+        teacher: demoSession.teacher,
+        date: dateObj,
+        status: { $ne: 'Cancelled' },
+        $or: [
+          { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
+        ],
+      });
+
+      const demoConflict = await DemoSession.findOne({
+        _id: { $ne: demoSession._id },
+        teacher: demoSession.teacher,
+        date: dateObj,
+        status: { $ne: 'Cancelled' },
+        $or: [
+          { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
+        ],
+      });
+
+      demoSession.conflict = !!scheduleConflict || !!demoConflict;
     }
 
     const updated = await demoSession.save();

@@ -326,7 +326,7 @@ export const updateTeacherProfile = async (req: any, res: Response): Promise<voi
 export const getTeacherPerformance = async (req: any, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
-    const { timeRange, demoStatus, batchStatus, studentId } = req.query;
+    const { timeRange, demoStatus, batchStatus, studentId, specificDate } = req.query;
 
     let teacher: any = null;
 
@@ -356,7 +356,14 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
 
     // Date Filtering Logic
     let dateFilter: any = {};
-    if (timeRange && timeRange !== 'all') {
+    if (specificDate && typeof specificDate === 'string' && specificDate.trim() !== '') {
+      const d = new Date(specificDate);
+      if (!isNaN(d.getTime())) {
+        const start = new Date(d); start.setHours(0,0,0,0);
+        const end = new Date(d); end.setHours(23,59,59,999);
+        dateFilter = { $gte: start, $lte: end };
+      }
+    } else if (timeRange && timeRange !== 'all') {
       const now = new Date();
       if (timeRange === 'day') {
         const start = new Date(now); start.setHours(0,0,0,0);
