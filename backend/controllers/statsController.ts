@@ -113,6 +113,7 @@ export const getDashboardStats = async (req: any, res: Response) => {
       let startsInMinutes: number | null = null;
 
       for (const s of teacherTodaySchedules) {
+        if (s.status === 'Completed' || s.status === 'Cancelled') continue;
         if (s.startTime && s.endTime) {
           const [sh, sm] = s.startTime.split(':').map(Number);
           const [eh, em] = s.endTime.split(':').map(Number);

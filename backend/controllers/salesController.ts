@@ -9,19 +9,23 @@ export const getSalesPeople = async (req: Request, res: Response): Promise<void>
     const { getDb } = await import('../config/firebase');
     const snapshot = await getDb().collection('users').where('role', '==', 'Sales Person').get();
     
-    const salesPeople = snapshot.docs.map(doc => {
+    const uniqueMap = new Map<string, any>();
+    snapshot.docs.forEach(doc => {
       const data = doc.data();
-      return {
-        _id: doc.id,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        permissions: data.permissions,
-        createdAt: data.createdAt
-      };
+      const key = (data.email || data.name || doc.id).trim().toLowerCase();
+      if (!uniqueMap.has(key)) {
+        uniqueMap.set(key, {
+          _id: doc.id,
+          name: data.name,
+          email: data.email,
+          role: data.role,
+          permissions: data.permissions,
+          createdAt: data.createdAt
+        });
+      }
     });
 
-    res.json(salesPeople);
+    res.json(Array.from(uniqueMap.values()));
   } catch (error: any) {
     console.error('Get sales people error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

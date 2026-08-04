@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth } from "date-fns";
 import {
@@ -25,7 +25,8 @@ import {
   Eye,
   LayoutGrid,
   List,
-  FileText
+  FileText,
+  UserCheck
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
@@ -147,6 +148,7 @@ export default function DemoSessionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterSalesPerson, setFilterSalesPerson] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
   const [filterDay, setFilterDay] = useState<string>("All");
   const [filterSpecificDate, setFilterSpecificDate] = useState<string>("");
@@ -415,6 +417,37 @@ export default function DemoSessionsPage() {
   const availability = checkAvailabilityStatus();
   const hasConflict = getConflictStatus();
 
+  const salesExecOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    salesPeople.forEach((sp: any) => {
+      const name = sp.name?.trim();
+      if (name) {
+        map.set(name.toLowerCase(), name);
+      }
+    });
+    demoSessions.forEach((d: any) => {
+      const name = d.salesExecutive?.trim();
+      if (name) {
+        const key = name.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, name);
+        }
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.localeCompare(b));
+  }, [salesPeople, demoSessions]);
+
+  const uniqueSalesPeople = useMemo(() => {
+    const map = new Map<string, any>();
+    salesPeople.forEach((sp: any) => {
+      const name = sp.name?.trim();
+      if (name && !map.has(name.toLowerCase())) {
+        map.set(name.toLowerCase(), sp);
+      }
+    });
+    return Array.from(map.values());
+  }, [salesPeople]);
+
   // Filters
   const filteredSessions = demoSessions.filter((d) => {
     // Search filter
@@ -423,7 +456,8 @@ export default function DemoSessionsPage() {
       const matchName = d.studentName.toLowerCase().includes(search);
       const matchSubject = d.subject.toLowerCase().includes(search);
       const matchTeacher = d.teacher?.name?.toLowerCase().includes(search);
-      if (!matchName && !matchSubject && !matchTeacher) return false;
+      const matchSales = d.salesExecutive?.toLowerCase().includes(search);
+      if (!matchName && !matchSubject && !matchTeacher && !matchSales) return false;
     }
 
     // Teacher filter
@@ -434,6 +468,16 @@ export default function DemoSessionsPage() {
 
     // Status filter
     if (filterStatus && d.status !== filterStatus) return false;
+
+    // Sales Exec / Sales Person filter
+    if (filterSalesPerson) {
+      const target = filterSalesPerson.toLowerCase();
+      const sessExec = d.salesExecutive ? d.salesExecutive.trim().toLowerCase() : "";
+      const matchesExec = sessExec === target || sessExec.includes(target);
+      const spObj = salesPeople.find((sp: any) => sp._id === filterSalesPerson || sp.name?.toLowerCase() === target);
+      const matchesCreator = d.createdBy && (d.createdBy === filterSalesPerson || (spObj && d.createdBy === spObj._id));
+      if (!matchesExec && !matchesCreator) return false;
+    }
 
     // Date filter
     if (filterDate !== "All") {
@@ -625,6 +669,22 @@ export default function DemoSessionsPage() {
                 </select>
               </div>
             )}
+            {!isSalesPerson && (
+              <div className="flex-1 md:max-w-xs">
+                <select
+                  value={filterSalesPerson}
+                  onChange={(e) => setFilterSalesPerson(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                >
+                  <option value="">All Sales Execs</option>
+                  {salesExecOptions.map((execName: string) => (
+                    <option key={execName} value={execName}>
+                      {execName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
             <div className="flex-1 md:max-w-xs">
               <select
                 value={filterStatus}
@@ -638,11 +698,12 @@ export default function DemoSessionsPage() {
                 <option value="Cancelled">Cancelled</option>
               </select>
             </div>
-            {(filterTeacher || filterStatus || filterDate !== "All" || filterDay !== "All" || filterSpecificDate) && (
+            {(filterTeacher || filterStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterSpecificDate) && (
               <button
                 onClick={() => {
                   setFilterTeacher("");
                   setFilterStatus("");
+                  setFilterSalesPerson("");
                   setFilterDate("All");
                   setFilterDay("All");
                   setFilterSpecificDate("");
@@ -784,6 +845,12 @@ export default function DemoSessionsPage() {
                         <AlignLeft className="w-3.5 h-3.5 text-neutral-500" />
                         <span>Subject: <strong className="text-white">{session.subject}</strong></span>
                       </div>
+                      {session.salesExecutive && (
+                        <div className="flex items-center gap-2">
+                          <UserCheck className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>Sales Exec: <strong className="text-neutral-200">{session.salesExecutive}</strong></span>
+                        </div>
+                      )}
                       {session.studentEmail && (
                         <div className="text-[11px] text-neutral-500 truncate" title={session.studentEmail}>
                           Email: {session.studentEmail}
@@ -1374,7 +1441,7 @@ export default function DemoSessionsPage() {
                           className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
                         >
                           <option value="">Select Sales Executive</option>
-                          {salesPeople.map((sp: any) => (
+                          {uniqueSalesPeople.map((sp: any) => (
                             <option key={sp._id} value={sp.name}>
                               {sp.name}
                             </option>

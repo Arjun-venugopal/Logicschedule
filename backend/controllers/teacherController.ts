@@ -664,8 +664,8 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       }
 
       if (isToday && currentTotalMinutes >= 0) {
-        // Find current class
-        const ongoing = items.find(i => currentTotalMinutes >= i.startMin && currentTotalMinutes <= i.endMin);
+        // Find current class (excluding completed or cancelled)
+        const ongoing = items.find(i => currentTotalMinutes >= i.startMin && currentTotalMinutes <= i.endMin && i.status !== 'Completed' && i.status !== 'Cancelled');
         if (ongoing) {
           currentClass = ongoing;
           minutesLeftInCurrentClass = ongoing.endMin - currentTotalMinutes;
@@ -673,11 +673,18 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
           currentClassProgress = duration > 0 ? Math.min(100, Math.max(0, Math.round(((currentTotalMinutes - ongoing.startMin) / duration) * 100))) : 100;
         }
 
-        // Find next class
-        const upcoming = items.find(i => i.startMin > currentTotalMinutes);
+        // Find next class (excluding completed or cancelled)
+        const upcoming = items.find(i => i.startMin > currentTotalMinutes && i.status !== 'Completed' && i.status !== 'Cancelled');
         if (upcoming) {
           nextClass = upcoming;
           minutesToNextClass = upcoming.startMin - currentTotalMinutes;
+        }
+      } else if (dayStart > now) {
+        // Future date: first scheduled class that is not completed or cancelled
+        const upcoming = items.find(i => i.status !== 'Completed' && i.status !== 'Cancelled');
+        if (upcoming) {
+          nextClass = upcoming;
+          minutesToNextClass = null;
         }
       }
 

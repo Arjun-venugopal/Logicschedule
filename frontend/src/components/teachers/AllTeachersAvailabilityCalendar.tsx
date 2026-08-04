@@ -524,20 +524,39 @@ export function AllTeachersAvailabilityCalendar() {
                                     <div className="text-[9px] font-semibold text-rose-400 uppercase tracking-wider">
                                       Booked ({dayItems.length})
                                     </div>
-                                    {dayItems.map((item) => (
-                                      <div
-                                        key={item.id}
-                                        className={`rounded px-1.5 py-1 text-[10px] border ${item.type === "Demo"
-                                          ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
-                                          : "bg-rose-500/10 border-rose-500/20 text-rose-300"
+                                    {dayItems.map((item) => {
+                                      const isCompleted = item.status === "Completed";
+                                      return (
+                                        <div
+                                          key={item.id}
+                                          className={`rounded px-1.5 py-1 text-[10px] border transition-colors ${
+                                            isCompleted
+                                              ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                                              : item.type === "Demo"
+                                              ? "bg-purple-500/10 border-purple-500/20 text-purple-300"
+                                              : "bg-rose-500/10 border-rose-500/20 text-rose-300"
                                           }`}
-                                      >
-                                        <div className="font-semibold truncate">{item.batchName}</div>
-                                        <div className="text-[9px] opacity-80 font-mono">
-                                          {item.startTime} - {item.endTime}
+                                        >
+                                          <div className="flex items-center justify-between gap-1">
+                                            <span className={`font-semibold truncate ${isCompleted ? "line-through opacity-90" : ""}`}>
+                                              {item.batchName}
+                                            </span>
+                                            {isCompleted ? (
+                                              <span className="text-[8px] font-bold px-1 py-0.2 rounded bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 shrink-0">
+                                                ✓ Completed
+                                              </span>
+                                            ) : item.type === "Demo" ? (
+                                              <span className="text-[8px] font-medium px-1 py-0.2 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 shrink-0">
+                                                Demo
+                                              </span>
+                                            ) : null}
+                                          </div>
+                                          <div className="text-[9px] opacity-80 font-mono flex items-center justify-between mt-0.5">
+                                            <span>{item.startTime} - {item.endTime}</span>
+                                          </div>
                                         </div>
-                                      </div>
-                                    ))}
+                                      );
+                                    })}
                                   </div>
                                 )}
                               </div>
