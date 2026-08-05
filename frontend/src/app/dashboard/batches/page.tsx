@@ -68,14 +68,9 @@ function computeEndDateBySessions(startDate: string, sessions: number | "", days
   return format(current, "yyyy-MM-dd");
 }
 
-function batchProgress(startDate: string, endDate: string): number {
-  if (!startDate || !endDate) return 0;
-  const start = new Date(startDate).getTime();
-  const end = new Date(endDate).getTime();
-  const now = Date.now();
-  if (now <= start) return 0;
-  if (now >= end) return 100;
-  return Math.round(((now - start) / (end - start)) * 100);
+function batchProgress(completedClassesCount?: number, totalClassesCount?: number): number {
+  if (!totalClassesCount || totalClassesCount <= 0) return 0;
+  return Math.min(100, Math.round(((completedClassesCount || 0) / totalClassesCount) * 100));
 }
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
@@ -379,24 +374,26 @@ export default function BatchesPage() {
               </div>
 
               {/* Date Range + Progress */}
-              {batch.startDate && batch.endDate && (
+              {((batch.startDate && batch.endDate) || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
                 <div>
-                  <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1.5">
-                    <span className="flex items-center gap-1">
-                      <Calendar className="w-3 h-3" />
-                      {format(new Date(batch.startDate), "MMM d, yyyy")}
-                    </span>
-                    <span>{format(new Date(batch.endDate), "MMM d, yyyy")}</span>
-                  </div>
+                  {batch.startDate && batch.endDate && (
+                    <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1.5">
+                      <span className="flex items-center gap-1">
+                        <Calendar className="w-3 h-3" />
+                        {format(new Date(batch.startDate), "MMM d, yyyy")}
+                      </span>
+                      <span>{format(new Date(batch.endDate), "MMM d, yyyy")}</span>
+                    </div>
+                  )}
                   <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
                     <div
                       className="h-full brand-gradient rounded-full transition-all"
-                      style={{ width: `${batchProgress(batch.startDate, batch.endDate)}%` }}
+                      style={{ width: `${batchProgress(batch.completedClassesCount, batch.totalClassesCount)}%` }}
                     />
                   </div>
                   <div className="flex items-center justify-between text-[9px] text-neutral-600 mt-1">
                     <span>{Math.max((batch.totalClassesCount || 0) - (batch.completedClassesCount || 0), 0)} classes remaining</span>
-                    <span>{batchProgress(batch.startDate, batch.endDate)}% elapsed</span>
+                    <span>{batchProgress(batch.completedClassesCount, batch.totalClassesCount)}% completed</span>
                   </div>
                 </div>
               )}
