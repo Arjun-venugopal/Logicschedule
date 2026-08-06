@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo, memo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Download, Plus, Edit2, Trash2, X } from "lucide-react";
+import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Download, Plus, Edit2, Trash2, X, GraduationCap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
@@ -354,9 +354,18 @@ export default function StudentsPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
-                          {student.batch?.name || "Unassigned"}
-                        </span>
+                        {student.batch?.status === "Completed" ? (
+                          <button
+                            onClick={() => setSelectedStudentId(student._id)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all shadow-sm shadow-emerald-500/20"
+                          >
+                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Choose Next Course
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
+                            {student.batch?.name || "Unassigned"}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
@@ -440,19 +449,76 @@ export default function StudentsPage() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>Batch Assignment</span>
+                    <span>Batch / Course Assignment</span>
                     {editStudent._id && <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">Promote / Advance</span>}
                   </label>
                   <select
                     value={editStudent.batch || ""}
                     onChange={(e) => setEditStudent({ ...editStudent, batch: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm"
+                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm mb-2"
                   >
                     <option value="">Select a batch</option>
                     {batches.map((b: any) => (
-                      <option key={b._id} value={b._id}>{b.name}</option>
+                      <option key={b._id} value={b._id}>
+                        {b.name} ({b.subject}) {b.status === 'Completed' ? '— [Completed]' : ''}
+                      </option>
                     ))}
                   </select>
+                  <div className="space-y-2 mt-2">
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-neutral-500 mb-1">Quick Select Course Level:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {["Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((lvl) => {
+                          const matchBatch = batches.find((b: any) => 
+                            ((b.name || "").toLowerCase().includes(lvl.toLowerCase()) || (b.subject || "").toLowerCase().includes(lvl.toLowerCase())) && b.status !== "Completed"
+                          );
+                          return (
+                            <button
+                              key={lvl}
+                              type="button"
+                              onClick={() => matchBatch && setEditStudent({ ...editStudent, batch: matchBatch._id })}
+                              disabled={!matchBatch}
+                              className={`text-[11px] px-2 py-0.5 rounded-md border font-medium transition-all ${
+                                matchBatch
+                                  ? editStudent.batch === matchBatch._id
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
+                                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-neutral-500"
+                                  : "bg-neutral-800/30 text-neutral-600 border-neutral-800 cursor-not-allowed"
+                              }`}
+                            >
+                              {lvl} {matchBatch ? `(${matchBatch.name})` : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-[10px] uppercase font-semibold text-neutral-500 mb-1">Quick Select Subject:</p>
+                      <div className="flex flex-wrap gap-1">
+                        {["Scratch", "Robotics", "Python", "AI"].map((courseName) => {
+                          const matchBatch = batches.find((b: any) => (b.subject || "").toLowerCase().includes(courseName.toLowerCase()) && b.status !== "Completed");
+                          return (
+                            <button
+                              key={courseName}
+                              type="button"
+                              onClick={() => matchBatch && setEditStudent({ ...editStudent, batch: matchBatch._id })}
+                              disabled={!matchBatch}
+                              className={`text-[11px] px-2 py-0.5 rounded-md border font-medium transition-all ${
+                                matchBatch
+                                  ? editStudent.batch === matchBatch._id
+                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
+                                    : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                                  : "bg-neutral-800/30 text-neutral-600 border-neutral-800 cursor-not-allowed"
+                              }`}
+                            >
+                              + {courseName} {matchBatch ? `(${matchBatch.name})` : ""}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Parent Name</label>

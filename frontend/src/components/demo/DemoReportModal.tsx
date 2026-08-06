@@ -48,12 +48,12 @@ interface ReportForm {
 }
 
 const TASK_LABELS: { key: keyof Scores; label: string; icon: string }[] = [
-  { key: "introductionToInterface", label: "Introduction to Interface", icon: "🧩" },
-  { key: "blocksAndCommands", label: "Blocks & Commands", icon: "🧱" },
+  { key: "communicationAndParticipation", label: "Communication & Participation", icon: "💬" },
   { key: "logicAndProblemSolving", label: "Logic & Problem Solving", icon: "</>" },
   { key: "creativityAndProjectBuilding", label: "Creativity & Project Building", icon: "💡" },
-  { key: "communicationAndParticipation", label: "Communication & Participation", icon: "💬" },
   { key: "timeManagement", label: "Time Management", icon: "⏱️" },
+  { key: "introductionToInterface", label: "Introduction to Interface", icon: "🧩" },
+  { key: "blocksAndCommands", label: "Blocks & Commands", icon: "🧱" },
 ];
 
 const emptyScores = (): Scores => ({

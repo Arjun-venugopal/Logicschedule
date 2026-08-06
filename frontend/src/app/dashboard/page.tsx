@@ -9,10 +9,13 @@ import Link from "next/link";
 import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
+import { ActiveBatchesAnalyticsModal } from "@/components/batches/ActiveBatchesAnalyticsModal";
+
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
   const [showAllLiveTeachers, setShowAllLiveTeachers] = useState(false);
+  const [showActiveAnalyticsModal, setShowActiveAnalyticsModal] = useState(false);
 
   const { data: stats, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard-stats"],
@@ -104,31 +107,46 @@ export default function DashboardPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {statCards.map((stat, i) => (
-          <motion.div
-            key={i}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: i * 0.08 }}
-            className={`p-5 rounded-2xl bg-neutral-900 border ${stat.border} relative overflow-hidden`}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div className={`p-2 rounded-xl ${stat.bg}`}>
-                <stat.icon className={`w-5 h-5 ${stat.color}`} />
+        {statCards.map((stat, i) => {
+          const isActiveBatchesCard = stat.label === "Active Batches";
+          return (
+            <motion.div
+              key={i}
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: i * 0.08 }}
+              onClick={() => {
+                if (isActiveBatchesCard) setShowActiveAnalyticsModal(true);
+              }}
+              className={`p-5 rounded-2xl bg-neutral-900 border ${stat.border} relative overflow-hidden ${
+                isActiveBatchesCard ? "cursor-pointer hover:border-orange-500/50 hover:bg-neutral-800/80 transition-all group shadow-lg shadow-orange-950/10" : ""
+              }`}
+            >
+              <div className="flex items-start justify-between mb-4">
+                <div className={`p-2 rounded-xl ${stat.bg}`}>
+                  <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                </div>
+                {isLoading ? (
+                  <div className="w-4 h-4 border-2 border-neutral-700 border-t-amber-500 rounded-full animate-spin" />
+                ) : (
+                  <TrendingUp className="w-4 h-4 text-neutral-700" />
+                )}
               </div>
-              {isLoading ? (
-                <div className="w-4 h-4 border-2 border-neutral-700 border-t-amber-500 rounded-full animate-spin" />
-              ) : (
-                <TrendingUp className="w-4 h-4 text-neutral-700" />
-              )}
-            </div>
-            <div className="text-3xl font-bold text-white mb-0.5">
-              {isLoading ? <span className="text-neutral-600 text-lg">—</span> : stat.value}
-            </div>
-            <div className="text-xs text-neutral-500 font-medium">{stat.label}</div>
-            {stat.sub && <div className="text-[10px] text-neutral-600 mt-0.5">{stat.sub}</div>}
-          </motion.div>
-        ))}
+              <div className="text-3xl font-bold text-white mb-0.5">
+                {isLoading ? <span className="text-neutral-600 text-lg">—</span> : stat.value}
+              </div>
+              <div className="text-xs text-neutral-500 font-medium flex items-center justify-between">
+                <span>{stat.label}</span>
+                {isActiveBatchesCard && (
+                  <span className="text-[10px] text-orange-400 font-semibold group-hover:underline">
+                    View Analytics →
+                  </span>
+                )}
+              </div>
+              {stat.sub && <div className="text-[10px] text-neutral-600 mt-0.5">{stat.sub}</div>}
+            </motion.div>
+          );
+        })}
       </div>
 
       {/* Charts + Live Status */}
@@ -273,6 +291,10 @@ export default function DashboardPage() {
         </motion.div>
         )}
       </div>
+
+      {showActiveAnalyticsModal && (
+        <ActiveBatchesAnalyticsModal onClose={() => setShowActiveAnalyticsModal(false)} />
+      )}
     </div>
   );
 }

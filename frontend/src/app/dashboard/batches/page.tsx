@@ -9,6 +9,7 @@ import { format, addWeeks, addMonths, addYears, addDays, differenceInDays, parse
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { BatchAnalyticsModal } from "@/components/batches/BatchAnalyticsModal";
+import { ActiveBatchesAnalyticsModal } from "@/components/batches/ActiveBatchesAnalyticsModal";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -25,8 +26,10 @@ const DURATION_PRESETS = [
 const STATUS_COLORS: Record<string, string> = {
   Upcoming: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   Active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  Ongoing: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   Completed: "bg-neutral-700/50 text-neutral-400 border-neutral-600/30",
   Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
+  Dropped: "bg-red-500/10 text-red-400 border-red-500/20",
 };
 
 function computeEndDate(startDate: string, durationType: string): string {
@@ -123,7 +126,10 @@ export default function BatchesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState<string | null>(null);
   const [analyticsBatchId, setAnalyticsBatchId] = useState<string | null>(null);
+  const [showActiveAnalyticsModal, setShowActiveAnalyticsModal] = useState<boolean>(false);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
+  const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterCourse, setFilterCourse] = useState<string>("");
 
   useEffect(() => {
     if (form.durationType === "Custom") {
@@ -222,6 +228,27 @@ export default function BatchesPage() {
   const filteredBatches = batches.filter((b: any) => {
     if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
     
+    if (filterStatus) {
+      const bStatus = (b.status || "").toLowerCase();
+      if (filterStatus === "Ongoing") {
+        if (bStatus !== "active" && bStatus !== "ongoing") return false;
+      } else if (filterStatus === "Completed") {
+        if (bStatus !== "completed") return false;
+      } else if (filterStatus === "Dropped") {
+        if (bStatus !== "dropped" && bStatus !== "cancelled") return false;
+      } else if (filterStatus === "Upcoming") {
+        if (bStatus !== "upcoming") return false;
+      } else {
+        if (bStatus !== filterStatus.toLowerCase()) return false;
+      }
+    }
+
+    if (filterCourse) {
+      const bSubject = (b.subject || "").toLowerCase();
+      const targetCourse = filterCourse.toLowerCase();
+      if (!bSubject.includes(targetCourse)) return false;
+    }
+
     if (!searchQuery) return true;
     const lowerSearch = searchQuery.toLowerCase();
     return (
@@ -239,20 +266,29 @@ export default function BatchesPage() {
           <h1 className="text-2xl font-bold text-white">Batches</h1>
           <p className="text-neutral-400 text-sm mt-0.5">Create and manage class batches with schedules and meeting links</p>
         </div>
-        {hasWriteAccess && (
+        <div className="flex items-center gap-3">
           <button
-            onClick={openCreate}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+            onClick={() => setShowActiveAnalyticsModal(true)}
+            className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 font-semibold rounded-xl transition-all text-sm shadow-md"
           >
-            <Plus className="w-4 h-4" /> New Batch
+            <BookOpen className="w-4 h-4 text-amber-500" /> Active Analytics
           </button>
-        )}
+          {hasWriteAccess && (
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+            >
+              <Plus className="w-4 h-4" /> New Batch
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
-      {user?.role !== "Teacher" && (
-        <div className="flex flex-col md:flex-row md:items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
-          <div className="flex-1 md:max-w-xs">
+      <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
+        {/* Teacher Filter */}
+        {user?.role !== "Teacher" && (
+          <div className="flex-1 min-w-[160px] md:max-w-xs">
             <select
               value={filterTeacher}
               onChange={(e) => setFilterTeacher(e.target.value)}
@@ -264,17 +300,53 @@ export default function BatchesPage() {
               ))}
             </select>
           </div>
-          {filterTeacher && (
-            <button
-              onClick={() => setFilterTeacher("")}
-              className="p-2 text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded-xl transition-colors"
-              title="Clear Filter"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          )}
+        )}
+
+        {/* Batch Status Filter */}
+        <div className="flex-1 min-w-[160px] md:max-w-xs">
+          <select
+            value={filterStatus}
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          >
+            <option value="">All Statuses</option>
+            <option value="Ongoing">Ongoing / Active</option>
+            <option value="Completed">Completed</option>
+            <option value="Dropped">Dropped / Cancelled</option>
+            <option value="Upcoming">Upcoming</option>
+          </select>
         </div>
-      )}
+
+        {/* Course Details Filter */}
+        <div className="flex-1 min-w-[160px] md:max-w-xs">
+          <select
+            value={filterCourse}
+            onChange={(e) => setFilterCourse(e.target.value)}
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          >
+            <option value="">All Course Details</option>
+            <option value="Scratch">Scratch</option>
+            <option value="Robotics">Robotics</option>
+            <option value="Python">Python</option>
+            <option value="AI">AI</option>
+          </select>
+        </div>
+
+        {/* Clear Filters */}
+        {(filterTeacher || filterStatus || filterCourse) && (
+          <button
+            onClick={() => {
+              setFilterTeacher("");
+              setFilterStatus("");
+              setFilterCourse("");
+            }}
+            className="px-3 py-2 text-xs font-semibold text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-xl transition-colors flex items-center gap-1.5 shrink-0"
+            title="Clear Filters"
+          >
+            <X className="w-3.5 h-3.5" /> Clear Filters
+          </button>
+        )}
+      </div>
 
       {/* Batch Cards */}
       {isLoading ? (
@@ -292,111 +364,138 @@ export default function BatchesPage() {
         </div>
       ) : (
         <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filteredBatches.map((batch: any, i: number) => (
-            <motion.div
-              key={batch._id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.06 }}
-              onClick={() => setAnalyticsBatchId(batch._id)}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex flex-col gap-4 hover:border-amber-500/50 cursor-pointer transition-colors"
-            >
-              {/* Card Header */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 brand-gradient rounded-xl flex items-center justify-center shrink-0">
-                    <BookOpen className="w-5 h-5 text-black" />
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-white leading-tight">{batch.name}</h3>
-                    <p className="text-sm text-amber-400">{batch.subject}</p>
-                  </div>
-                </div>
-                {hasWriteAccess && (
-                  <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() => openEdit(batch)}
-                      className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-white"
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={() => setDeleteConfirm(batch._id)}
-                      className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+          {filteredBatches.map((batch: any, i: number) => {
+            const isCompleted = batch.status === "Completed" || (batch.totalClassesCount > 0 && (batch.completedClassesCount || 0) >= batch.totalClassesCount);
+            
+            return (
+              <motion.div
+                key={batch._id}
+                initial={{ opacity: 0, y: 16 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.06 }}
+                onClick={() => setAnalyticsBatchId(batch._id)}
+                className={`bg-neutral-900 border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer transition-colors relative overflow-hidden ${
+                  isCompleted 
+                    ? "border-emerald-500/40 hover:border-emerald-400 shadow-lg shadow-emerald-950/20" 
+                    : "border-neutral-800 hover:border-amber-500/50"
+                }`}
+              >
+                {/* Top Accent bar for completed batches */}
+                {isCompleted && (
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-500" />
                 )}
-              </div>
 
-              {/* Status + Duration badge */}
-              <div className="flex items-center gap-2 flex-wrap">
-                {batch.status && (
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[batch.status] || STATUS_COLORS.Upcoming}`}>
-                    {batch.status}
-                  </span>
-                )}
-                {batch.durationType && (
-                  <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
-                    <Clock3 className="w-2.5 h-2.5" /> 
-                    {batch.durationType === 'Custom' && batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : batch.durationType}
-                  </span>
-                )}
-              </div>
-
-              {/* Info Row */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-neutral-800/60 rounded-xl p-3">
-                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Students</p>
-                  <p className="text-lg font-bold text-white">{batch.studentsCount || 0}</p>
-                </div>
-                <div className="bg-neutral-800/60 rounded-xl p-3">
-                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes Done</p>
-                  <p className="text-lg font-bold text-emerald-400">
-                    {batch.completedClassesCount || 0} / {batch.totalClassesCount || 0}
-                  </p>
-                </div>
-                <div className="bg-neutral-800/60 rounded-xl p-3">
-                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Batch Duration</p>
-                  <p className="text-lg font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                    {batch.durationType === 'Custom' && batch.numberOfSessions 
-                      ? `${batch.numberOfSessions} Hours` 
-                      : (batch.durationType === 'Custom' ? 'Custom' : (batch.durationType || "—"))}
-                  </p>
-                </div>
-                <div className="bg-neutral-800/60 rounded-xl p-3 overflow-hidden">
-                  <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Timing</p>
-                  <p className="text-sm font-semibold text-white whitespace-nowrap text-ellipsis overflow-hidden">
-                    {batch.timing?.startTime || "—"} - {batch.timing?.endTime || "—"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Date Range + Progress */}
-              {((batch.startDate && batch.endDate) || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
-                <div>
-                  {batch.startDate && batch.endDate && (
-                    <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1.5">
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        {format(new Date(batch.startDate), "MMM d, yyyy")}
-                      </span>
-                      <span>{format(new Date(batch.endDate), "MMM d, yyyy")}</span>
+                {/* Card Header */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isCompleted ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30" : "brand-gradient text-black"}`}>
+                      <BookOpen className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white leading-tight">{batch.name}</h3>
+                      <p className="text-sm text-amber-400">{batch.subject}</p>
+                    </div>
+                  </div>
+                  {hasWriteAccess && (
+                    <div className="flex items-center gap-1.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => openEdit(batch)}
+                        className="p-1.5 hover:bg-neutral-800 rounded-lg transition-colors text-neutral-500 hover:text-white"
+                      >
+                        <Edit2 className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={() => setDeleteConfirm(batch._id)}
+                        className="p-1.5 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   )}
-                  <div className="h-1.5 bg-neutral-800 rounded-full overflow-hidden">
-                    <div
-                      className="h-full brand-gradient rounded-full transition-all"
-                      style={{ width: `${batchProgress(batch.completedClassesCount, batch.totalClassesCount)}%` }}
-                    />
+                </div>
+
+                {/* Status + Duration badge */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {isCompleted ? (
+                    <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 font-bold shadow-sm shadow-emerald-500/20">
+                      <Check className="w-3 h-3 text-emerald-400" /> Class is Completed
+                    </span>
+                  ) : batch.status ? (
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full border font-semibold ${STATUS_COLORS[batch.status] || STATUS_COLORS.Upcoming}`}>
+                      {batch.status}
+                    </span>
+                  ) : null}
+                  {batch.durationType && (
+                    <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
+                      <Clock3 className="w-2.5 h-2.5" /> 
+                      {batch.durationType === 'Custom' && batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : batch.durationType}
+                    </span>
+                  )}
+                </div>
+
+                {/* Info Row */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-neutral-800/60 rounded-xl p-3">
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Students</p>
+                    <p className="text-lg font-bold text-white">{batch.studentsCount || 0}</p>
                   </div>
-                  <div className="flex items-center justify-between text-[9px] text-neutral-600 mt-1">
-                    <span>{Math.max((batch.totalClassesCount || 0) - (batch.completedClassesCount || 0), 0)} classes remaining</span>
-                    <span>{batchProgress(batch.completedClassesCount, batch.totalClassesCount)}% completed</span>
+                  <div className="bg-neutral-800/60 rounded-xl p-3">
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes Done</p>
+                    <p className={`text-lg font-bold ${isCompleted ? "text-emerald-400" : "text-amber-400"}`}>
+                      {batch.completedClassesCount || 0} / {batch.totalClassesCount || 0}
+                    </p>
+                  </div>
+                  <div className="bg-neutral-800/60 rounded-xl p-3">
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Batch Duration</p>
+                    <p className="text-lg font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis">
+                      {batch.durationType === 'Custom' && batch.numberOfSessions 
+                        ? `${batch.numberOfSessions} Hours` 
+                        : (batch.durationType === 'Custom' ? 'Custom' : (batch.durationType || "—"))}
+                    </p>
+                  </div>
+                  <div className="bg-neutral-800/60 rounded-xl p-3 overflow-hidden">
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Timing</p>
+                    <p className="text-sm font-semibold text-white whitespace-nowrap text-ellipsis overflow-hidden">
+                      {batch.timing?.startTime || "—"} - {batch.timing?.endTime || "—"}
+                    </p>
                   </div>
                 </div>
-              )}
+
+                {/* Date Range + Progress */}
+                {((batch.startDate && batch.endDate) || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
+                  <div>
+                    {batch.startDate && batch.endDate && (
+                      <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1.5">
+                        <span className="flex items-center gap-1">
+                          <Calendar className="w-3 h-3" />
+                          {format(new Date(batch.startDate), "MMM d, yyyy")}
+                        </span>
+                        <span>{format(new Date(batch.endDate), "MMM d, yyyy")}</span>
+                      </div>
+                    )}
+                    <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          isCompleted ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50" : "brand-gradient"
+                        }`}
+                        style={{ width: `${isCompleted ? 100 : batchProgress(batch.completedClassesCount, batch.totalClassesCount)}%` }}
+                      />
+                    </div>
+                    {isCompleted ? (
+                      <div className="flex items-center justify-between text-[10px] font-semibold mt-1.5">
+                        <span className="text-emerald-400 flex items-center gap-1">
+                          <Check className="w-3.5 h-3.5" /> Class is Completed
+                        </span>
+                        <span className="text-emerald-400">100% completed</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between text-[9px] text-neutral-600 mt-1">
+                        <span>{Math.max((batch.totalClassesCount || 0) - (batch.completedClassesCount || 0), 0)} classes remaining</span>
+                        <span>{batchProgress(batch.completedClassesCount, batch.totalClassesCount)}% completed</span>
+                      </div>
+                    )}
+                  </div>
+                )}
 
               {/* Days */}
               {batch.days?.length > 0 && (
@@ -447,8 +546,9 @@ export default function BatchesPage() {
                   </button>
                 </div>
               )}
-            </motion.div>
-          ))}
+              </motion.div>
+            );
+          })}
         </div>
       )}
 
@@ -492,15 +592,35 @@ export default function BatchesPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Subject</label>
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Subject / Course</label>
                     <input
                       required
                       type="text"
-                      placeholder="e.g. Physics"
+                      placeholder="e.g. Scratch, Robotics, Python, AI"
                       value={form.subject}
                       onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600 mb-2"
                     />
+                    <div className="flex flex-wrap gap-1">
+                      {["Scratch", "Robotics", "Python", "AI", "Level 1", "Level 2", "Level 3", "Level 4", "Level 5"].map((tag) => (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => {
+                            const current = form.subject.trim();
+                            if (!current) setForm({ ...form, subject: tag });
+                            else if (!current.includes(tag)) setForm({ ...form, subject: `${current} - ${tag}` });
+                          }}
+                          className={`text-[10px] px-2 py-0.5 rounded-md border font-medium transition-all ${
+                            form.subject.includes(tag)
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold"
+                              : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-600"
+                          }`}
+                        >
+                          + {tag}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
@@ -613,19 +733,24 @@ export default function BatchesPage() {
                 {/* Status */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-300 mb-1.5">Status</label>
-                  <div className="flex gap-2">
-                    {["Upcoming", "Active", "Completed", "Cancelled"].map((s) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                    {[
+                      { label: "Upcoming", value: "Upcoming" },
+                      { label: "Ongoing", value: "Active" },
+                      { label: "Completed", value: "Completed" },
+                      { label: "Dropped", value: "Dropped" },
+                    ].map((s) => (
                       <button
-                        key={s}
+                        key={s.value}
                         type="button"
-                        onClick={() => setForm({ ...form, status: s })}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                          form.status === s
-                            ? STATUS_COLORS[s]
+                        onClick={() => setForm({ ...form, status: s.value })}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
+                          form.status === s.value || (s.value === "Active" && form.status === "Ongoing") || (s.value === "Dropped" && form.status === "Cancelled")
+                            ? STATUS_COLORS[s.value] || STATUS_COLORS.Upcoming
                             : "bg-neutral-800 text-neutral-600 border-neutral-700 hover:border-neutral-500"
                         }`}
                       >
-                        {s}
+                        {s.label}
                       </button>
                     ))}
                   </div>
@@ -773,9 +898,13 @@ export default function BatchesPage() {
         )}
       </AnimatePresence>
 
-      {/* Analytics Modal */}
+      {/* Analytics Modals */}
       {analyticsBatchId && (
         <BatchAnalyticsModal batchId={analyticsBatchId} onClose={() => setAnalyticsBatchId(null)} />
+      )}
+
+      {showActiveAnalyticsModal && (
+        <ActiveBatchesAnalyticsModal onClose={() => setShowActiveAnalyticsModal(false)} />
       )}
     </div>
   );

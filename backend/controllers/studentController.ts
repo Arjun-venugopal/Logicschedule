@@ -110,13 +110,13 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
           { batch: { $in: teacherBatchIds } },
           { 'pastBatches.batch': { $in: teacherBatchIds } }
         ]
-      }).populate('batch', 'name subject');
+      }).populate('batch', 'name subject status');
       
       res.status(200).json(students);
       return;
     }
 
-    const students = await Student.find().populate('batch', 'name subject');
+    const students = await Student.find().populate('batch', 'name subject status');
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch all students' });
@@ -126,8 +126,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
 export const getStudentById = async (req: Request, res: Response): Promise<void> => {
   try {
     const student = await Student.findById(req.params.id as string)
-      .populate('batch', 'name subject')
-      .populate('pastBatches.batch', 'name subject');
+      .populate('batch', 'name subject status')
+      .populate('pastBatches.batch', 'name subject status');
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
       return;

@@ -11,7 +11,7 @@ export interface Batch {
   };
   startDate?: string;
   endDate?: string;
-  status: 'Active' | 'Inactive' | 'Completed';
+  status: 'Active' | 'Ongoing' | 'Completed' | 'Dropped' | 'Cancelled' | 'Upcoming' | 'Inactive';
   durationType: 'Monthly' | 'Custom';
   numberOfSessions?: number;
   meetingLink?: string;
