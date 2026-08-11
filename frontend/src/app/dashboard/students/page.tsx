@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useDebounce } from "@/hooks/useDebounce";
 import dynamic from "next/dynamic";
 import type { Student, Batch } from "@/types";
 
@@ -27,6 +28,7 @@ export default function StudentsPage() {
   const [showRoster, setShowRoster] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { searchQuery } = useSearchStore();
+  const debouncedSearch = useDebounce(searchQuery, 300);
   const queryClient = useQueryClient();
   const { canWrite } = usePermissions();
   const hasWriteAccess = canWrite("students");
@@ -100,18 +102,18 @@ export default function StudentsPage() {
   };
 
   const filteredStudents = useMemo(() => {
-    if (!searchQuery) return students;
-    const lowerSearch = searchQuery.toLowerCase();
+    if (!debouncedSearch) return students;
+    const lowerSearch = debouncedSearch.toLowerCase();
     return students.filter((s: any) =>
       (s.name || "").toLowerCase().includes(lowerSearch) ||
       (s.email || "").toLowerCase().includes(lowerSearch) ||
       (s.batch?.name || "").toLowerCase().includes(lowerSearch)
     );
-  }, [students, searchQuery]);
+  }, [students, debouncedSearch]);
 
   const uniqueBatches = useMemo(() => {
-    const batches = new Set(students.map((s: any) => s.batch?._id).filter(Boolean));
-    return batches.size;
+    const batchesSet = new Set(students.map((s: any) => s.batch?._id).filter(Boolean));
+    return batchesSet.size;
   }, [students]);
 
   return (

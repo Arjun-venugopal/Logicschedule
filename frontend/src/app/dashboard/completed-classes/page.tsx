@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, CheckCircle, FileText, Clock, Edit2, X, AlertTriangle } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format, parseISO, isBefore } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 
@@ -39,33 +39,50 @@ export default function CompletedClassesPage() {
     },
   });
 
-  // Filter schedules that are completed OR in the past (to let teachers mark them as completed)
-  const pastOrCompletedClasses = schedules.filter((s: any) => {
-    // A schedule is considered past if its date is before today, 
-    // or if it's already marked as Completed.
-    const isPast = isBefore(new Date(s.date), new Date(new Date().setHours(0,0,0,0)));
-    const isCompleted = s.status === "Completed";
-    
-    if (!isPast && !isCompleted) return false;
-
-    // Apply student filter
-    if (selectedStudentId) {
-      const student = students.find((st: any) => st._id === selectedStudentId);
-      if (student) {
-        const studentBatchId = student.batch?._id || student.batch;
-        const scheduleBatchId = s.batch?._id || s.batch;
-        if (scheduleBatchId !== studentBatchId) return false;
+  const studentBatchMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const st of students) {
+      if (st._id) {
+        const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+        map.set(st._id.toString(), bId);
       }
     }
+    return map;
+  }, [students]);
 
-    // Apply date filter
-    if (selectedDate) {
-      const scheduleDate = format(new Date(s.date), "yyyy-MM-dd");
-      if (scheduleDate !== selectedDate) return false;
-    }
+  // Filter schedules that are completed OR in the past, memoized to prevent re-sorting on every render
+  const pastOrCompletedClasses = useMemo(() => {
+    const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
+    const targetStudentBatchId = selectedStudentId ? studentBatchMap.get(selectedStudentId) : null;
 
-    return true;
-  }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return schedules
+      .filter((s: any) => {
+        const isPast = isBefore(new Date(s.date), todayStart);
+        const isCompleted = s.status === "Completed";
+        
+        if (!isPast && !isCompleted) return false;
+
+        // Apply student filter via O(1) Map lookup
+        if (selectedStudentId) {
+          if (!targetStudentBatchId) return false;
+          const scheduleBatchId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+          if (scheduleBatchId !== targetStudentBatchId) return false;
+        }
+
+        // Apply date filter
+        if (selectedDate) {
+          const scheduleDate = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
+          if (scheduleDate !== selectedDate) return false;
+        }
+
+        return true;
+      })
+      .sort((a: any, b: any) => {
+        const timeA = typeof a.date === "number" ? a.date : new Date(a.date).getTime();
+        const timeB = typeof b.date === "number" ? b.date : new Date(b.date).getTime();
+        return timeB - timeA;
+      });
+  }, [schedules, selectedStudentId, selectedDate, studentBatchMap]);
 
   if (user?.role !== "Teacher") {
     return (

@@ -28,9 +28,28 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
     }
 
     let createdStudents = 0;
-    const batchMap = new Map<string, any>();
+    
+    // Pre-fetch all batches into a Map<name, id> for O(1) lookups
+    const allBatches = await Batch.find({});
+    const batchMap = new Map<string, string>();
+    for (const b of allBatches) {
+      if (b.name) batchMap.set(b.name, b._id.toString());
+    }
 
-    // Process each row
+    // Pre-fetch all existing student unique keys into a Set for O(1) duplicate checks
+    const allStudents = await Student.find({}).select('name batch');
+    const existingStudentKeys = new Set<string>();
+    for (const s of allStudents) {
+      const bId = s.batch?._id ? s.batch._id.toString() : s.batch?.toString();
+      if (s.name && bId) {
+        existingStudentKeys.add(`${bId}:${s.name}`);
+      }
+    }
+
+    const newStudentsToInsert: any[] = [];
+    const batchCountIncrements = new Map<string, number>();
+
+    // Process each row in memory
     for (const row of data) {
       const studentName = row['Student Name'] || row['name'];
       const batchName = row['Batch'] || row['batch'];
@@ -44,36 +63,40 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
       // Find or create batch
       let batchId = batchMap.get(batchName);
       if (!batchId) {
-        let batch = await Batch.findOne({ name: batchName });
-        if (!batch) {
-          // Auto create batch if it doesn't exist
-          batch = await Batch.create({
-            name: batchName,
-            subject: 'General', // Default subject
-            studentsCount: 0,
-            status: 'Active',
-            days: ['Monday'], // Default
-            timing: { startTime: '09:00', endTime: '10:00' },
-          });
-        }
-        batchId = batch._id;
+        let batch = await Batch.create({
+          name: batchName,
+          subject: 'General',
+          studentsCount: 0,
+          status: 'Active',
+          days: ['Monday'],
+          timing: { startTime: '09:00', endTime: '10:00' },
+        });
+        batchId = String(batch._id);
         batchMap.set(batchName, batchId);
       }
 
-      // Check if student already exists in this batch to avoid duplicates
-      const existingStudent = await Student.findOne({ name: studentName, batch: batchId });
-      if (!existingStudent) {
-        await Student.create({
-          name: studentName,
-          batch: batchId,
-          parentName: parentName || '',
-          mobileNumber: mobileNumber || '',
-        });
-        
-        // Update batch count
-        await Batch.findByIdAndUpdate(batchId, { $inc: { studentsCount: 1 } });
-        createdStudents++;
+      if (batchId) {
+        const studentKey = `${batchId}:${studentName}`;
+        if (!existingStudentKeys.has(studentKey)) {
+          existingStudentKeys.add(studentKey);
+          newStudentsToInsert.push({
+            name: studentName,
+            batch: batchId,
+            parentName: parentName || '',
+            mobileNumber: mobileNumber || '',
+          });
+          const curr = batchCountIncrements.get(batchId) || 0;
+          batchCountIncrements.set(batchId, curr + 1);
+        }
       }
+    }
+
+    if (newStudentsToInsert.length > 0) {
+      await Student.insertMany(newStudentsToInsert);
+      for (const [bId, inc] of batchCountIncrements.entries()) {
+        await Batch.findByIdAndUpdate(bId, { $inc: { studentsCount: inc } });
+      }
+      createdStudents = newStudentsToInsert.length;
     }
 
     res.status(200).json({ message: `Successfully imported ${createdStudents} students and arranged batches.` });
@@ -95,6 +118,9 @@ export const getStudentsByBatch = async (req: Request, res: Response): Promise<v
 
 export const getAllStudents = async (req: any, res: Response): Promise<void> => {
   try {
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    const startAfter = req.query.startAfter as string | undefined;
+
     if (req.user && req.user.role === 'Teacher') {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (!teacher) {
@@ -105,18 +131,25 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
       const teacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
       const teacherBatchIds = teacherBatches.map((b: any) => b._id);
       
-      const students = await Student.find({
+      let queryChain = Student.find({
         $or: [
           { batch: { $in: teacherBatchIds } },
           { 'pastBatches.batch': { $in: teacherBatchIds } }
         ]
-      }).populate('batch', 'name subject status');
-      
+      });
+      if (limit) queryChain = queryChain.limit(limit);
+      if (startAfter) queryChain = queryChain.startAfter(startAfter);
+
+      const students = await queryChain.populate('batch', 'name subject status');
       res.status(200).json(students);
       return;
     }
 
-    const students = await Student.find().populate('batch', 'name subject status');
+    let queryChain = Student.find();
+    if (limit) queryChain = queryChain.limit(limit);
+    if (startAfter) queryChain = queryChain.startAfter(startAfter);
+
+    const students = await queryChain.populate('batch', 'name subject status');
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch all students' });

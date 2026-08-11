@@ -255,14 +255,17 @@ export default function SchedulePage() {
     });
   }, [schedules, isTeacher, filterTeacher, filterBatch]);
 
-  const { cellEventMap, dayEventsMap } = useMemo(() => {
+  const { cellEventMap, dayEventsMap, teacherScheduleMap, teacherDateScheduleMap } = useMemo(() => {
     const cellMap = new Map<string, PopulatedScheduleEntry>();
     const dayMap = new Map<string, PopulatedScheduleEntry[]>();
+    const teacherMap = new Map<string, PopulatedScheduleEntry[]>();
+    const teacherDateMap = new Map<string, PopulatedScheduleEntry[]>();
 
     for (const s of filteredSchedules) {
       if (!s.date) continue;
-      const sDateStr = format(new Date(s.date), "yyyy-MM-dd");
+      const sDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
       const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
+      const tId = s.teacher?._id ? s.teacher._id.toString() : (s.teacher ? s.teacher.toString() : "");
 
       // Cell key format: "yyyy-MM-dd_hour"
       cellMap.set(`${sDateStr}_${sHour}`, s);
@@ -274,9 +277,33 @@ export default function SchedulePage() {
         dayMap.set(sDateStr, list);
       }
       list.push(s);
+
+      // Teacher schedules map: Map<teacherId, Class[]>
+      if (tId) {
+        let tList = teacherMap.get(tId);
+        if (!tList) {
+          tList = [];
+          teacherMap.set(tId, tList);
+        }
+        tList.push(s);
+
+        // Teacher + Date map: Map<teacherId + ":" + date, Class[]>
+        const tdKey = `${tId}:${sDateStr}`;
+        let tdList = teacherDateMap.get(tdKey);
+        if (!tdList) {
+          tdList = [];
+          teacherDateMap.set(tdKey, tdList);
+        }
+        tdList.push(s);
+      }
     }
 
-    return { cellEventMap: cellMap, dayEventsMap: dayMap };
+    return {
+      cellEventMap: cellMap,
+      dayEventsMap: dayMap,
+      teacherScheduleMap: teacherMap,
+      teacherDateScheduleMap: teacherDateMap,
+    };
   }, [filteredSchedules]);
 
   // Match schedule to a day+hour cell with O(1) complexity

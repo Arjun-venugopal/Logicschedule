@@ -17,6 +17,7 @@ const nextConfig = {
     // Ignore type checking during build to save memory on Render's free tier
     ignoreBuildErrors: true,
   },
+  devIndicators: false,
   allowedDevOrigins: [
     '192.168.1.39',
     '192.168.1.39:3000',

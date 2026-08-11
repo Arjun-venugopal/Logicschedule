@@ -13,6 +13,7 @@ import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { useDebounce } from "@/hooks/useDebounce";
 
 function generatePassword(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
@@ -70,17 +71,18 @@ export default function TeachersPage() {
   });
 
   const { searchQuery } = useSearchStore();
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const filteredTeachers = useMemo(() => {
     if (!teachers) return [];
-    if (!searchQuery) return teachers;
-    const lowerSearch = searchQuery.toLowerCase();
+    if (!debouncedSearch) return teachers;
+    const lowerSearch = debouncedSearch.toLowerCase();
     return teachers.filter((t: any) =>
       (t.name || "").toLowerCase().includes(lowerSearch) ||
       (t.email || "").toLowerCase().includes(lowerSearch) ||
       (t.subjectExpertise || []).some((s: string) => s.toLowerCase().includes(lowerSearch))
     );
-  }, [teachers, searchQuery]);
+  }, [teachers, debouncedSearch]);
 
   const createTeacherMutation = useMutation({
     mutationFn: async (data: typeof formData) =>

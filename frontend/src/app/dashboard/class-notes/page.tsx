@@ -4,14 +4,16 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import { Search, BookOpen, Clock, CheckCircle, FileText, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
+import { useDebounce } from "@/hooks/useDebounce";
 
 export default function ClassNotesPage() {
   const { user } = useAuthStore();
   const { searchQuery, setSearchQuery } = useSearchStore();
+  const debouncedSearch = useDebounce(searchQuery, 300);
 
   const [selectedTeacherId, setSelectedTeacherId] = useState("");
   const [selectedStudentId, setSelectedStudentId] = useState("");
@@ -39,35 +41,67 @@ export default function ClassNotesPage() {
     queryFn: async () => (await api.get("/schedules")).data,
   });
 
+  const studentBatchMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const st of students) {
+      if (st._id) {
+        const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+        map.set(st._id.toString(), bId);
+      }
+    }
+    return map;
+  }, [students]);
+
   // Filter students by teacher
-  const teacherBatches = batches.filter((b: any) => (b.assignedTeacher?._id || b.assignedTeacher) === selectedTeacherId);
-  const teacherBatchIds = teacherBatches.map((b: any) => b._id);
-  const studentsForTeacher = students.filter((s: any) => teacherBatchIds.includes(s.batch?._id || s.batch));
-
-  const completedClasses = schedules.filter((s: any) => {
-    if (s.status !== "Completed" || (!s.notes && !s.subject)) return false;
-    
-    if (selectedTeacherId) {
-      if ((s.teacher?._id || s.teacher) !== selectedTeacherId) return false;
+  const teacherBatchIdsSet = useMemo(() => {
+    if (!selectedTeacherId) return new Set<string>();
+    const ids = new Set<string>();
+    for (const b of batches) {
+      const tId = b.assignedTeacher?._id ? b.assignedTeacher._id.toString() : (b.assignedTeacher ? b.assignedTeacher.toString() : '');
+      if (tId === selectedTeacherId && b._id) {
+        ids.add(b._id.toString());
+      }
     }
-    
-    if (selectedStudentId) {
-      const student = students.find((st: any) => st._id === selectedStudentId);
-      if (!student) return false;
-      const studentBatchId = student.batch?._id || student.batch;
-      const scheduleBatchId = s.batch?._id || s.batch;
-      if (scheduleBatchId !== studentBatchId) return false;
-    }
+    return ids;
+  }, [batches, selectedTeacherId]);
 
-    if (!searchQuery) return true;
-    
-    const lowerSearch = searchQuery.toLowerCase();
-    return (
-      (s.teacher?.name || "").toLowerCase().includes(lowerSearch) ||
-      (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
-      (s.subject || "").toLowerCase().includes(lowerSearch)
-    );
-  }).sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const studentsForTeacher = useMemo(() => {
+    if (!selectedTeacherId) return students;
+    return students.filter((s: any) => {
+      const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+      return teacherBatchIdsSet.has(bId);
+    });
+  }, [students, selectedTeacherId, teacherBatchIdsSet]);
+
+  const completedClasses = useMemo(() => {
+    const targetStudentBatchId = selectedStudentId ? studentBatchMap.get(selectedStudentId) : null;
+    const lowerSearch = debouncedSearch.toLowerCase();
+
+    return schedules
+      .filter((s: any) => {
+        if (s.status !== "Completed" || (!s.notes && !s.subject)) return false;
+        
+        if (selectedTeacherId) {
+          const tId = s.teacher?._id ? s.teacher._id.toString() : (s.teacher ? s.teacher.toString() : '');
+          if (tId !== selectedTeacherId) return false;
+        }
+        
+        if (selectedStudentId) {
+          if (!targetStudentBatchId) return false;
+          const scheduleBatchId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+          if (scheduleBatchId !== targetStudentBatchId) return false;
+        }
+
+        if (!debouncedSearch) return true;
+        
+        return (
+          (s.teacher?.name || "").toLowerCase().includes(lowerSearch) ||
+          (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
+          (s.subject || "").toLowerCase().includes(lowerSearch)
+        );
+      })
+      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [schedules, selectedTeacherId, selectedStudentId, studentBatchMap, debouncedSearch]);
 
   if (user?.role === "Teacher") {
     return (

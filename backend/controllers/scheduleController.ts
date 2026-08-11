@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
+import Student from '../models/Student';
+import { checkIntervalConflict } from '../utils/scheduleHelper';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -26,6 +28,7 @@ export const getSchedules = async (req: any, res: Response) => {
     }
 
     const schedules = await Schedule.find(query)
+      .sort({ date: -1 })
       .populate('teacher', 'name email')
       .populate('batch', 'name subject')
       .populate('replacementTeacher', 'name email');
@@ -48,14 +51,14 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       return;
     }
 
-    // Check for conflict
-    const existingSchedule = await Schedule.findOne({
+    // Check for interval conflict on the same teacher and date
+    const existingTeacherSchedules = await Schedule.find({
       teacher,
       date: new Date(date),
-      $or: [
-        { startTime: { $lt: endTime }, endTime: { $gt: startTime } },
-      ],
-    });
+      status: { $ne: 'Cancelled' }
+    }).select('_id startTime endTime status');
+
+    const isConflict = checkIntervalConflict(existingTeacherSchedules, { startTime, endTime });
 
     const schedule = await Schedule.create({
       teacher,
@@ -65,7 +68,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       endTime,
       status: status || 'Scheduled',
       replacementTeacher,
-      conflict: !!existingSchedule,
+      conflict: isConflict,
       meetingLink: meetingLink || '',
       subject: subject || '',
       notes: notes || '',
@@ -178,27 +181,44 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
 // @access  Private
 export const getSchedulesByStudent = async (req: Request, res: Response): Promise<void> => {
   try {
-    const studentId = req.params.studentId;
-    const allCompleted = await Schedule.find({ status: 'Completed' });
+    const studentId = req.params.studentId as string;
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.json([]);
+      return;
+    }
 
-    const matchingSchedules = allCompleted.filter((s: any) => {
-      if (!s.attendance || !Array.isArray(s.attendance)) return false;
-      return s.attendance.some((a: any) => {
-        const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
-        return id === studentId;
+    const batchIds: string[] = [];
+    if (student.batch) {
+      const bId = typeof student.batch === 'object' ? student.batch._id : student.batch;
+      if (bId) batchIds.push(bId.toString());
+    }
+    if (student.pastBatches && Array.isArray(student.pastBatches)) {
+      student.pastBatches.forEach((pb: any) => {
+        const pbId = typeof pb.batch === 'object' ? pb.batch?._id : pb.batch;
+        if (pbId) batchIds.push(pbId.toString());
       });
-    });
+    }
 
-    const populated = await Promise.all(
-      matchingSchedules.map((s: any) =>
-        s.populate([
-          { path: 'teacher', select: 'name email' },
-          { path: 'batch', select: 'name subject' }
-        ])
-      )
-    );
+    let matchingSchedules: any[] = [];
+    if (batchIds.length > 0) {
+      const batchSchedules = await Schedule.find({
+        batch: { $in: batchIds },
+        status: 'Completed'
+      })
+        .populate('teacher', 'name email')
+        .populate('batch', 'name subject');
 
-    res.json(populated);
+      matchingSchedules = batchSchedules.filter((s: any) => {
+        if (!s.attendance || !Array.isArray(s.attendance)) return false;
+        return s.attendance.some((a: any) => {
+          const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+          return id === studentId;
+        });
+      });
+    }
+
+    res.json(matchingSchedules);
   } catch (error) {
     console.error('Error fetching student schedules:', error);
     res.status(500).json({ message: 'Server error' });

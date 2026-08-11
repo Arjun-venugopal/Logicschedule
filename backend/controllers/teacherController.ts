@@ -445,8 +445,10 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     completedSchedulesList.forEach((s: any) => {
       if (s.attendance && s.attendance.length > 0) {
         if (studentId && studentId !== 'all') {
-          // If filtering by student, only consider this student's attendance
-          const studentAttendance = s.attendance.find((a: any) => a.studentId.toString() === studentId.toString());
+          const studentAttendance = s.attendance.find((a: any) => {
+            const stId = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+            return stId === studentId.toString();
+          });
           if (studentAttendance) {
             totalEnrolled += 1;
             if (studentAttendance.isPresent) totalPresent += 1;

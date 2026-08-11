@@ -19,8 +19,11 @@ export const getDemoReports = async (req: any, res: Response): Promise<void> => 
       // Get demo sessions for this teacher, then find reports
       const sessions = await DemoSession.find({ teacher: teacher._id });
       const sessionIds = sessions.map((s: any) => s._id);
-      reports = await DemoReport.find({});
-      reports = reports.filter((r: any) => sessionIds.includes(r.demoSession));
+      if (sessionIds.length === 0) {
+        res.json([]);
+        return;
+      }
+      reports = await DemoReport.find({ demoSession: { $in: sessionIds } });
     } else if (req.user.role === 'Sales Person') {
       // Sales Person can only see reports for their completed demo students
       const sessions = await DemoSession.find({
@@ -31,8 +34,11 @@ export const getDemoReports = async (req: any, res: Response): Promise<void> => 
         status: 'Completed'
       });
       const sessionIds = sessions.map((s: any) => s._id);
-      reports = await DemoReport.find({});
-      reports = reports.filter((r: any) => sessionIds.includes(r.demoSession));
+      if (sessionIds.length === 0) {
+        res.json([]);
+        return;
+      }
+      reports = await DemoReport.find({ demoSession: { $in: sessionIds } });
     } else {
       // Admin, Super Admin, Sub Admin — all reports
       reports = await DemoReport.find({});

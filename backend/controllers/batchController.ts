@@ -77,8 +77,8 @@ export const getBatches = async (req: any, res: Response) => {
     }
     const batches = await Batch.find(query).populate('assignedTeacher', 'name email');
     
-    // Fetch schedules count for these batches
-    const batchIds = batches.map((b: any) => b._id);
+    // Fetch schedules count for these unique batches
+    const batchIds = Array.from(new Set(batches.map((b: any) => b._id)));
     const allSchedules = await Schedule.find({
       batch: { $in: batchIds }
     });

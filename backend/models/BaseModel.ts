@@ -100,6 +100,7 @@ export class BaseModel {
       _populates: [] as { path: string, select: string }[],
       _sort: null as any,
       _limit: null as number | null,
+      _startAfter: null as string | null,
       
       populate: (path: string, select?: string) => {
         chain._populates.push({ path, select: select || '' });
@@ -115,6 +116,10 @@ export class BaseModel {
         chain._limit = n;
         return chain;
       },
+      startAfter: (docId: string) => {
+        chain._startAfter = docId;
+        return chain;
+      },
       
       // Execute the query when awaited
       then: (resolve: any, reject: any) => {
@@ -125,6 +130,9 @@ export class BaseModel {
       },
 
       execute: async () => {
+        if (process.env.NODE_ENV === 'development') {
+          console.debug(`[Firestore] ${this.collectionName} query`);
+        }
         if (isCount) {
           return await this._executeCount(queryObj);
         }
@@ -138,7 +146,7 @@ export class BaseModel {
           return result;
         }
 
-        let results = await this._fetchAndFilter(queryObj, chain._limit, chain._sort);
+        let results = await this._fetchAndFilter(queryObj, chain._limit, chain._sort, chain._startAfter);
         if (isFindOne) {
           if (results.length === 0) return null;
           let result = results[0];
@@ -157,7 +165,7 @@ export class BaseModel {
           for (const pop of chain._populates) {
             const path = pop.path;
             let collectionName = '';
-            if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher') collectionName = 'teachers';
+            if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher' || path === 'classAssignedTutor') collectionName = 'teachers';
             else if (path === 'batch') collectionName = 'batches';
             else if (path === 'user') collectionName = 'users';
 
@@ -170,15 +178,29 @@ export class BaseModel {
                 }
               }
 
-              // Fire off non-blocking pre-fetches into populateCache
-              uniqueIds.forEach((id) => {
-                const cacheKey = `${collectionName}_${id}`;
-                if (!populateCache[cacheKey]) {
-                  populateCache[cacheKey] = db.collection(collectionName).doc(id).get().then((ref: any) => {
-                    return ref.exists ? convertTimestamps({ _id: ref.id, ...ref.data() }) : null;
+              if (uniqueIds.size > 0) {
+                const idsArr = Array.from(uniqueIds);
+                const chunkSize = 100;
+                for (let i = 0; i < idsArr.length; i += chunkSize) {
+                  const chunkIds = idsArr.slice(i, i + chunkSize);
+                  const docRefs = chunkIds.map(id => db.collection(collectionName).doc(id));
+                  const batchPromise = db.getAll(...docRefs).then((snapshots: any[]) => {
+                    const map = new Map<string, any>();
+                    snapshots.forEach(ref => {
+                      map.set(ref.id, ref.exists ? convertTimestamps({ _id: ref.id, ...ref.data() }) : null);
+                    });
+                    return map;
+                  }).catch(err => {
+                    console.error(`Batched populate error for ${collectionName}:`, err);
+                    return new Map<string, any>();
+                  });
+
+                  chunkIds.forEach(id => {
+                    const cacheKey = `${collectionName}_${id}`;
+                    populateCache[cacheKey] = batchPromise.then(map => map.get(id) || null);
                   });
                 }
-              });
+              }
             }
           }
 
@@ -256,10 +278,9 @@ export class BaseModel {
       if (!doc[path]) continue;
 
       let collectionName = '';
-      if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher') collectionName = 'teachers';
+      if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher' || path === 'classAssignedTutor') collectionName = 'teachers';
       else if (path === 'batch') collectionName = 'batches';
       else if (path === 'user') collectionName = 'users';
-      else if (path === 'pastBatches.batch') collectionName = 'batches'; // nested arrays are harder, let's skip for now or implement simply
 
       if (collectionName && typeof doc[path] === 'string') {
         if (cache) {
@@ -282,7 +303,7 @@ export class BaseModel {
     return doc;
   }
 
-  async _fetchAndFilter(query: any = {}, limitOpt: number | null, sortOpt: any): Promise<any[]> {
+  async _fetchAndFilter(query: any = {}, limitOpt: number | null, sortOpt: any, startAfterOpt?: string | null): Promise<any[]> {
     let firestoreQuery: any = this.collection;
     let queryKeys = Object.keys(query);
 
@@ -335,6 +356,16 @@ export class BaseModel {
         for (const sortKey of Object.keys(sortOpt)) {
           const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? 'desc' : 'asc';
           firestoreQuery = firestoreQuery.orderBy(sortKey, dir);
+        }
+      }
+      if (startAfterOpt) {
+        try {
+          const startDoc = await this.collection.doc(startAfterOpt).get();
+          if (startDoc.exists) {
+            firestoreQuery = firestoreQuery.startAfter(startDoc);
+          }
+        } catch (err) {
+          console.warn('startAfter cursor document fetch warning:', err);
         }
       }
       if (limitOpt) {
@@ -523,22 +554,30 @@ export class BaseModel {
 
   async deleteMany(query: any): Promise<void> {
     const docs = await this._fetchAndFilter(query, null, null);
-    const batch = getDb().batch();
-    for (const doc of docs) {
-      batch.delete(this.collection.doc(doc._id));
+    const BATCH_LIMIT = 500;
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+      const batch = getDb().batch();
+      const chunk = docs.slice(i, i + BATCH_LIMIT);
+      for (const doc of chunk) {
+        batch.delete(this.collection.doc(doc._id));
+      }
+      await batch.commit();
     }
-    await batch.commit();
   }
 
   async insertMany(docs: any[]): Promise<any[]> {
-    const batch = getDb().batch();
     const inserted: any[] = [];
-    for (const doc of docs) {
-      const docRef = this.collection.doc();
-      batch.set(docRef, { ...doc, createdAt: new Date(), updatedAt: new Date() });
-      inserted.push({ ...doc, _id: docRef.id });
+    const BATCH_LIMIT = 500;
+    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
+      const batch = getDb().batch();
+      const chunk = docs.slice(i, i + BATCH_LIMIT);
+      for (const doc of chunk) {
+        const docRef = this.collection.doc();
+        batch.set(docRef, { ...doc, createdAt: new Date(), updatedAt: new Date() });
+        inserted.push({ ...doc, _id: docRef.id });
+      }
+      await batch.commit();
     }
-    await batch.commit();
     return inserted;
   }
 

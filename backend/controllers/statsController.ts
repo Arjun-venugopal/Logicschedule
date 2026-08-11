@@ -49,8 +49,14 @@ export const getDashboardStats = async (req: any, res: Response) => {
 
     const weekSchedules = await Schedule.find(scheduleQuery);
 
+    // --- Single-pass weekly aggregation (hours scheduled & chart buckets) ---
     let hoursScheduled = 0;
-    weekSchedules.forEach((s: any) => {
+    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    const counts = [0, 0, 0, 0, 0, 0, 0];
+    const weekStartMs = weekStart.getTime();
+
+    for (const s of weekSchedules) {
+      // 1. Accumulate hours scheduled
       if (s.startTime && s.endTime) {
         const [sh, sm] = s.startTime.split(':').map(Number);
         const [eh, em] = s.endTime.split(':').map(Number);
@@ -58,22 +64,21 @@ export const getDashboardStats = async (req: any, res: Response) => {
         if (diff < 0) diff += 24; // Handle shift spanning midnight
         hoursScheduled += diff;
       }
-    });
 
-    // --- Weekly chart data (Mon–Sun) ---
-    const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const weekData = DAY_LABELS.map((label, i) => {
-      const day = new Date(weekStart);
-      day.setDate(weekStart.getDate() + i);
-      const dayEnd = new Date(day); dayEnd.setHours(23, 59, 59, 999);
-      
-      const count = weekSchedules.filter((s: any) => {
-        const sDate = new Date(s.date);
-        return sDate >= day && sDate <= dayEnd;
-      }).length;
-      
-      return { day: label, classes: count };
-    });
+      // 2. Accumulate daily class count buckets
+      if (s.date) {
+        const sTime = typeof s.date === 'number' ? s.date : (typeof s.date === 'string' ? new Date(s.date).getTime() : s.date.getTime());
+        const diffDays = Math.floor((sTime - weekStartMs) / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays < 7) {
+          counts[diffDays]++;
+        }
+      }
+    }
+
+    const weekData = DAY_LABELS.map((label, i) => ({
+      day: label,
+      classes: counts[i],
+    }));
 
     // --- Live teacher status ---
     const teachers = await Teacher.find({}).select('name status subjectExpertise dutyStatusSchedule');
