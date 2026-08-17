@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, parseISO, isSameDay, isSameWeek, isSameMonth } from "date-fns";
+import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths } from "date-fns";
 import {
   Plus,
   X,
@@ -151,7 +151,8 @@ export default function DemoSessionsPage() {
   const [filterSalesPerson, setFilterSalesPerson] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
   const [filterDay, setFilterDay] = useState<string>("All");
-  const [filterSpecificDate, setFilterSpecificDate] = useState<string>("");
+  const [filterStartDate, setFilterStartDate] = useState<string>("");
+  const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
   const [reportSession, setReportSession] = useState<DemoSession | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
@@ -246,6 +247,17 @@ export default function DemoSessionsPage() {
   });
 
   // Helpers
+  const formatDateSafe = (dateStr: any, pattern: string = "dd MMM yyyy") => {
+    if (!dateStr) return "";
+    try {
+      const d = typeof dateStr === "string" && dateStr.includes("-") && dateStr.length === 10 ? parseISO(dateStr) : new Date(dateStr);
+      if (isNaN(d.getTime())) return String(dateStr);
+      return format(d, pattern);
+    } catch {
+      return String(dateStr);
+    }
+  };
+
   const formatTimeAMPM = (timeStr: string) => {
     if (!timeStr) return "";
     try {
@@ -486,6 +498,7 @@ export default function DemoSessionsPage() {
       if (filterDate === "Today" && !isSameDay(dDate, today)) return false;
       if (filterDate === "This Week" && !isSameWeek(dDate, today)) return false;
       if (filterDate === "This Month" && !isSameMonth(dDate, today)) return false;
+      if (filterDate === "Last Month" && !isSameMonth(dDate, subMonths(today, 1))) return false;
     }
 
     // Day of week filter
@@ -495,11 +508,12 @@ export default function DemoSessionsPage() {
       if (dayName !== filterDay) return false;
     }
 
-    // Specific date filter
-    if (filterSpecificDate) {
+    // Start & End Date range filter
+    if (filterStartDate || filterEndDate) {
       if (!d.date) return false;
       const sDate = format(new Date(d.date), "yyyy-MM-dd");
-      if (sDate !== filterSpecificDate) return false;
+      if (filterStartDate && sDate < filterStartDate) return false;
+      if (filterEndDate && sDate > filterEndDate) return false;
     }
 
     return true;
@@ -516,16 +530,18 @@ export default function DemoSessionsPage() {
       if (filterDate === "Today" && !isSameDay(sDate, today)) return false;
       if (filterDate === "This Week" && !isSameWeek(sDate, today)) return false;
       if (filterDate === "This Month" && !isSameMonth(sDate, today)) return false;
+      if (filterDate === "Last Month" && !isSameMonth(sDate, subMonths(today, 1))) return false;
     }
     if (filterDay && filterDay !== "All") {
       if (!slot.date) return false;
       const dayName = format(new Date(slot.date), "EEEE");
       if (dayName !== filterDay) return false;
     }
-    if (filterSpecificDate) {
+    if (filterStartDate || filterEndDate) {
       if (!slot.date) return false;
       const sDate = format(new Date(slot.date), "yyyy-MM-dd");
-      if (sDate !== filterSpecificDate) return false;
+      if (filterStartDate && sDate < filterStartDate) return false;
+      if (filterEndDate && sDate > filterEndDate) return false;
     }
     return true;
   });
@@ -626,6 +642,7 @@ export default function DemoSessionsPage() {
                 <option value="Today">Today</option>
                 <option value="This Week">This Week</option>
                 <option value="This Month">This Month</option>
+                <option value="Last Month">Last Month</option>
               </select>
             </div>
             <div className="flex-1 min-w-[120px] max-w-[150px]">
@@ -644,13 +661,26 @@ export default function DemoSessionsPage() {
                 <option value="Sunday">Sunday</option>
               </select>
             </div>
-            <div className="flex-1 min-w-[140px] max-w-[170px]">
+            {/* Start Date */}
+            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
+              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">From:</span>
               <input
                 type="date"
-                value={filterSpecificDate}
-                onChange={(e) => setFilterSpecificDate(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all text-neutral-300 [&::-webkit-calendar-picker-indicator]:invert"
-                title="Filter by Exact Date"
+                value={filterStartDate}
+                onChange={(e) => setFilterStartDate(e.target.value)}
+                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
+                title="Filter by Start Date"
+              />
+            </div>
+            {/* End Date */}
+            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
+              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">To:</span>
+              <input
+                type="date"
+                value={filterEndDate}
+                onChange={(e) => setFilterEndDate(e.target.value)}
+                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
+                title="Filter by End Date"
               />
             </div>
             {!isTeacher && (
@@ -698,7 +728,7 @@ export default function DemoSessionsPage() {
                 <option value="Cancelled">Cancelled</option>
               </select>
             </div>
-            {(filterTeacher || filterStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterSpecificDate) && (
+            {(filterTeacher || filterStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterStartDate || filterEndDate) && (
               <button
                 onClick={() => {
                   setFilterTeacher("");
@@ -706,7 +736,8 @@ export default function DemoSessionsPage() {
                   setFilterSalesPerson("");
                   setFilterDate("All");
                   setFilterDay("All");
-                  setFilterSpecificDate("");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
                 }}
                 className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
               >
@@ -729,7 +760,17 @@ export default function DemoSessionsPage() {
             <div className="flex items-center gap-4 text-right">
               <div>
                 <p className="text-[10px] text-neutral-500 uppercase font-semibold">Current Filter</p>
-                <p className="text-sm font-medium text-amber-400">{filterDate === "All" ? "All Time" : filterDate}</p>
+                <p className="text-sm font-medium text-amber-400">
+                  {filterStartDate && filterEndDate
+                    ? `${formatDateSafe(filterStartDate, "dd MMM")} - ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
+                    : filterStartDate
+                    ? `From ${formatDateSafe(filterStartDate, "dd MMM yyyy")}`
+                    : filterEndDate
+                    ? `Until ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
+                    : filterDate === "All"
+                    ? "All Time"
+                    : filterDate}
+                </p>
               </div>
               
               {!isTeacher && (
@@ -1076,7 +1117,30 @@ export default function DemoSessionsPage() {
                 <option value="Today">Today</option>
                 <option value="This Week">This Week</option>
                 <option value="This Month">This Month</option>
+                <option value="Last Month">Last Month</option>
               </select>
+            </div>
+            {/* Start Date */}
+            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
+              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">From:</span>
+              <input
+                type="date"
+                value={filterStartDate}
+                onChange={(e) => setFilterStartDate(e.target.value)}
+                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
+                title="Filter by Start Date"
+              />
+            </div>
+            {/* End Date */}
+            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
+              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">To:</span>
+              <input
+                type="date"
+                value={filterEndDate}
+                onChange={(e) => setFilterEndDate(e.target.value)}
+                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
+                title="Filter by End Date"
+              />
             </div>
             {!isTeacher && (
               <div className="flex-1 md:max-w-xs">
@@ -1094,11 +1158,13 @@ export default function DemoSessionsPage() {
                 </select>
               </div>
             )}
-            {(filterTeacher || filterDate !== "All") && (
+            {(filterTeacher || filterDate !== "All" || filterStartDate || filterEndDate) && (
               <button
                 onClick={() => {
                   setFilterTeacher("");
                   setFilterDate("All");
+                  setFilterStartDate("");
+                  setFilterEndDate("");
                 }}
                 className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
               >
