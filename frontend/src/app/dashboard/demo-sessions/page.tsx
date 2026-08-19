@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths } from "date-fns";
 import {
@@ -519,6 +519,15 @@ export default function DemoSessionsPage() {
     return true;
   });
 
+  const sortedSessions = useMemo(() => {
+    return [...filteredSessions].sort((a, b) => {
+      const dateA = new Date(a.date || 0).getTime();
+      const dateB = new Date(b.date || 0).getTime();
+      if (dateA !== dateB) return dateB - dateA; // Descending date
+      return (a.startTime || "").localeCompare(b.startTime || "");
+    });
+  }, [filteredSessions]);
+
   // Slots Filtering & Grouping
   const filteredSlots = demoSlots.filter((slot: any) => {
     if (filterTeacher && slot.teacher?._id !== filterTeacher && slot.teacher !== filterTeacher) {
@@ -824,7 +833,7 @@ export default function DemoSessionsPage() {
           </div>
         ) : isTeacher || viewMode === "grid" ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 bg-neutral-900/30">
-            {filteredSessions.map((session) => {
+            {sortedSessions.map((session) => {
               const sessionDate = new Date(session.date);
               const statusColors: Record<string, string> = {
                 Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
@@ -990,7 +999,7 @@ export default function DemoSessionsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800">
-                {filteredSessions.map((session) => (
+                {sortedSessions.map((session) => (
                   <tr key={session._id} className="hover:bg-neutral-800/30 transition-colors">
                     <td className="px-4 py-3 font-medium text-white">{session.studentName}</td>
                     <td className="px-4 py-3">{session.customerName || "-"}</td>
