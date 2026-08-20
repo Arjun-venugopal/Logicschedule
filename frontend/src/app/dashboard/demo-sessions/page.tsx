@@ -69,6 +69,7 @@ interface DemoSession {
   cancellationReason?: string;
   conflict?: boolean;
   createdBy?: string;
+  createdAt?: string;
 }
 
 type DemoSessionForm = {
@@ -521,10 +522,9 @@ export default function DemoSessionsPage() {
 
   const sortedSessions = useMemo(() => {
     return [...filteredSessions].sort((a, b) => {
-      const dateA = new Date(a.date || 0).getTime();
-      const dateB = new Date(b.date || 0).getTime();
-      if (dateA !== dateB) return dateB - dateA; // Descending date
-      return (a.startTime || "").localeCompare(b.startTime || "");
+      const createdA = new Date(a.createdAt || a.date || 0).getTime();
+      const createdB = new Date(b.createdAt || b.date || 0).getTime();
+      return createdB - createdA; // Descending createdAt (newest first)
     });
   }, [filteredSessions]);
 
@@ -893,7 +893,7 @@ export default function DemoSessionsPage() {
                       </div>
                       <div className="flex items-center gap-2">
                         <AlignLeft className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>Subject: <strong className="text-white">{session.subject}</strong></span>
+                        <span>Subject: <strong className="text-white">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</strong></span>
                       </div>
                       {session.salesExecutive && (
                         <div className="flex items-center gap-2">
@@ -1009,7 +1009,7 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{format(new Date(session.date), "dd MMM yyyy")}</td>
                     <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
                     <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
-                    <td className="px-4 py-3">{session.subject}</td>
+                    <td className="px-4 py-3">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</td>
                     <td className="px-4 py-3">
                       {canViewFee(session.salesExecutive) ? (session.feeDiscussed || "-") : <span className="text-neutral-600 italic">Hidden</span>}
                     </td>
@@ -1575,7 +1575,7 @@ export default function DemoSessionsPage() {
                       <label className="text-xs font-semibold text-neutral-400">Subject / Topic</label>
                       <input
                         type="text"
-                        required
+                        required={form.status !== "Cancelled"}
                         placeholder="e.g. Demo Class - Web Dev Basics"
                         value={form.subject}
                         onChange={(e) => setForm({ ...form, subject: e.target.value })}
@@ -1929,7 +1929,7 @@ export default function DemoSessionsPage() {
                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
                      <div>
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Subject</p>
-                       <p className="text-sm text-amber-400 font-bold mt-1">{viewingSession.subject}</p>
+                       <p className="text-sm text-amber-400 font-bold mt-1">{viewingSession.subject || (viewingSession.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</p>
                      </div>
                      <div>
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Teacher</p>

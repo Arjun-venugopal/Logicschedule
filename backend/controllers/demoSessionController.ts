@@ -63,7 +63,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions 
     } = req.body;
 
-    if (!teacher || !studentName || !subject || !date || !startTime || !endTime) {
+    if (!teacher || !studentName || (!subject && req.body.status !== 'Cancelled') || !date || !startTime || !endTime) {
       res.status(400).json({ message: 'Please provide all required fields: teacher, studentName, subject, date, startTime, endTime' });
       return;
     }
