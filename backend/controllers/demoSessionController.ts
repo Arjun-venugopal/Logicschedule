@@ -58,9 +58,9 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
 // @access  Private/Admin
 export const createDemoSession = async (req: any, res: Response): Promise<void> => {
   try {
-    const { 
+    const {
       teacher, studentName, studentEmail, subject, date, startTime, endTime, meetingLink, notes,
-      customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions 
+      customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions
     } = req.body;
 
     if (!teacher || !studentName || (!subject && req.body.status !== 'Cancelled') || !date || !startTime || !endTime) {
@@ -147,7 +147,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     const populated = await demoSession.populate('teacher', 'name email status availability');
-    
+
     // Mask fee details for response
     const responseObj = { ...populated };
     if (req.user && req.user.role === 'Sales Person') {
@@ -156,7 +156,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
         responseObj.feeDiscussed = 'Hidden';
       }
     }
-    
+
     res.status(201).json(responseObj);
   } catch (error: any) {
     console.error('Create demo session error:', error.message);
@@ -179,7 +179,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
     const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
-    const isOwnerSales = req.user.role === 'Sales Person' && 
+    const isOwnerSales = req.user.role === 'Sales Person' &&
       (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
     let isAssignedTeacher = false;
 
@@ -200,17 +200,17 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.phoneNumber = req.body.phoneNumber !== undefined ? req.body.phoneNumber : demoSession.phoneNumber;
       demoSession.place = req.body.place !== undefined ? req.body.place : demoSession.place;
       demoSession.age = req.body.age !== undefined ? req.body.age : demoSession.age;
-      
+
       if (req.body.feeDiscussed !== undefined && req.body.feeDiscussed !== 'Hidden') {
         demoSession.feeDiscussed = req.body.feeDiscussed;
       }
-      
+
       demoSession.admissionConfirmed = req.body.admissionConfirmed || demoSession.admissionConfirmed;
       demoSession.salesExecutive = req.body.salesExecutive !== undefined ? req.body.salesExecutive : demoSession.salesExecutive;
       demoSession.classAssignedTutor = req.body.classAssignedTutor || demoSession.classAssignedTutor;
       demoSession.batchAssigned = req.body.batchAssigned || demoSession.batchAssigned;
       demoSession.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : demoSession.numberOfSessions;
-      
+
       demoSession.subject = req.body.subject || demoSession.subject;
       demoSession.teacher = req.body.teacher || demoSession.teacher;
       demoSession.date = req.body.date ? new Date(req.body.date) : demoSession.date;
@@ -310,7 +310,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     const populated = await updated.populate('teacher', 'name email status availability');
-    
+
     // Mask fee details for response
     const responseObj = { ...populated };
     if (req.user && req.user.role === 'Sales Person') {
@@ -319,7 +319,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         responseObj.feeDiscussed = 'Hidden';
       }
     }
-    
+
     res.json(responseObj);
   } catch (error: any) {
     console.error('Update demo session error:', error.message);
@@ -336,9 +336,9 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
 
     if (demoSession) {
       const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
-      const isOwnerSales = req.user.role === 'Sales Person' && 
+      const isOwnerSales = req.user.role === 'Sales Person' &&
         (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
-      
+
       if (!isAdmin && !isOwnerSales) {
         res.status(403).json({ message: 'Not authorized to delete this demo session' });
         return;
