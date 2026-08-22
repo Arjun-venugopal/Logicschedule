@@ -296,7 +296,7 @@ export default function DemoSessionsPage() {
 
   const openEdit = (d: DemoSession) => {
     setForm({
-      teacher: d.teacher?._id || (d.teacher as any),
+      teacher: d.teacher?._id || (d.teacher as any) || "unassigned",
       studentName: d.studentName,
       studentEmail: d.studentEmail || "",
       customerName: d.customerName || "",
@@ -1587,12 +1587,12 @@ export default function DemoSessionsPage() {
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-neutral-400">Assign Teacher</label>
                       <select
-                        required
                         value={form.teacher}
                         onChange={(e) => setForm({ ...form, teacher: e.target.value })}
                         className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                       >
                         <option value="">Select teacher...</option>
+                        <option value="unassigned" className="text-amber-400">⚠ Teacher is Unassigned</option>
                         {teachers.map((t) => (
                           <option key={t._id} value={t._id}>
                             {t.name}
