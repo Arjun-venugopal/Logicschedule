@@ -55,7 +55,7 @@ interface DemoSession {
   age?: number;
   feeDiscussed?: string;
   numberOfSessions?: number;
-  admissionConfirmed?: "Pending" | "Yes" | "No";
+  admissionConfirmed?: "Pending" | "Yes" | "No" | "Won" | "Loss" | string;
   salesExecutive?: string;
   classAssignedTutor?: string;
   batchAssigned?: string;
@@ -82,7 +82,7 @@ type DemoSessionForm = {
   age: number | "";
   feeDiscussed: string;
   numberOfSessions: number | "";
-  admissionConfirmed: "Pending" | "Yes" | "No";
+  admissionConfirmed: "Pending" | "Yes" | "No" | "Won" | "Loss" | string;
   salesExecutive: string;
   classAssignedTutor: string;
   batchAssigned: string;
@@ -149,6 +149,7 @@ export default function DemoSessionsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+  const [filterAdmissionStatus, setFilterAdmissionStatus] = useState<string>("");
   const [filterSalesPerson, setFilterSalesPerson] = useState<string>("");
   const [filterDate, setFilterDate] = useState<string>("All");
   const [filterDay, setFilterDay] = useState<string>("All");
@@ -269,6 +270,17 @@ export default function DemoSessionsPage() {
     } catch {
       return timeStr;
     }
+  };
+
+  const getAdmissionBadge = (status?: string) => {
+    const val = status || "Pending";
+    if (val === "Won" || val === "Yes") {
+      return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    }
+    if (val === "Loss" || val === "No") {
+      return "bg-red-500/10 text-red-400 border-red-500/20";
+    }
+    return "bg-amber-500/10 text-amber-400 border-amber-500/20";
   };
 
   const openCreate = () => {
@@ -481,6 +493,20 @@ export default function DemoSessionsPage() {
 
     // Status filter
     if (filterStatus && d.status !== filterStatus) return false;
+
+    // Admission Status filter
+    if (filterAdmissionStatus) {
+      const admStatus = d.admissionConfirmed || "Pending";
+      if (filterAdmissionStatus === "Yes") {
+        if (admStatus !== "Yes" && admStatus !== "Won") return false;
+      } else if (filterAdmissionStatus === "No") {
+        if (admStatus !== "No" && admStatus !== "Loss") return false;
+      } else if (filterAdmissionStatus === "Pending") {
+        if (admStatus !== "Pending") return false;
+      } else if (admStatus !== filterAdmissionStatus) {
+        return false;
+      }
+    }
 
     // Sales Exec / Sales Person filter
     if (filterSalesPerson) {
@@ -730,18 +756,31 @@ export default function DemoSessionsPage() {
                 onChange={(e) => setFilterStatus(e.target.value)}
                 className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
               >
-                <option value="">All Statuses</option>
+                <option value="">All Session Statuses</option>
                 <option value="Scheduled">Scheduled</option>
                 <option value="Completed">Completed</option>
                 <option value="Rescheduled">Rescheduled</option>
                 <option value="Cancelled">Cancelled</option>
               </select>
             </div>
-            {(filterTeacher || filterStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterStartDate || filterEndDate) && (
+            <div className="flex-1 md:max-w-xs">
+              <select
+                value={filterAdmissionStatus}
+                onChange={(e) => setFilterAdmissionStatus(e.target.value)}
+                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              >
+                <option value="">All Admission Status</option>
+                <option value="Pending">Pending</option>
+                <option value="Yes">Yes</option>
+                <option value="No">No</option>
+              </select>
+            </div>
+            {(filterTeacher || filterStatus || filterAdmissionStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterStartDate || filterEndDate) && (
               <button
                 onClick={() => {
                   setFilterTeacher("");
                   setFilterStatus("");
+                  setFilterAdmissionStatus("");
                   setFilterSalesPerson("");
                   setFilterDate("All");
                   setFilterDay("All");
@@ -901,6 +940,10 @@ export default function DemoSessionsPage() {
                           <span>Sales Exec: <strong className="text-neutral-200">{session.salesExecutive}</strong></span>
                         </div>
                       )}
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>Admn Status: <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>{session.admissionConfirmed || "Pending"}</span></span>
+                      </div>
                       {session.studentEmail && (
                         <div className="text-[11px] text-neutral-500 truncate" title={session.studentEmail}>
                           Email: {session.studentEmail}
@@ -1019,7 +1062,11 @@ export default function DemoSessionsPage() {
                         {session.status}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{session.admissionConfirmed || "Pending"}</td>
+                    <td className="px-4 py-3">
+                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>
+                        {session.admissionConfirmed || "Pending"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
                     <td className="px-4 py-3 flex gap-2">
                       <button onClick={() => setViewingSession(session)} className="text-blue-400 hover:text-blue-300" title="View Details"><Eye className="w-4 h-4" /></button>
@@ -1539,21 +1586,23 @@ export default function DemoSessionsPage() {
                       <label className="text-xs font-semibold text-neutral-400">Admission Confirmed</label>
                       <select
                         value={form.admissionConfirmed}
-                        onChange={(e) => setForm({ ...form, admissionConfirmed: e.target.value as "Pending" | "Yes" | "No" })}
+                        onChange={(e) => setForm({ ...form, admissionConfirmed: e.target.value as "Pending" | "Yes" | "No" | "Won" | "Loss" })}
                         className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                       >
                         <option value="Pending">Pending</option>
+                        <option value="Won">Won</option>
+                        <option value="Loss">Loss</option>
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </select>
                     </div>
 
-                    {form.admissionConfirmed === "Yes" && (
+                    {(form.admissionConfirmed === "Yes" || form.admissionConfirmed === "Won") && (
                       <div className="p-3 bg-neutral-800 border border-neutral-700 rounded-xl mt-2">
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-neutral-400">Class Assigned Tutor</label>
                           <select
-                            required={form.admissionConfirmed === "Yes"}
+                            required={form.admissionConfirmed === "Yes" || form.admissionConfirmed === "Won"}
                             value={form.classAssignedTutor}
                             onChange={(e) => setForm({ ...form, classAssignedTutor: e.target.value })}
                             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
@@ -1756,10 +1805,10 @@ export default function DemoSessionsPage() {
                     )}
 
                     {/* Cancellation Reason */}
-                    {(form.status === "Cancelled" || form.admissionConfirmed === "No") && (
+                    {(form.status === "Cancelled" || form.admissionConfirmed === "No" || form.admissionConfirmed === "Loss") && (
                       <div className="space-y-1.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
                         <label className="text-xs font-semibold text-red-400">
-                          {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection"}
+                          {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection / Loss"}
                         </label>
                         <textarea
                           required
@@ -1991,9 +2040,13 @@ export default function DemoSessionsPage() {
                        <p className="text-sm text-white font-medium mt-1">{viewingSession.salesExecutive || "-"}</p>
                      </div>
                      <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.admissionConfirmed || "Pending"}</p>
-                     </div>
+                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
+                        <p className="text-sm font-medium mt-1">
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(viewingSession.admissionConfirmed)}`}>
+                            {viewingSession.admissionConfirmed || "Pending"}
+                          </span>
+                        </p>
+                      </div>
 
                      {/* Display cancellation reason if it exists */}
                      {viewingSession.cancellationReason && (

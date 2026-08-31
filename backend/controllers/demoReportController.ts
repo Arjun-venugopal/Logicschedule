@@ -66,7 +66,11 @@ export const getDemoReportById = async (req: any, res: Response): Promise<void> 
     if (req.user.role === 'Teacher') {
       const teacher = await Teacher.findOne({ user: req.user._id });
       const session = await DemoSession.findById(report.demoSession);
-      if (!teacher || !session || session.teacher.toString() !== teacher._id.toString()) {
+      const sessionTeacherId = (session?.teacher && typeof session.teacher === 'object' && session.teacher._id)
+        ? session.teacher._id.toString()
+        : session?.teacher ? session.teacher.toString() : null;
+
+      if (!teacher || !session || sessionTeacherId !== teacher._id.toString()) {
         res.status(403).json({ message: 'Not authorized to view this report' });
         return;
       }
@@ -106,7 +110,11 @@ export const getDemoReportBySession = async (req: any, res: Response): Promise<v
     if (req.user.role === 'Teacher') {
       const teacher = await Teacher.findOne({ user: req.user._id });
       const session = await DemoSession.findById(report.demoSession);
-      if (!teacher || !session || session.teacher.toString() !== teacher._id.toString()) {
+      const sessionTeacherId = (session?.teacher && typeof session.teacher === 'object' && session.teacher._id)
+        ? session.teacher._id.toString()
+        : session?.teacher ? session.teacher.toString() : null;
+
+      if (!teacher || !session || sessionTeacherId !== teacher._id.toString()) {
         res.status(403).json({ message: 'Not authorized to view this report' });
         return;
       }
@@ -153,7 +161,11 @@ export const createDemoReport = async (req: any, res: Response): Promise<void> =
     // Authorization: Teachers can only create reports for their own sessions
     if (req.user.role === 'Teacher') {
       const teacher = await Teacher.findOne({ user: req.user._id });
-      if (!teacher || session.teacher.toString() !== teacher._id.toString()) {
+      const sessionTeacherId = (session.teacher && typeof session.teacher === 'object' && session.teacher._id)
+        ? session.teacher._id.toString()
+        : session.teacher ? session.teacher.toString() : null;
+
+      if (!teacher || !sessionTeacherId || sessionTeacherId !== teacher._id.toString()) {
         res.status(403).json({ message: 'Not authorized to create report for this session' });
         return;
       }

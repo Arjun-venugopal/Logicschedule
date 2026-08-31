@@ -125,7 +125,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       createdBy: req.user ? req.user._id.toString() : null,
     });
 
-    if (demoSession.admissionConfirmed === 'Yes') {
+    if (demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won') {
       const existingStudent = await Student.findOne({ email: demoSession.studentEmail, name: demoSession.studentName });
       if (!existingStudent || !existingStudent.batch) {
         const count = await Batch.countDocuments();
@@ -186,14 +186,20 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
-    const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
-    const isOwnerSales = req.user.role === 'Sales Person' &&
-      (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
+    const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
+    const isOwnerSales = req.user?.role === 'Sales Person' &&
+      (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive === req.user?.name);
     let isAssignedTeacher = false;
 
-    const teacherProfile = await Teacher.findOne({ user: req.user._id });
-    if (teacherProfile && demoSession.teacher.toString() === teacherProfile._id.toString()) {
-      isAssignedTeacher = true;
+    if (req.user?._id) {
+      const teacherProfile = await Teacher.findOne({ user: req.user._id });
+      const sessionTeacherId = (demoSession.teacher && typeof demoSession.teacher === 'object' && demoSession.teacher._id)
+        ? demoSession.teacher._id.toString()
+        : demoSession.teacher ? demoSession.teacher.toString() : null;
+
+      if (teacherProfile && sessionTeacherId && sessionTeacherId === teacherProfile._id.toString()) {
+        isAssignedTeacher = true;
+      }
     }
 
     if (!isAdmin && !isAssignedTeacher && !isOwnerSales) {
@@ -298,7 +304,9 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const updated = await demoSession.save();
 
     // Check if admission was newly confirmed and transfer to batch module
-    if (isAdmin && updated.admissionConfirmed === 'Yes' && previousAdmissionConfirmed !== 'Yes') {
+    const isNowConfirmed = updated.admissionConfirmed === 'Yes' || updated.admissionConfirmed === 'Won';
+    const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won';
+    if (isAdmin && isNowConfirmed && !wasConfirmed) {
       const existingStudent = await Student.findOne({ email: updated.studentEmail, name: updated.studentName });
       if (!existingStudent || !existingStudent.batch) {
         const count = await Batch.countDocuments();
@@ -353,9 +361,9 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
     const demoSession = await DemoSession.findById(req.params.id);
 
     if (demoSession) {
-      const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
-      const isOwnerSales = req.user.role === 'Sales Person' &&
-        (demoSession.createdBy === req.user._id.toString() || demoSession.salesExecutive === req.user.name);
+      const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
+      const isOwnerSales = req.user?.role === 'Sales Person' &&
+        (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive === req.user?.name);
 
       if (!isAdmin && !isOwnerSales) {
         res.status(403).json({ message: 'Not authorized to delete this demo session' });

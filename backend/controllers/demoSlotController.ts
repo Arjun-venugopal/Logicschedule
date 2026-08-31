@@ -39,14 +39,15 @@ export const getDemoSlots = async (req: any, res: Response): Promise<void> => {
         const endOfDay = new Date(dateObj);
         endOfDay.setHours(23, 59, 59, 999);
 
-        const overlappingSession = await DemoSession.findOne({
-          teacher: slot.teacher._id || slot.teacher,
+        const teacherId = slot.teacher?._id || slot.teacher;
+        const overlappingSession = teacherId ? await DemoSession.findOne({
+          teacher: teacherId,
           date: { $gte: startOfDay, $lte: endOfDay },
           status: { $ne: 'Cancelled' },
           $or: [
             { startTime: { $lt: slot.endTime }, endTime: { $gt: slot.startTime } },
           ],
-        });
+        }) : null;
 
         return {
           ...slot,
@@ -78,7 +79,8 @@ export const createDemoSlot = async (req: any, res: Response): Promise<void> => 
 
     if (req.user && req.user.role === 'Teacher') {
       const teacherProfile = await Teacher.findOne({ user: req.user._id });
-      if (!teacherProfile || teacherProfile._id.toString() !== teacher.toString()) {
+      const teacherIdStr = (typeof teacher === 'object' && teacher?._id) ? teacher._id.toString() : teacher?.toString();
+      if (!teacherProfile || teacherProfile._id.toString() !== teacherIdStr) {
         res.status(403).json({ message: 'Not authorized to create slots for other teachers' });
         return;
       }
@@ -113,7 +115,11 @@ export const deleteDemoSlot = async (req: any, res: Response): Promise<void> => 
 
     if (req.user && req.user.role === 'Teacher') {
       const teacherProfile = await Teacher.findOne({ user: req.user._id });
-      if (!teacherProfile || demoSlot.teacher.toString() !== teacherProfile._id.toString()) {
+      const slotTeacherId = (demoSlot.teacher && typeof demoSlot.teacher === 'object' && demoSlot.teacher._id)
+        ? demoSlot.teacher._id.toString()
+        : demoSlot.teacher ? demoSlot.teacher.toString() : null;
+
+      if (!teacherProfile || slotTeacherId !== teacherProfile._id.toString()) {
         res.status(403).json({ message: 'Not authorized to delete slots for other teachers' });
         return;
       }
