@@ -55,7 +55,7 @@ interface DemoSession {
   age?: number;
   feeDiscussed?: string;
   numberOfSessions?: number;
-  admissionConfirmed?: "Pending" | "Yes" | "No" | "Won" | "Loss" | string;
+  admissionConfirmed?: "Pending" | "Yes" | "No" | string;
   salesExecutive?: string;
   classAssignedTutor?: string;
   batchAssigned?: string;
@@ -82,7 +82,7 @@ type DemoSessionForm = {
   age: number | "";
   feeDiscussed: string;
   numberOfSessions: number | "";
-  admissionConfirmed: "Pending" | "Yes" | "No" | "Won" | "Loss" | string;
+  admissionConfirmed: "Pending" | "Yes" | "No" | string;
   salesExecutive: string;
   classAssignedTutor: string;
   batchAssigned: string;
@@ -296,7 +296,7 @@ export default function DemoSessionsPage() {
     setForm({
       ...emptyForm(),
       teacher: slot.teacher?._id || slot.teacher,
-      date: format(new Date(slot.date), "yyyy-MM-dd"),
+      date: formatDateSafe(slot.date, "yyyy-MM-dd"),
       startTime: slot.startTime,
       endTime: slot.endTime,
       salesExecutive: isSalesPerson && user?.name ? user.name : "",
@@ -322,14 +322,14 @@ export default function DemoSessionsPage() {
       classAssignedTutor: d.classAssignedTutor || "",
       batchAssigned: d.batchAssigned || "",
       subject: d.subject,
-      date: d.date ? format(new Date(d.date), "yyyy-MM-dd") : "",
+      date: formatDateSafe(d.date, "yyyy-MM-dd"),
       startTime: d.startTime,
       endTime: d.endTime,
       status: d.status,
       meetingLink: d.meetingLink || "",
       notes: d.notes || "",
       cancellationReason: d.cancellationReason || "",
-      rescheduleDate: d.date ? format(new Date(d.date), "yyyy-MM-dd") : "",
+      rescheduleDate: formatDateSafe(d.date, "yyyy-MM-dd"),
       rescheduleStartTime: d.startTime || "09:00",
       rescheduleEndTime: d.endTime || "10:00",
     });
@@ -421,7 +421,7 @@ export default function DemoSessionsPage() {
       if (s.status === "Cancelled") return false;
       const tId = s.teacher?._id || s.teacher;
       if (tId !== form.teacher) return false;
-      const sDate = format(new Date(s.date), "yyyy-MM-dd");
+      const sDate = formatDateSafe(s.date, "yyyy-MM-dd");
       if (sDate !== form.date) return false;
       return s.startTime < form.endTime && s.endTime > form.startTime;
     });
@@ -431,7 +431,7 @@ export default function DemoSessionsPage() {
       if (d._id === editingId || d.status === "Cancelled") return false;
       const tId = d.teacher?._id || (d.teacher as any);
       if (tId !== form.teacher) return false;
-      const dDate = format(new Date(d.date), "yyyy-MM-dd");
+      const dDate = formatDateSafe(d.date, "yyyy-MM-dd");
       if (dDate !== form.date) return false;
       return d.startTime < form.endTime && d.endTime > form.startTime;
     });
@@ -520,7 +520,9 @@ export default function DemoSessionsPage() {
 
     // Date filter
     if (filterDate !== "All") {
+      if (!d.date) return false;
       const dDate = new Date(d.date);
+      if (isNaN(dDate.getTime())) return false;
       const today = new Date();
       if (filterDate === "Today" && !isSameDay(dDate, today)) return false;
       if (filterDate === "This Week" && !isSameWeek(dDate, today)) return false;
@@ -531,14 +533,14 @@ export default function DemoSessionsPage() {
     // Day of week filter
     if (filterDay && filterDay !== "All") {
       if (!d.date) return false;
-      const dayName = format(new Date(d.date), "EEEE");
+      const dayName = formatDateSafe(d.date, "EEEE");
       if (dayName !== filterDay) return false;
     }
 
     // Start & End Date range filter
     if (filterStartDate || filterEndDate) {
       if (!d.date) return false;
-      const sDate = format(new Date(d.date), "yyyy-MM-dd");
+      const sDate = formatDateSafe(d.date, "yyyy-MM-dd");
       if (filterStartDate && sDate < filterStartDate) return false;
       if (filterEndDate && sDate > filterEndDate) return false;
     }
@@ -550,7 +552,7 @@ export default function DemoSessionsPage() {
     return [...filteredSessions].sort((a, b) => {
       const createdA = new Date(a.createdAt || a.date || 0).getTime();
       const createdB = new Date(b.createdAt || b.date || 0).getTime();
-      return createdB - createdA; // Descending createdAt (newest first)
+      return (isNaN(createdB) ? 0 : createdB) - (isNaN(createdA) ? 0 : createdA); // Descending createdAt (newest first)
     });
   }, [filteredSessions]);
 
@@ -560,7 +562,9 @@ export default function DemoSessionsPage() {
       return false;
     }
     if (filterDate !== "All") {
+      if (!slot.date) return false;
       const sDate = new Date(slot.date);
+      if (isNaN(sDate.getTime())) return false;
       const today = new Date();
       if (filterDate === "Today" && !isSameDay(sDate, today)) return false;
       if (filterDate === "This Week" && !isSameWeek(sDate, today)) return false;
@@ -569,12 +573,12 @@ export default function DemoSessionsPage() {
     }
     if (filterDay && filterDay !== "All") {
       if (!slot.date) return false;
-      const dayName = format(new Date(slot.date), "EEEE");
+      const dayName = formatDateSafe(slot.date, "EEEE");
       if (dayName !== filterDay) return false;
     }
     if (filterStartDate || filterEndDate) {
       if (!slot.date) return false;
-      const sDate = format(new Date(slot.date), "yyyy-MM-dd");
+      const sDate = formatDateSafe(slot.date, "yyyy-MM-dd");
       if (filterStartDate && sDate < filterStartDate) return false;
       if (filterEndDate && sDate > filterEndDate) return false;
     }
@@ -916,7 +920,7 @@ export default function DemoSessionsPage() {
                     <div className="space-y-2 text-xs text-neutral-400">
                       <div className="flex items-center gap-2">
                         <Calendar className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>{format(sessionDate, "EEEE, MMMM d, yyyy")}</span>
+                        <span>{formatDateSafe(session.date, "EEEE, MMMM d, yyyy")}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <Clock className="w-3.5 h-3.5 text-neutral-500" />
@@ -1049,7 +1053,7 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{session.phoneNumber || "-"}</td>
                     <td className="px-4 py-3">{session.place || "-"}</td>
                     <td className="px-4 py-3">{session.age || "-"}</td>
-                    <td className="px-4 py-3">{format(new Date(session.date), "dd MMM yyyy")}</td>
+                    <td className="px-4 py-3">{formatDateSafe(session.date, "dd MMM yyyy")}</td>
                     <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
                     <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
                     <td className="px-4 py-3">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</td>
@@ -1586,12 +1590,10 @@ export default function DemoSessionsPage() {
                       <label className="text-xs font-semibold text-neutral-400">Admission Confirmed</label>
                       <select
                         value={form.admissionConfirmed}
-                        onChange={(e) => setForm({ ...form, admissionConfirmed: e.target.value as "Pending" | "Yes" | "No" | "Won" | "Loss" })}
+                        onChange={(e) => setForm({ ...form, admissionConfirmed: e.target.value as "Pending" | "Yes" | "No" })}
                         className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                       >
                         <option value="Pending">Pending</option>
-                        <option value="Won">Won</option>
-                        <option value="Loss">Loss</option>
                         <option value="Yes">Yes</option>
                         <option value="No">No</option>
                       </select>
@@ -1804,11 +1806,11 @@ export default function DemoSessionsPage() {
                       </div>
                     )}
 
-                    {/* Cancellation Reason */}
+                    {/* Cancellation / Rejection Reason */}
                     {(form.status === "Cancelled" || form.admissionConfirmed === "No" || form.admissionConfirmed === "Loss") && (
                       <div className="space-y-1.5 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
                         <label className="text-xs font-semibold text-red-400">
-                          {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection / Loss"}
+                          {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection"}
                         </label>
                         <textarea
                           required
@@ -1994,7 +1996,7 @@ export default function DemoSessionsPage() {
                      </div>
                      <div>
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Date</p>
-                       <p className="text-sm text-white font-medium mt-1">{format(new Date(viewingSession.date), "dd MMM yyyy")}</p>
+                       <p className="text-sm text-white font-medium mt-1">{formatDateSafe(viewingSession.date, "dd MMM yyyy")}</p>
                      </div>
                      <div>
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Time</p>

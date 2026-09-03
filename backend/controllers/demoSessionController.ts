@@ -126,31 +126,44 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     });
 
     if (demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won') {
-      const existingStudent = await Student.findOne({ email: demoSession.studentEmail, name: demoSession.studentName });
-      if (!existingStudent || !existingStudent.batch) {
-        const count = await Batch.countDocuments();
-        const serialNo = count + 1;
-        const batchName = `${demoSession.studentName} 1:1 ${serialNo}`;
+      if (!demoSession.batchAssigned) {
+        const studentQuery: any = { name: demoSession.studentName };
+        if (demoSession.studentEmail && demoSession.studentEmail.trim()) {
+          studentQuery.email = demoSession.studentEmail.trim();
+        }
+        const existingStudent = await Student.findOne(studentQuery);
+        if (!existingStudent || !existingStudent.batch) {
+          const count = await Batch.countDocuments();
+          const serialNo = count + 1;
+          const batchName = `${demoSession.studentName} 1:1 ${serialNo}`;
 
-        const newBatch = await Batch.create({
-          name: batchName,
-          subject: demoSession.subject,
-          assignedTeacher: demoSession.classAssignedTutor || demoSession.teacher,
-          studentsCount: 1,
-          status: 'Upcoming',
-          durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
-          numberOfSessions: demoSession.numberOfSessions || null,
-        });
+          const teacherId = demoSession.classAssignedTutor 
+            || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
+            || undefined;
 
-        demoSession.batchAssigned = newBatch._id;
-        await demoSession.save();
+          const newBatch = await Batch.create({
+            name: batchName,
+            subject: demoSession.subject,
+            assignedTeacher: teacherId,
+            studentsCount: 1,
+            status: 'Upcoming',
+            timing: { startTime: demoSession.startTime || '09:00', endTime: demoSession.endTime || '10:00' },
+            days: [],
+            durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
+            numberOfSessions: demoSession.numberOfSessions || null,
+          });
 
-        await Student.create({
-          name: demoSession.studentName,
-          batch: newBatch._id,
-          mobileNumber: demoSession.phoneNumber || '',
-          email: demoSession.studentEmail || '',
-        });
+          demoSession.batchAssigned = newBatch._id;
+          await demoSession.save();
+
+          await Student.create({
+            name: demoSession.studentName,
+            batch: newBatch._id,
+            parentName: demoSession.customerName || '',
+            mobileNumber: demoSession.phoneNumber || '',
+            email: demoSession.studentEmail || '',
+          });
+        }
       }
     }
 
@@ -306,32 +319,45 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     // Check if admission was newly confirmed and transfer to batch module
     const isNowConfirmed = updated.admissionConfirmed === 'Yes' || updated.admissionConfirmed === 'Won';
     const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won';
-    if (isAdmin && isNowConfirmed && !wasConfirmed) {
-      const existingStudent = await Student.findOne({ email: updated.studentEmail, name: updated.studentName });
-      if (!existingStudent || !existingStudent.batch) {
-        const count = await Batch.countDocuments();
-        const serialNo = count + 1;
-        const batchName = `${updated.studentName} 1:1 ${serialNo}`;
+    if ((isAdmin || isOwnerSales) && isNowConfirmed && !wasConfirmed) {
+      if (!updated.batchAssigned) {
+        const studentQuery: any = { name: updated.studentName };
+        if (updated.studentEmail && updated.studentEmail.trim()) {
+          studentQuery.email = updated.studentEmail.trim();
+        }
+        const existingStudent = await Student.findOne(studentQuery);
+        if (!existingStudent || !existingStudent.batch) {
+          const count = await Batch.countDocuments();
+          const serialNo = count + 1;
+          const batchName = `${updated.studentName} 1:1 ${serialNo}`;
 
-        const newBatch = await Batch.create({
-          name: batchName,
-          subject: updated.subject,
-          assignedTeacher: updated.classAssignedTutor || updated.teacher,
-          studentsCount: 1,
-          status: 'Upcoming',
-          durationType: updated.numberOfSessions ? 'Custom' : '1 Month',
-          numberOfSessions: updated.numberOfSessions || null,
-        });
+          const teacherId = updated.classAssignedTutor 
+            || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
+            || undefined;
 
-        updated.batchAssigned = newBatch._id;
-        await updated.save();
+          const newBatch = await Batch.create({
+            name: batchName,
+            subject: updated.subject,
+            assignedTeacher: teacherId,
+            studentsCount: 1,
+            status: 'Upcoming',
+            timing: { startTime: updated.startTime || '09:00', endTime: updated.endTime || '10:00' },
+            days: [],
+            durationType: updated.numberOfSessions ? 'Custom' : '1 Month',
+            numberOfSessions: updated.numberOfSessions || null,
+          });
 
-        await Student.create({
-          name: updated.studentName,
-          batch: newBatch._id,
-          mobileNumber: updated.phoneNumber || '',
-          email: updated.studentEmail || '',
-        });
+          updated.batchAssigned = newBatch._id;
+          await updated.save();
+
+          await Student.create({
+            name: updated.studentName,
+            batch: newBatch._id,
+            parentName: updated.customerName || '',
+            mobileNumber: updated.phoneNumber || '',
+            email: updated.studentEmail || '',
+          });
+        }
       }
     }
 

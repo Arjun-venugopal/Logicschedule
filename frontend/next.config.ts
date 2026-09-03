@@ -1,10 +1,12 @@
 import path from "path";
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig = {
   outputFileTracingRoot: path.resolve(__dirname, "../"),
-  // Enable static HTML export to generate the 'out' directory for Render Static Site
-  output: 'export',
+  // Enable static HTML export only for production builds to avoid breaking next dev manifests
+  ...(isProd ? { output: "export" as const } : {}),
   images: {
     // Disable Next.js image optimization API since static export runs without a Node server
     unoptimized: true,
