@@ -125,7 +125,8 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       createdBy: req.user ? req.user._id.toString() : null,
     });
 
-    if (demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won') {
+    const isConfirmedOnCreate = demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
+    if (isConfirmedOnCreate) {
       if (!demoSession.batchAssigned) {
         const studentQuery: any = { name: demoSession.studentName };
         if (demoSession.studentEmail && demoSession.studentEmail.trim()) {
@@ -137,9 +138,12 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
           const serialNo = count + 1;
           const batchName = `${demoSession.studentName} 1:1 ${serialNo}`;
 
-          const teacherId = demoSession.classAssignedTutor 
-            || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
-            || undefined;
+          const isTutorNotConfirmed = demoSession.classAssignedTutor === 'Teacher is not confirmed' || demoSession.classAssignedTutor === 'Teacher Not Confirmed' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
+          const teacherId = isTutorNotConfirmed
+            ? undefined
+            : (demoSession.classAssignedTutor 
+               || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
+               || undefined);
 
           const newBatch = await Batch.create({
             name: batchName,
@@ -317,8 +321,8 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const updated = await demoSession.save();
 
     // Check if admission was newly confirmed and transfer to batch module
-    const isNowConfirmed = updated.admissionConfirmed === 'Yes' || updated.admissionConfirmed === 'Won';
-    const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won';
+    const isNowConfirmed = updated.admissionConfirmed === 'Yes' || updated.admissionConfirmed === 'Won' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
+    const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won' || previousAdmissionConfirmed === 'Teacher is not confirmed' || previousAdmissionConfirmed === 'Teacher Not Confirmed';
     if ((isAdmin || isOwnerSales) && isNowConfirmed && !wasConfirmed) {
       if (!updated.batchAssigned) {
         const studentQuery: any = { name: updated.studentName };
@@ -331,9 +335,12 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
           const serialNo = count + 1;
           const batchName = `${updated.studentName} 1:1 ${serialNo}`;
 
-          const teacherId = updated.classAssignedTutor 
-            || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
-            || undefined;
+          const isTutorNotConfirmed = updated.classAssignedTutor === 'Teacher is not confirmed' || updated.classAssignedTutor === 'Teacher Not Confirmed' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
+          const teacherId = isTutorNotConfirmed
+            ? undefined
+            : (updated.classAssignedTutor 
+               || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
+               || undefined);
 
           const newBatch = await Batch.create({
             name: batchName,
@@ -358,6 +365,11 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
             email: updated.studentEmail || '',
           });
         }
+      }
+    } else if ((isAdmin || isOwnerSales) && isNowConfirmed && updated.batchAssigned) {
+      // If batch was already created (e.g. while teacher was not confirmed) and tutor is now selected:
+      if (updated.classAssignedTutor && updated.classAssignedTutor !== 'Teacher is not confirmed' && updated.classAssignedTutor !== 'Teacher Not Confirmed') {
+        await Batch.findByIdAndUpdate(updated.batchAssigned, { assignedTeacher: updated.classAssignedTutor });
       }
     }
 

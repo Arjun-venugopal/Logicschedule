@@ -55,7 +55,7 @@ interface DemoSession {
   age?: number;
   feeDiscussed?: string;
   numberOfSessions?: number;
-  admissionConfirmed?: "Pending" | "Yes" | "No" | string;
+  admissionConfirmed?: "Pending" | "Yes" | "No" | "Teacher is not confirmed" | string;
   salesExecutive?: string;
   classAssignedTutor?: string;
   batchAssigned?: string;
@@ -82,7 +82,7 @@ type DemoSessionForm = {
   age: number | "";
   feeDiscussed: string;
   numberOfSessions: number | "";
-  admissionConfirmed: "Pending" | "Yes" | "No" | string;
+  admissionConfirmed: "Pending" | "Yes" | "No" | "Teacher is not confirmed" | string;
   salesExecutive: string;
   classAssignedTutor: string;
   batchAssigned: string;
@@ -276,6 +276,9 @@ export default function DemoSessionsPage() {
     const val = status || "Pending";
     if (val === "Won" || val === "Yes") {
       return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+    }
+    if (val === "Teacher is not confirmed" || val === "Teacher Not Confirmed") {
+      return "bg-sky-500/10 text-sky-400 border-sky-500/20";
     }
     if (val === "Loss" || val === "No") {
       return "bg-red-500/10 text-red-400 border-red-500/20";
@@ -482,7 +485,8 @@ export default function DemoSessionsPage() {
       const matchSubject = d.subject.toLowerCase().includes(search);
       const matchTeacher = d.teacher?.name?.toLowerCase().includes(search);
       const matchSales = d.salesExecutive?.toLowerCase().includes(search);
-      if (!matchName && !matchSubject && !matchTeacher && !matchSales) return false;
+      const matchAdmission = (d.admissionConfirmed || "").toLowerCase().includes(search);
+      if (!matchName && !matchSubject && !matchTeacher && !matchSales && !matchAdmission) return false;
     }
 
     // Teacher filter
@@ -503,6 +507,8 @@ export default function DemoSessionsPage() {
         if (admStatus !== "No" && admStatus !== "Loss") return false;
       } else if (filterAdmissionStatus === "Pending") {
         if (admStatus !== "Pending") return false;
+      } else if (filterAdmissionStatus === "Teacher is not confirmed") {
+        if (admStatus !== "Teacher is not confirmed" && admStatus !== "Teacher Not Confirmed") return false;
       } else if (admStatus !== filterAdmissionStatus) {
         return false;
       }
@@ -776,6 +782,7 @@ export default function DemoSessionsPage() {
                 <option value="">All Admission Status</option>
                 <option value="Pending">Pending</option>
                 <option value="Yes">Yes</option>
+                <option value="Teacher is not confirmed">Teacher is not confirmed</option>
                 <option value="No">No</option>
               </select>
             </div>
@@ -1590,14 +1597,31 @@ export default function DemoSessionsPage() {
                       <label className="text-xs font-semibold text-neutral-400">Admission Confirmed</label>
                       <select
                         value={form.admissionConfirmed}
-                        onChange={(e) => setForm({ ...form, admissionConfirmed: e.target.value as "Pending" | "Yes" | "No" })}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setForm({
+                            ...form,
+                            admissionConfirmed: val,
+                            ...(val === "Teacher is not confirmed" ? { classAssignedTutor: "" } : {}),
+                          });
+                        }}
                         className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                       >
                         <option value="Pending">Pending</option>
                         <option value="Yes">Yes</option>
+                        <option value="Teacher is not confirmed">Teacher is not confirmed</option>
                         <option value="No">No</option>
                       </select>
                     </div>
+
+                    {form.admissionConfirmed === "Teacher is not confirmed" && (
+                      <div className="p-3 bg-sky-500/10 border border-sky-500/20 rounded-xl mt-2 flex items-center gap-2.5">
+                        <span className="w-2 h-2 rounded-full bg-sky-400 shrink-0" />
+                        <p className="text-xs text-sky-300">
+                          Admission is confirmed. Regular class tutor is not confirmed yet and can be assigned later.
+                        </p>
+                      </div>
+                    )}
 
                     {(form.admissionConfirmed === "Yes" || form.admissionConfirmed === "Won") && (
                       <div className="p-3 bg-neutral-800 border border-neutral-700 rounded-xl mt-2">
@@ -1610,6 +1634,7 @@ export default function DemoSessionsPage() {
                             className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                           >
                             <option value="">Select tutor...</option>
+                            <option value="Teacher is not confirmed">Teacher is not confirmed</option>
                             {teachers.map((t) => (
                               <option key={t._id} value={t._id}>{t.name}</option>
                             ))}
@@ -2049,6 +2074,16 @@ export default function DemoSessionsPage() {
                           </span>
                         </p>
                       </div>
+                      {(viewingSession.admissionConfirmed === "Yes" || viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor) && (
+                        <div>
+                          <p className="text-[10px] text-neutral-500 uppercase font-semibold">Class Assigned Tutor</p>
+                          <p className="text-sm text-white font-medium mt-1">
+                            {viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor === "Teacher is not confirmed" || viewingSession.classAssignedTutor === "Teacher Not Confirmed"
+                              ? <span className="text-sky-400 font-medium">Teacher is not confirmed</span>
+                              : (teachers.find((t: any) => t._id === viewingSession.classAssignedTutor)?.name || (viewingSession.classAssignedTutor as any)?.name || viewingSession.classAssignedTutor || "-")}
+                          </p>
+                        </div>
+                      )}
 
                      {/* Display cancellation reason if it exists */}
                      {viewingSession.cancellationReason && (
