@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import { X, Users, BookOpen, Clock, CalendarCheck, Calendar } from "lucide-react";
 import { format, parseISO } from "date-fns";
-import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid } from "recharts";
+import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
 export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onClose: () => void }) {
   const { data, isLoading } = useQuery({
@@ -26,15 +26,6 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
   const { batch, studentsCount, totalSchedules, completedSchedules, attendanceStats, schedules } = data;
   const progress = totalSchedules > 0 ? Math.round((completedSchedules / totalSchedules) * 100) : 0;
 
-  const completedSchedulesList = schedules.filter((s: any) => s.status === 'Completed');
-
-  const lineChartData = completedSchedulesList.map((cls: any) => {
-    const presentCount = cls.attendance?.filter((a: any) => a.isPresent).length || 0;
-    return {
-      date: format(parseISO(cls.date), "MMM d"),
-      present: presentCount,
-    };
-  });
 
   const barChartData = attendanceStats.map((stu: any) => ({
     name: stu.name.split(' ')[0], 
@@ -138,29 +129,6 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
             </div>
 
             <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5">
-              <h3 className="font-semibold text-white mb-4 text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-500" /> Class-over-Class Attendance
-              </h3>
-              <div className="h-[200px] w-full">
-                {lineChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={lineChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
-                      <XAxis dataKey="date" stroke="#737373" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#737373" fontSize={10} tickLine={false} axisLine={false} allowDecimals={false} />
-                      <Tooltip 
-                        contentStyle={{ backgroundColor: '#171717', borderColor: '#262626', borderRadius: '8px', color: '#fff' }}
-                      />
-                      <Line type="monotone" dataKey="present" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4, fill: '#f59e0b', strokeWidth: 2, stroke: '#171717' }} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="h-full flex items-center justify-center text-neutral-500 text-sm">Not enough data</div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5 lg:col-span-2">
               <h3 className="font-semibold text-white mb-4 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-500" /> Student Attendance %
               </h3>

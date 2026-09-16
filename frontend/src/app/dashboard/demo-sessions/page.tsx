@@ -309,7 +309,8 @@ export default function DemoSessionsPage() {
     setActiveTab("sessions");
   };
 
-  const openEdit = (d: DemoSession) => {
+  const openEdit = (d: DemoSession, overrideStatus?: "Scheduled" | "Completed" | "Cancelled" | "Rescheduled") => {
+    const currentStatus = overrideStatus || d.status || "Scheduled";
     setForm({
       teacher: d.teacher?._id || (d.teacher as any) || "unassigned",
       studentName: d.studentName,
@@ -328,7 +329,7 @@ export default function DemoSessionsPage() {
       date: formatDateSafe(d.date, "yyyy-MM-dd"),
       startTime: d.startTime,
       endTime: d.endTime,
-      status: d.status,
+      status: currentStatus,
       meetingLink: d.meetingLink || "",
       notes: d.notes || "",
       cancellationReason: d.cancellationReason || "",
@@ -340,6 +341,39 @@ export default function DemoSessionsPage() {
     setModal({ open: true, mode: "edit" });
   };
 
+  const handleQuickStatusChange = (session: DemoSession, newStatus: "Scheduled" | "Completed" | "Cancelled" | "Rescheduled") => {
+    if (newStatus === "Rescheduled" || newStatus === "Cancelled") {
+      openEdit(session, newStatus);
+    } else {
+      updateDemoMutation.mutate({
+        id: session._id,
+        data: {
+          teacher: session.teacher?._id || (session.teacher as any) || "unassigned",
+          studentName: session.studentName,
+          studentEmail: session.studentEmail || "",
+          customerName: session.customerName || "",
+          phoneNumber: session.phoneNumber || "",
+          place: session.place || "",
+          age: session.age || "",
+          feeDiscussed: session.feeDiscussed || "",
+          numberOfSessions: session.numberOfSessions || "",
+          admissionConfirmed: session.admissionConfirmed || "Pending",
+          salesExecutive: session.salesExecutive || "",
+          classAssignedTutor: session.classAssignedTutor || "",
+          batchAssigned: session.batchAssigned || "",
+          subject: session.subject,
+          date: formatDateSafe(session.date, "yyyy-MM-dd"),
+          startTime: session.startTime,
+          endTime: session.endTime,
+          status: newStatus,
+          meetingLink: session.meetingLink || "",
+          notes: session.notes || "",
+          cancellationReason: session.cancellationReason || "",
+        },
+      });
+    }
+  };
+
   const closeModal = () => {
     setModal(null);
     setForm(emptyForm());
@@ -349,6 +383,7 @@ export default function DemoSessionsPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const payload = { ...form };
+    payload.status = payload.status || "Scheduled";
     if (payload.status === "Rescheduled") {
       if (payload.rescheduleDate) payload.date = payload.rescheduleDate;
       if (payload.rescheduleStartTime) payload.startTime = payload.rescheduleStartTime;
@@ -496,7 +531,7 @@ export default function DemoSessionsPage() {
     }
 
     // Status filter
-    if (filterStatus && d.status !== filterStatus) return false;
+    if (filterStatus && (d.status || "Scheduled") !== filterStatus) return false;
 
     // Admission Status filter
     if (filterAdmissionStatus) {
@@ -916,11 +951,27 @@ export default function DemoSessionsPage() {
                           {session.studentName}
                         </h3>
                       </div>
-                      <span
-                        className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusColors[session.status]}`}
-                      >
-                        {session.status}
-                      </span>
+                      {canEditSession(session) ? (
+                        <select
+                          value={session.status || "Scheduled"}
+                          onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
+                          disabled={updateDemoMutation.isPending}
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border bg-neutral-900 cursor-pointer focus:outline-none transition-colors appearance-none ${
+                            statusColors[session.status || "Scheduled"] || statusColors.Scheduled
+                          }`}
+                        >
+                          <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
+                          <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
+                          <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
+                          <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
+                        </select>
+                      ) : (
+                        <span
+                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusColors[session.status || "Scheduled"] || statusColors.Scheduled}`}
+                        >
+                          {session.status || "Scheduled"}
+                        </span>
+                      )}
                     </div>
 
                     {/* Details */}
@@ -1069,9 +1120,31 @@ export default function DemoSessionsPage() {
                     </td>
                     <td className="px-4 py-3">{session.numberOfSessions || "-"}</td>
                     <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded-md text-xs font-bold border ${session.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : session.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
-                        {session.status}
-                      </span>
+                      {canEditSession(session) ? (
+                        <select
+                          value={session.status || "Scheduled"}
+                          onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
+                          disabled={updateDemoMutation.isPending}
+                          className={`px-2 py-1 rounded-md text-xs font-bold border bg-neutral-900 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 transition-colors appearance-none ${
+                            (session.status || "Scheduled") === "Scheduled"
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                              : session.status === "Completed"
+                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                              : session.status === "Rescheduled"
+                              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                              : "bg-red-500/10 text-red-400 border-red-500/20"
+                          }`}
+                        >
+                          <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
+                          <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
+                          <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
+                          <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
+                        </select>
+                      ) : (
+                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${(session.status || "Scheduled") === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : session.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                          {session.status || "Scheduled"}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>
@@ -1778,7 +1851,7 @@ export default function DemoSessionsPage() {
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Status</label>
                         <select
-                          value={form.status}
+                          value={form.status || "Scheduled"}
                           onChange={(e) => setForm({ ...form, status: e.target.value as any })}
                           className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                         >
@@ -1838,7 +1911,7 @@ export default function DemoSessionsPage() {
                           {form.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Admission Rejection"}
                         </label>
                         <textarea
-                          required
+                          required={form.status === "Cancelled"}
                           rows={2}
                           placeholder="Please provide a reason..."
                           value={form.cancellationReason}

@@ -22,11 +22,14 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
         return;
       }
     } else if (req.user && req.user.role === 'Sales Person') {
-      // If logged in user is a Sales Person, only fetch their demo sessions
+      // If logged in user is a Sales Person, fetch their demo sessions (case-insensitive) or unassigned ones
+      const escapedName = req.user.name ? req.user.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
       query = {
         $or: [
           { createdBy: req.user._id.toString() },
-          { salesExecutive: req.user.name }
+          ...(escapedName ? [{ salesExecutive: { $regex: `^${escapedName}$` } }] : []),
+          { salesExecutive: '' },
+          { salesExecutive: null }
         ]
       };
     }
@@ -37,6 +40,7 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
     // Mask fee details for Sales Person if they are not the assigned salesExecutive
     const maskedSessions = demoSessions.map((session: any) => {
       const sessionObj = { ...session };
+      sessionObj.status = sessionObj.status || 'Scheduled';
       if (req.user && req.user.role === 'Sales Person') {
         const isAssigned = sessionObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
         if (!isAssigned) {
@@ -117,6 +121,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       date: dateObj,
       startTime,
       endTime,
+      status: req.body.status || 'Scheduled',
       meetingLink: meetingLink || '',
       notes: notes || '',
       cancellationReason: req.body.cancellationReason || '',
@@ -204,8 +209,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
     const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
-    const isOwnerSales = req.user?.role === 'Sales Person' &&
-      (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive === req.user?.name);
+    const isSalesPerson = req.user?.role === 'Sales Person';
     let isAssignedTeacher = false;
 
     if (req.user?._id) {
@@ -214,17 +218,21 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         ? demoSession.teacher._id.toString()
         : demoSession.teacher ? demoSession.teacher.toString() : null;
 
-      if (teacherProfile && sessionTeacherId && sessionTeacherId === teacherProfile._id.toString()) {
+      if (
+        (teacherProfile && sessionTeacherId && sessionTeacherId === teacherProfile._id.toString()) ||
+        (teacherProfile && sessionTeacherId && sessionTeacherId === teacherProfile.user?.toString()) ||
+        (sessionTeacherId && sessionTeacherId === req.user._id.toString())
+      ) {
         isAssignedTeacher = true;
       }
     }
 
-    if (!isAdmin && !isAssignedTeacher && !isOwnerSales) {
+    if (!isAdmin && !isAssignedTeacher && !isSalesPerson) {
       res.status(403).json({ message: 'Not authorized to update this demo session' });
       return;
     }
 
-    if (isAdmin || isOwnerSales) {
+    if (isAdmin || isSalesPerson) {
       demoSession.studentName = req.body.studentName || demoSession.studentName;
       demoSession.studentEmail = req.body.studentEmail !== undefined ? req.body.studentEmail : demoSession.studentEmail;
       demoSession.customerName = req.body.customerName !== undefined ? req.body.customerName : demoSession.customerName;
@@ -238,8 +246,8 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
       demoSession.admissionConfirmed = req.body.admissionConfirmed || demoSession.admissionConfirmed;
       demoSession.salesExecutive = req.body.salesExecutive !== undefined ? req.body.salesExecutive : demoSession.salesExecutive;
-      demoSession.classAssignedTutor = req.body.classAssignedTutor || demoSession.classAssignedTutor;
-      demoSession.batchAssigned = req.body.batchAssigned || demoSession.batchAssigned;
+      demoSession.classAssignedTutor = req.body.classAssignedTutor !== undefined ? req.body.classAssignedTutor : demoSession.classAssignedTutor;
+      demoSession.batchAssigned = req.body.batchAssigned !== undefined ? req.body.batchAssigned : demoSession.batchAssigned;
       demoSession.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : demoSession.numberOfSessions;
 
       demoSession.subject = req.body.subject || demoSession.subject;
@@ -249,13 +257,19 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.date = req.body.date ? new Date(req.body.date) : demoSession.date;
       demoSession.startTime = req.body.startTime || demoSession.startTime;
       demoSession.endTime = req.body.endTime || demoSession.endTime;
-      demoSession.status = req.body.status || demoSession.status;
+      
+      if (req.body.status !== undefined) {
+        demoSession.status = req.body.status;
+      } else if (!demoSession.status) {
+        demoSession.status = 'Scheduled';
+      }
+
       demoSession.meetingLink = req.body.meetingLink !== undefined ? req.body.meetingLink : demoSession.meetingLink;
       demoSession.notes = req.body.notes !== undefined ? req.body.notes : demoSession.notes;
       demoSession.cancellationReason = req.body.cancellationReason !== undefined ? req.body.cancellationReason : demoSession.cancellationReason;
 
       // Recalculate conflict for this demo session
-      if (demoSession.teacher) {
+      if (demoSession.teacher && demoSession.status !== 'Cancelled') {
         const dateObj = new Date(demoSession.date);
         const scheduleConflict = await Schedule.findOne({
           teacher: demoSession.teacher,
@@ -283,6 +297,8 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     } else {
       // Teacher edits: allowed to change status, meetingLink, notes, cancellationReason, date, startTime, endTime
       if (req.body.status !== undefined) demoSession.status = req.body.status;
+      else if (!demoSession.status) demoSession.status = 'Scheduled';
+
       if (req.body.date !== undefined) demoSession.date = new Date(req.body.date);
       if (req.body.startTime !== undefined) demoSession.startTime = req.body.startTime;
       if (req.body.endTime !== undefined) demoSession.endTime = req.body.endTime;
@@ -291,7 +307,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       if (req.body.cancellationReason !== undefined) demoSession.cancellationReason = req.body.cancellationReason;
 
       // Recalculate conflict for this demo session
-      if (demoSession.teacher) {
+      if (demoSession.teacher && demoSession.status !== 'Cancelled') {
         const dateObj = new Date(demoSession.date);
         const scheduleConflict = await Schedule.findOne({
           teacher: demoSession.teacher,
@@ -323,7 +339,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     // Check if admission was newly confirmed and transfer to batch module
     const isNowConfirmed = updated.admissionConfirmed === 'Yes' || updated.admissionConfirmed === 'Won' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
     const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won' || previousAdmissionConfirmed === 'Teacher is not confirmed' || previousAdmissionConfirmed === 'Teacher Not Confirmed';
-    if ((isAdmin || isOwnerSales) && isNowConfirmed && !wasConfirmed) {
+    if ((isAdmin || isSalesPerson) && isNowConfirmed && !wasConfirmed) {
       if (!updated.batchAssigned) {
         const studentQuery: any = { name: updated.studentName };
         if (updated.studentEmail && updated.studentEmail.trim()) {
@@ -366,7 +382,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
           });
         }
       }
-    } else if ((isAdmin || isOwnerSales) && isNowConfirmed && updated.batchAssigned) {
+    } else if ((isAdmin || isSalesPerson) && isNowConfirmed && updated.batchAssigned) {
       // If batch was already created (e.g. while teacher was not confirmed) and tutor is now selected:
       if (updated.classAssignedTutor && updated.classAssignedTutor !== 'Teacher is not confirmed' && updated.classAssignedTutor !== 'Teacher Not Confirmed') {
         await Batch.findByIdAndUpdate(updated.batchAssigned, { assignedTeacher: updated.classAssignedTutor });
@@ -401,7 +417,7 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
     if (demoSession) {
       const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
       const isOwnerSales = req.user?.role === 'Sales Person' &&
-        (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive === req.user?.name);
+        (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive?.trim().toLowerCase() === req.user?.name?.trim().toLowerCase());
 
       if (!isAdmin && !isOwnerSales) {
         res.status(403).json({ message: 'Not authorized to delete this demo session' });

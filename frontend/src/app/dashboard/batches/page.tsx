@@ -8,10 +8,19 @@ import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangl
 import { format, addWeeks, addMonths, addYears, addDays, differenceInDays, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
-import { BatchAnalyticsModal } from "@/components/batches/BatchAnalyticsModal";
-import { ActiveBatchesAnalyticsModal } from "@/components/batches/ActiveBatchesAnalyticsModal";
+import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+
+const BatchAnalyticsModal = dynamic(
+  () => import("@/components/batches/BatchAnalyticsModal").then((m) => m.BatchAnalyticsModal),
+  { ssr: false }
+);
+
+const ActiveBatchesAnalyticsModal = dynamic(
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then((m) => m.ActiveBatchesAnalyticsModal),
+  { ssr: false }
+);
 
 const DURATION_PRESETS = [
   { label: "1 Week", value: "1 Week" },
