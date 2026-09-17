@@ -22,7 +22,7 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
   }
 
   const start = new Date(startDate);
-  const end   = new Date(endDate);
+  const end = new Date(endDate);
   const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
 
   // Pre-fetch all schedules for this batch in the date range to avoid N+1 queries in the loop
@@ -86,7 +86,7 @@ export const getBatches = async (req: any, res: Response) => {
 
     const query: any = isTeacher ? { assignedTeacher: teacherId } : {};
     const batches = await Batch.find(query).populate('assignedTeacher', 'name email');
-    
+
     if (batches.length === 0) {
       serverCache.set(cacheKey, [], 30_000);
       res.json([]);
@@ -98,10 +98,10 @@ export const getBatches = async (req: any, res: Response) => {
     const allSchedules = await Schedule.find({
       batch: { $in: batchIds }
     });
-    
+
     const completedCountMap: Record<string, number> = {};
     const totalCountMap: Record<string, number> = {};
-    
+
     allSchedules.forEach((s: any) => {
       const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
       if (!bId) return;
@@ -189,19 +189,19 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     const datesChanged =
       (req.body.startDate !== undefined && String(req.body.startDate) !== String(batch.startDate)) ||
-      (req.body.endDate   !== undefined && String(req.body.endDate)   !== String(batch.endDate))   ||
-      (req.body.days      !== undefined && JSON.stringify(req.body.days) !== JSON.stringify(batch.days)) ||
-      (req.body.timing    !== undefined);
+      (req.body.endDate !== undefined && String(req.body.endDate) !== String(batch.endDate)) ||
+      (req.body.days !== undefined && JSON.stringify(req.body.days) !== JSON.stringify(batch.days)) ||
+      (req.body.timing !== undefined);
 
-    batch.name            = req.body.name ?? batch.name;
-    batch.subject         = req.body.subject ?? batch.subject;
+    batch.name = req.body.name ?? batch.name;
+    batch.subject = req.body.subject ?? batch.subject;
     batch.assignedTeacher = req.body.assignedTeacher || batch.assignedTeacher;
-    batch.studentsCount   = req.body.studentsCount ?? batch.studentsCount;
-    batch.timing          = req.body.timing ?? batch.timing;
-    batch.days            = req.body.days ?? batch.days;
-    batch.meetingLink     = req.body.meetingLink ?? batch.meetingLink;
-    batch.durationType    = req.body.durationType ?? batch.durationType;
-    batch.status          = req.body.status ?? batch.status;
+    batch.studentsCount = req.body.studentsCount ?? batch.studentsCount;
+    batch.timing = req.body.timing ?? batch.timing;
+    batch.days = req.body.days ?? batch.days;
+    batch.meetingLink = req.body.meetingLink ?? batch.meetingLink;
+    batch.durationType = req.body.durationType ?? batch.durationType;
+    batch.status = req.body.status ?? batch.status;
     batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
     batch.preCompletedClasses = req.body.preCompletedClasses !== undefined ? req.body.preCompletedClasses : batch.preCompletedClasses;
 
@@ -273,12 +273,12 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     const schedules = await Schedule.find({ batch: batch._id }).sort({ date: 1 });
 
     const completedClasses = schedules.filter((s: any) => s.status === 'Completed');
-    
+
     // Compute attendance statistics per student
     const attendanceStats = students.map((stu: any) => {
       let presentCount = 0;
       let totalCount = 0;
-      
+
       completedClasses.forEach((cls: any) => {
         const record = cls.attendance?.find((a: any) => a.studentId?.toString() === stu._id.toString());
         if (record) {
