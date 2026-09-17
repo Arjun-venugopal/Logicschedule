@@ -1,6 +1,8 @@
 import { Request, Response } from 'express';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
+import Teacher from '../models/Teacher';
+import { serverCache } from '../utils/cache';
 
 // Day name → JS getDay() index
 const DAY_INDEX: Record<string, number> = {
@@ -65,18 +67,32 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
 // @desc    Get all batches
 // @route   GET /batches
 // @access  Private
-import Teacher from '../models/Teacher'; // ensure imported at top if not there
-
 export const getBatches = async (req: any, res: Response) => {
   try {
-    let query: any = {};
-    if (req.user && req.user.role === 'Teacher') {
+    const isTeacher = req.user && req.user.role === 'Teacher';
+    let teacherId = '';
+    if (isTeacher) {
       const teacher = await Teacher.findOne({ user: req.user._id });
-      if (teacher) query = { assignedTeacher: teacher._id };
+      if (teacher) teacherId = teacher._id.toString();
       else { res.json([]); return; }
     }
+
+    const cacheKey = `batches_${isTeacher ? teacherId : 'all'}`;
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    const query: any = isTeacher ? { assignedTeacher: teacherId } : {};
     const batches = await Batch.find(query).populate('assignedTeacher', 'name email');
     
+    if (batches.length === 0) {
+      serverCache.set(cacheKey, [], 30_000);
+      res.json([]);
+      return;
+    }
+
     // Fetch schedules count for these unique batches
     const batchIds = Array.from(new Set(batches.map((b: any) => b._id)));
     const allSchedules = await Schedule.find({
@@ -104,6 +120,7 @@ export const getBatches = async (req: any, res: Response) => {
       };
     });
 
+    serverCache.set(cacheKey, enrichedBatches, 30_000);
     res.json(enrichedBatches);
   } catch (error: any) {
     console.error('Get batches error:', error.message);
@@ -146,6 +163,9 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     // Auto-generate calendar schedules for every class day in the duration
     const generated = await generateSchedulesForBatch(batch, preCompletedClasses || 0);
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
+
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('stats_');
 
     const populated = await batch.populate('assignedTeacher', 'name email');
     res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), schedulesGenerated: generated });
@@ -199,6 +219,9 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       console.log(`🔄 Regenerated ${generated} schedule(s) for batch "${updated.name}"`);
     }
 
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('stats_');
+
     await updated.populate('assignedTeacher', 'name email');
     res.json(updated);
   } catch (error: any) {
@@ -224,6 +247,8 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
     console.log(`🗑️  Removed schedule(s) for deleted batch "${batch.name}"`);
 
     await Batch.deleteOne({ _id: batch._id });
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('stats_');
     res.json({ message: 'Batch and its schedules removed' });
   } catch (error: any) {
     console.error('Delete batch error:', error.message);

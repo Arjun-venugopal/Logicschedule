@@ -82,7 +82,7 @@ export function TeacherTimingTable() {
       const res = await api.get(`/teachers/timings?date=${selectedDate}`);
       return res.data;
     },
-    refetchInterval: 30_000, // Auto-refetch every 30 seconds
+    refetchInterval: false, // Manual refresh via Refresh button to preserve Firestore quota
   });
 
   // Local clock state to ensure relative time tickers update live

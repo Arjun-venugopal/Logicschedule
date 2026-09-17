@@ -217,17 +217,28 @@ export class BaseModel {
   private async _executeCount(query: any = {}): Promise<number> {
     let firestoreQuery: any = this.collection;
     let queryKeys = Object.keys(query);
-    const inMemoryFilters: any = {};
+    const unpushedFilters: any = {};
+    let hasInClause = false;
 
     for (const key of queryKeys) {
       if (key === '$or' || key === '$and') {
-        inMemoryFilters[key] = query[key];
+        unpushedFilters[key] = query[key];
         continue;
       }
       const val = query[key];
       if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
-        inMemoryFilters[key] = val;
-        // Opportunistically push range queries to Firestore
+        if (val.$in && Array.isArray(val.$in)) {
+          if (val.$in.length === 0) return 0;
+          if (val.$in.length <= 30 && !hasInClause) {
+            firestoreQuery = firestoreQuery.where(key, 'in', val.$in);
+            hasInClause = true;
+            continue;
+          }
+        }
+        if (val.$ne !== undefined) {
+          firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
+          continue;
+        }
         const opKeys = Object.keys(val);
         const hasOnlyRangeOps = opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
         if (hasOnlyRangeOps) {
@@ -235,22 +246,19 @@ export class BaseModel {
           if (val.$gt !== undefined) firestoreQuery = firestoreQuery.where(key, '>', val.$gt);
           if (val.$lte !== undefined) firestoreQuery = firestoreQuery.where(key, '<=', val.$lte);
           if (val.$lt !== undefined) firestoreQuery = firestoreQuery.where(key, '<', val.$lt);
+          continue;
         }
+        unpushedFilters[key] = val;
       } else {
-        firestoreQuery = firestoreQuery.where(key, '==', val);
+        if (key === '_id') {
+          unpushedFilters[key] = val;
+        } else {
+          firestoreQuery = firestoreQuery.where(key, '==', val);
+        }
       }
     }
 
-    const onlyRangeFilters = Object.keys(inMemoryFilters).every(key => {
-       const val = inMemoryFilters[key];
-       if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-           const opKeys = Object.keys(val);
-           return opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
-       }
-       return false;
-    });
-
-    if (Object.keys(inMemoryFilters).length > 0 && !onlyRangeFilters) {
+    if (Object.keys(unpushedFilters).length > 0) {
       const results = await this._fetchAndFilter(query, null, null);
       return results.length;
     } else {
@@ -260,8 +268,8 @@ export class BaseModel {
         return snapshot.data().count;
       } catch (e: any) {
         if (e.message && e.message.includes('index')) {
-            const results = await this._fetchAndFilter(query, null, null);
-            return results.length;
+          const results = await this._fetchAndFilter(query, null, null);
+          return results.length;
         }
         throw e;
       }
@@ -312,16 +320,63 @@ export class BaseModel {
       return doc.exists ? [convertTimestamps({ _id: doc.id, ...doc.data() })] : [];
     }
 
-    const inMemoryFilters: any = {};
+    // Special case: if $in is empty array, return [] immediately
+    for (const key of queryKeys) {
+      if (query[key] && Array.isArray(query[key].$in) && query[key].$in.length === 0) {
+        return [];
+      }
+    }
+
+    // Special case: single field $in with > 30 items (e.g. batch: { $in: batchIds })
+    // Chunk into 30-item queries so we don't scan the whole collection!
+    if (queryKeys.length === 1 && query[queryKeys[0]] && Array.isArray(query[queryKeys[0]].$in) && query[queryKeys[0]].$in.length > 30) {
+      const key = queryKeys[0];
+      const allIds = query[key].$in;
+      const chunks: any[][] = [];
+      for (let i = 0; i < allIds.length; i += 30) {
+        chunks.push(allIds.slice(i, i + 30));
+      }
+      const allDocs: any[] = [];
+      for (const chunk of chunks) {
+        const snap = await this.collection.where(key, 'in', chunk).get();
+        snap.docs.forEach((doc: any) => {
+          allDocs.push(convertTimestamps({ _id: doc.id, ...doc.data() }));
+        });
+      }
+      if (sortOpt) {
+        const sortKey = Object.keys(sortOpt)[0];
+        const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;
+        allDocs.sort((a: any, b: any) => {
+          if (a[sortKey] < b[sortKey]) return -1 * dir;
+          if (a[sortKey] > b[sortKey]) return 1 * dir;
+          return 0;
+        });
+      }
+      return limitOpt ? allDocs.slice(0, limitOpt) : allDocs;
+    }
+
+    const unpushedFilters: any = {};
+    let hasInClause = false;
+
     for (const key of queryKeys) {
       if (key === '$or' || key === '$and') {
-        inMemoryFilters[key] = query[key];
+        unpushedFilters[key] = query[key];
         continue;
       }
       
       const val = query[key];
       if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
-        inMemoryFilters[key] = val;
+        if (val.$in && Array.isArray(val.$in)) {
+          if (val.$in.length <= 30 && !hasInClause) {
+            firestoreQuery = firestoreQuery.where(key, 'in', val.$in);
+            hasInClause = true;
+            continue;
+          }
+        }
+        if (val.$ne !== undefined) {
+          firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
+          continue;
+        }
         // Opportunistically push range queries to Firestore
         const opKeys = Object.keys(val);
         const hasOnlyRangeOps = opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
@@ -330,28 +385,19 @@ export class BaseModel {
           if (val.$gt !== undefined) firestoreQuery = firestoreQuery.where(key, '>', val.$gt);
           if (val.$lte !== undefined) firestoreQuery = firestoreQuery.where(key, '<=', val.$lte);
           if (val.$lt !== undefined) firestoreQuery = firestoreQuery.where(key, '<', val.$lt);
+          continue;
         }
+        unpushedFilters[key] = val;
       } else {
         if (key === '_id') {
-           // Firestore requires FieldPath.documentId() for ID queries, fallback to in-memory filtering for simplicity if it's mixed with other queries
-           inMemoryFilters[key] = val;
+           unpushedFilters[key] = val;
         } else {
            firestoreQuery = firestoreQuery.where(key, '==', val);
         }
       }
     }
 
-    // If the only in-memory filters are range filters that we pushed to Firestore, we can safely push limits and sorts to Firestore!
-    const onlyRangeFilters = Object.keys(inMemoryFilters).every(key => {
-       const val = inMemoryFilters[key];
-       if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
-           const opKeys = Object.keys(val);
-           return opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
-       }
-       return false;
-    });
-
-    if (Object.keys(inMemoryFilters).length === 0 || onlyRangeFilters) {
+    if (Object.keys(unpushedFilters).length === 0) {
       if (sortOpt) {
         for (const sortKey of Object.keys(sortOpt)) {
           const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? 'desc' : 'asc';
@@ -385,6 +431,8 @@ export class BaseModel {
              for (const key of queryKeys) {
                 if (key !== '$or' && key !== '$and' && !(query[key] !== null && typeof query[key] === 'object' && !(query[key] instanceof Date))) {
                    fallbackQuery = fallbackQuery.where(key, '==', query[key]);
+                } else if (query[key]?.$in && Array.isArray(query[key].$in) && query[key].$in.length <= 30) {
+                   fallbackQuery = fallbackQuery.where(key, 'in', query[key].$in);
                 }
              }
              snapshot = await fallbackQuery.get();
@@ -395,8 +443,8 @@ export class BaseModel {
     
     let results = snapshot.docs.map((doc: any) => convertTimestamps({ _id: doc.id, ...doc.data() }));
 
-    if (Object.keys(inMemoryFilters).length > 0) {
-      const imQuery = inMemoryFilters;
+    if (Object.keys(unpushedFilters).length > 0) {
+      const imQuery = unpushedFilters;
       results = results.filter((item: any) => {
         for (const key of Object.keys(imQuery)) {
           if (key === '$or') {
@@ -501,7 +549,7 @@ export class BaseModel {
     }
 
     // Apply in-memory sort and limit if we had in-memory filters (since we couldn't push them to Firestore)
-    if (Object.keys(inMemoryFilters).length > 0 || (snapshot.docs.length > 0 && results.length < snapshot.docs.length)) {
+    if (Object.keys(unpushedFilters).length > 0 || (snapshot.docs.length > 0 && results.length < snapshot.docs.length)) {
        if (sortOpt) {
           const sortKey = Object.keys(sortOpt)[0];
           const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;

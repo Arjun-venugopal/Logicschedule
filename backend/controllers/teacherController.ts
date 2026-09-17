@@ -5,6 +5,7 @@ import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import Student from '../models/Student';
+import { serverCache } from '../utils/cache';
 
 export function formatDateToYYYYMMDD(dateVal: Date | string): string {
   if (!dateVal) return new Date().toLocaleDateString('en-CA');
@@ -251,6 +252,8 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
     }
 
     const updated = await teacher.save();
+    serverCache.clearPattern('timings_');
+    serverCache.clearPattern('stats_');
 
     res.json(updated);
   } catch (error: any) {
@@ -272,6 +275,8 @@ export const deleteTeacher = async (req: Request, res: Response): Promise<void> 
     }
 
     await Teacher.deleteOne({ _id: teacher._id });
+    serverCache.clearPattern('timings_');
+    serverCache.clearPattern('stats_');
     res.json({ message: 'Teacher removed' });
   } catch (error: any) {
     console.error('Delete teacher error:', error.message);
@@ -541,6 +546,13 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
 // @access  Private
 export const getTeacherTimings = async (req: Request, res: Response): Promise<void> => {
   try {
+    const cacheKey = `timings_${req.query.startDate || ''}_${req.query.endDate || ''}_${req.query.date || ''}`;
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     let dayStart: Date;
     let dayEnd: Date;
 
@@ -756,7 +768,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       };
     });
 
-    res.json({
+    const responsePayload = {
       summary: {
         totalTeachers: teachers.length,
         freeCount,
@@ -767,7 +779,10 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       currentTotalMinutes,
       isToday,
       teachers: resultTeachers
-    });
+    };
+
+    serverCache.set(cacheKey, responsePayload, 30_000);
+    res.json(responsePayload);
   } catch (error: any) {
     console.error('Get teacher timings error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

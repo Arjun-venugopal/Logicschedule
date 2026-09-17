@@ -64,10 +64,10 @@ export default function TeachersPage() {
     reason: ""
   });
 
-  const { data: teachers, isLoading } = useQuery({
+  const { data: teachers, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
-    refetchInterval: 60000, // Refetch every minute for live status updates
+    refetchInterval: false,
   });
 
   const { searchQuery } = useSearchStore();
@@ -243,6 +243,15 @@ export default function TeachersPage() {
               <List className="w-4 h-4" /> Teacher Directory
             </button>
           </div>
+
+          <button
+            onClick={() => refetch()}
+            disabled={isRefetching}
+            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
+            title="Refresh Directory"
+          >
+            <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-amber-400" : ""}`} />
+          </button>
 
           {hasWriteAccess && (
             <button

@@ -3,6 +3,7 @@ import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import { checkIntervalConflict } from '../utils/scheduleHelper';
+import { serverCache } from '../utils/cache';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -79,6 +80,10 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       { path: 'batch', select: 'name subject' },
     ]);
 
+    serverCache.clearPattern('timings_');
+    serverCache.clearPattern('stats_');
+    serverCache.clearPattern('batches_');
+
     res.status(201).json(populated);
   } catch (error: any) {
     console.error('Create schedule error:', error.message);
@@ -148,6 +153,11 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
       console.log(`[updateSchedule] Saving schedule...`);
       const updatedSchedule = await schedule.save();
       console.log(`[updateSchedule] Save successful.`);
+
+      serverCache.clearPattern('timings_');
+      serverCache.clearPattern('stats_');
+      serverCache.clearPattern('batches_');
+
       res.json(updatedSchedule);
     } else {
       res.status(404).json({ message: 'Schedule not found' });
@@ -167,6 +177,9 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
 
     if (schedule) {
       await Schedule.deleteOne({ _id: schedule._id });
+      serverCache.clearPattern('timings_');
+      serverCache.clearPattern('stats_');
+      serverCache.clearPattern('batches_');
       res.json({ message: 'Schedule removed' });
     } else {
       res.status(404).json({ message: 'Schedule not found' });

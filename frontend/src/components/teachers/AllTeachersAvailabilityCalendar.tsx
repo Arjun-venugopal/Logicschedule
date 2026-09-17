@@ -115,7 +115,7 @@ export function AllTeachersAvailabilityCalendar() {
       const res = await api.get(`/teachers/timings?startDate=${startDateStr}&endDate=${endDateStr}`);
       return res.data;
     },
-    refetchInterval: 60_000,
+    refetchInterval: false, // Manual refresh via Refresh button to preserve Firestore quota
   });
 
   const teachers: TeacherTimingData[] = data?.teachers || [];

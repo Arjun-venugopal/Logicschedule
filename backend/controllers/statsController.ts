@@ -3,35 +3,38 @@ import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
+import { serverCache } from '../utils/cache';
 
 // @desc    Get dashboard stats
 // @route   GET /stats
 // @access  Private
 export const getDashboardStats = async (req: any, res: Response) => {
   try {
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
-    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
-
     const isTeacher = req.user && req.user.role === 'Teacher';
     let teacherProfile: any = null;
     if (isTeacher) {
       teacherProfile = await Teacher.findOne({ user: req.user._id });
     }
 
+    const cacheKey = `stats_${isTeacher ? (teacherProfile?._id || req.user._id) : 'admin'}`;
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+
+    const now = new Date();
+    const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+    const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
+
     // --- Core counts (Parallelized with Promise.all) ---
     const teacherFilter = (isTeacher && teacherProfile) ? { assignedTeacher: teacherProfile._id } : {};
     const conflictFilter = (isTeacher && teacherProfile) ? { teacher: teacherProfile._id, conflict: true } : { conflict: true };
-    const todayClassesFilter = (isTeacher && teacherProfile)
-      ? { teacher: teacherProfile._id, date: { $gte: todayStart, $lte: todayEnd }, status: 'Scheduled' }
-      : { date: { $gte: todayStart, $lte: todayEnd }, status: 'Scheduled' };
 
-    const [totalTeachers, totalBatches, activeBatches, conflicts, todayClasses] = await Promise.all([
+    const [totalTeachers, totalBatches, activeBatches, conflicts] = await Promise.all([
       Teacher.countDocuments(),
       Batch.countDocuments(teacherFilter),
       Batch.countDocuments({ ...teacherFilter, status: 'Active' }),
       Schedule.countDocuments(conflictFilter),
-      Schedule.countDocuments(todayClassesFilter),
     ]);
 
     // --- Hours scheduled this week ---
@@ -165,7 +168,9 @@ export const getDashboardStats = async (req: any, res: Response) => {
       };
     });
 
-    res.json({
+    const todayClasses = todaySchedules.filter((s: any) => s.status === 'Scheduled').length;
+
+    const result = {
       totalTeachers,
       totalBatches,
       activeBatches,
@@ -174,7 +179,10 @@ export const getDashboardStats = async (req: any, res: Response) => {
       hoursScheduled: Math.round(hoursScheduled),
       weekData,
       liveTeachers,
-    });
+    };
+
+    serverCache.set(cacheKey, result, 30_000);
+    res.json(result);
   } catch (error: any) {
     console.error('Stats error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
