@@ -81,9 +81,10 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
 
     // Only check conflicts if a teacher is assigned
     if (teacher) {
+      const teacherId = (typeof teacher === 'object' && teacher !== null && teacher._id) ? teacher._id.toString() : teacher.toString();
       // Check conflict with regular schedules
       const scheduleConflict = await Schedule.findOne({
-        teacher,
+        teacher: teacherId,
         date: dateObj,
         status: { $ne: 'Cancelled' },
         $or: [
@@ -93,7 +94,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
 
       // Check conflict with other demo sessions
       const demoConflict = await DemoSession.findOne({
-        teacher,
+        teacher: teacherId,
         date: dateObj,
         status: { $ne: 'Cancelled' },
         $or: [
@@ -269,10 +270,14 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.cancellationReason = req.body.cancellationReason !== undefined ? req.body.cancellationReason : demoSession.cancellationReason;
 
       // Recalculate conflict for this demo session
-      if (demoSession.teacher && demoSession.status !== 'Cancelled') {
+      const currentTeacherId = (demoSession.teacher && typeof demoSession.teacher === 'object' && demoSession.teacher._id)
+        ? demoSession.teacher._id.toString()
+        : (demoSession.teacher ? demoSession.teacher.toString() : null);
+
+      if (currentTeacherId && demoSession.status !== 'Cancelled') {
         const dateObj = new Date(demoSession.date);
         const scheduleConflict = await Schedule.findOne({
-          teacher: demoSession.teacher,
+          teacher: currentTeacherId,
           date: dateObj,
           status: { $ne: 'Cancelled' },
           $or: [
@@ -282,7 +287,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
         const demoConflict = await DemoSession.findOne({
           _id: { $ne: demoSession._id },
-          teacher: demoSession.teacher,
+          teacher: currentTeacherId,
           date: dateObj,
           status: { $ne: 'Cancelled' },
           $or: [
@@ -307,10 +312,14 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       if (req.body.cancellationReason !== undefined) demoSession.cancellationReason = req.body.cancellationReason;
 
       // Recalculate conflict for this demo session
-      if (demoSession.teacher && demoSession.status !== 'Cancelled') {
+      const teacherEditorTeacherId = (demoSession.teacher && typeof demoSession.teacher === 'object' && demoSession.teacher._id)
+        ? demoSession.teacher._id.toString()
+        : (demoSession.teacher ? demoSession.teacher.toString() : null);
+
+      if (teacherEditorTeacherId && demoSession.status !== 'Cancelled') {
         const dateObj = new Date(demoSession.date);
         const scheduleConflict = await Schedule.findOne({
-          teacher: demoSession.teacher,
+          teacher: teacherEditorTeacherId,
           date: dateObj,
           status: { $ne: 'Cancelled' },
           $or: [
@@ -320,7 +329,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
         const demoConflict = await DemoSession.findOne({
           _id: { $ne: demoSession._id },
-          teacher: demoSession.teacher,
+          teacher: teacherEditorTeacherId,
           date: dateObj,
           status: { $ne: 'Cancelled' },
           $or: [

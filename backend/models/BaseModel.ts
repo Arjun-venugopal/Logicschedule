@@ -15,6 +15,138 @@ function convertTimestamps(obj: any): any {
   return obj;
 }
 
+function matchesCondition(item: any, key: string, filterVal: any): boolean {
+  const itemVal = item ? item[key] : undefined;
+
+  if (filterVal !== null && typeof filterVal === 'object' && !(filterVal instanceof Date) && !Array.isArray(filterVal)) {
+    // Regex operator
+    if (filterVal.$regex) {
+      const flags = filterVal.$options || 'i';
+      const regex = new RegExp(filterVal.$regex, flags);
+      if (!regex.test(itemVal || '')) return false;
+    }
+
+    // $ne operator
+    if (filterVal.$ne !== undefined) {
+      const expected = filterVal.$ne;
+      if (expected === null || expected === undefined) {
+        if (itemVal === null || itemVal === undefined) return false;
+      } else if (expected instanceof Date && itemVal) {
+        const eTime = expected.getTime();
+        const iTime = typeof itemVal.toDate === 'function' ? itemVal.toDate().getTime() : (itemVal instanceof Date ? itemVal.getTime() : new Date(itemVal).getTime());
+        if (!isNaN(eTime) && !isNaN(iTime) && eTime === iTime) return false;
+      } else {
+        if (itemVal === expected || itemVal?.toString() === expected?.toString()) return false;
+      }
+    }
+
+    // $in operator
+    if (filterVal.$in && Array.isArray(filterVal.$in)) {
+      const matched = filterVal.$in.some((v: any) => {
+        if (v === itemVal || v?.toString() === itemVal?.toString()) return true;
+        if (v instanceof Date && itemVal) {
+          const vTime = v.getTime();
+          const iTime = typeof itemVal.toDate === 'function' ? itemVal.toDate().getTime() : (itemVal instanceof Date ? itemVal.getTime() : new Date(itemVal).getTime());
+          if (!isNaN(vTime) && !isNaN(iTime) && vTime === iTime) return true;
+        }
+        return false;
+      });
+      if (!matched) return false;
+    }
+
+    // $nin operator
+    if (filterVal.$nin && Array.isArray(filterVal.$nin)) {
+      const matched = filterVal.$nin.some((v: any) => {
+        if (v === itemVal || v?.toString() === itemVal?.toString()) return true;
+        if (v instanceof Date && itemVal) {
+          const vTime = v.getTime();
+          const iTime = typeof itemVal.toDate === 'function' ? itemVal.toDate().getTime() : (itemVal instanceof Date ? itemVal.getTime() : new Date(itemVal).getTime());
+          if (!isNaN(vTime) && !isNaN(iTime) && vTime === iTime) return true;
+        }
+        return false;
+      });
+      if (matched) return false;
+    }
+
+    // $exists operator
+    if (filterVal.$exists !== undefined) {
+      const exists = itemVal !== undefined && itemVal !== null;
+      if (exists !== Boolean(filterVal.$exists)) return false;
+    }
+
+    // Range operators: $gte, $gt, $lte, $lt
+    if (filterVal.$gte !== undefined || filterVal.$lte !== undefined || filterVal.$gt !== undefined || filterVal.$lt !== undefined) {
+      let val = itemVal;
+      const isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
+      if (isDateObj) {
+        if (typeof val.toDate === 'function') val = val.toDate().getTime();
+        else if (val instanceof Date) val = val.getTime();
+      }
+
+      const checkOp = (fVal: any, isDate: boolean) => {
+        if (isDate) {
+          if (fVal instanceof Date) return fVal.getTime();
+          if (typeof fVal === 'string') return new Date(fVal).getTime();
+        }
+        return fVal;
+      };
+
+      if (filterVal.$gte !== undefined && val < checkOp(filterVal.$gte, isDateObj)) return false;
+      if (filterVal.$gt !== undefined && val <= checkOp(filterVal.$gt, isDateObj)) return false;
+      if (filterVal.$lte !== undefined && val > checkOp(filterVal.$lte, isDateObj)) return false;
+      if (filterVal.$lt !== undefined && val >= checkOp(filterVal.$lt, isDateObj)) return false;
+    }
+
+    return true;
+  }
+
+  // Exact equality
+  if (filterVal instanceof Date) {
+    if (!itemVal) return false;
+    const fTime = filterVal.getTime();
+    const iTime = typeof itemVal.toDate === 'function' ? itemVal.toDate().getTime() : (itemVal instanceof Date ? itemVal.getTime() : new Date(itemVal).getTime());
+    return (!isNaN(fTime) && !isNaN(iTime) && fTime === iTime);
+  }
+
+  if (itemVal === filterVal || itemVal?.toString() === filterVal?.toString()) {
+    return true;
+  }
+
+  return false;
+}
+
+function matchesAllFilters(item: any, filters: any): boolean {
+  if (!item || !filters) return true;
+  for (const key of Object.keys(filters)) {
+    if (key === '$or') {
+      const orConditions = filters[key];
+      if (Array.isArray(orConditions)) {
+        const orMatch = orConditions.some((cond: any) => {
+          return Object.keys(cond).every(condKey => matchesCondition(item, condKey, cond[condKey]));
+        });
+        if (!orMatch) return false;
+      }
+      continue;
+    }
+
+    if (key === '$and') {
+      const andConditions = filters[key];
+      if (Array.isArray(andConditions)) {
+        const andMatch = andConditions.every((cond: any) => {
+          return Object.keys(cond).every(condKey => matchesCondition(item, condKey, cond[condKey]));
+        });
+        if (!andMatch) return false;
+      }
+      continue;
+    }
+
+    if (!matchesCondition(item, key, filters[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 class QueryMock {
   constructor(private results: any[]) {}
   
@@ -219,9 +351,10 @@ export class BaseModel {
     let queryKeys = Object.keys(query);
     const unpushedFilters: any = {};
     let hasInClause = false;
+    let hasDisparityClause = false;
 
     for (const key of queryKeys) {
-      if (key === '$or' || key === '$and') {
+      if (key === '$or' || key === '$and' || key === '_id') {
         unpushedFilters[key] = query[key];
         continue;
       }
@@ -236,8 +369,14 @@ export class BaseModel {
           }
         }
         if (val.$ne !== undefined) {
-          firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
-          continue;
+          if (!hasDisparityClause) {
+            firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
+            hasDisparityClause = true;
+            continue;
+          } else {
+            unpushedFilters[key] = val;
+            continue;
+          }
         }
         const opKeys = Object.keys(val);
         const hasOnlyRangeOps = opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
@@ -250,11 +389,7 @@ export class BaseModel {
         }
         unpushedFilters[key] = val;
       } else {
-        if (key === '_id') {
-          unpushedFilters[key] = val;
-        } else {
-          firestoreQuery = firestoreQuery.where(key, '==', val);
-        }
+        firestoreQuery = firestoreQuery.where(key, '==', val);
       }
     }
 
@@ -267,7 +402,7 @@ export class BaseModel {
         const snapshot = await countQuery.count().get();
         return snapshot.data().count;
       } catch (e: any) {
-        if (e.message && e.message.includes('index')) {
+        if (e.message && (e.message.includes('index') || e.message.includes('FAILED_PRECONDITION') || e.code === 9 || e.code === 3 || e.message.includes('INVALID_ARGUMENT') || e.message.includes('NOT_EQUAL'))) {
           const results = await this._fetchAndFilter(query, null, null);
           return results.length;
         }
@@ -320,6 +455,13 @@ export class BaseModel {
       return doc.exists ? [convertTimestamps({ _id: doc.id, ...doc.data() })] : [];
     }
 
+    if (query._id && typeof query._id === 'string') {
+      const doc = await this.collection.doc(query._id).get();
+      if (!doc.exists) return [];
+      const item = convertTimestamps({ _id: doc.id, ...doc.data() });
+      return matchesAllFilters(item, query) ? [item] : [];
+    }
+
     // Special case: if $in is empty array, return [] immediately
     for (const key of queryKeys) {
       if (query[key] && Array.isArray(query[key].$in) && query[key].$in.length === 0) {
@@ -357,9 +499,10 @@ export class BaseModel {
 
     const unpushedFilters: any = {};
     let hasInClause = false;
+    let hasDisparityClause = false;
 
     for (const key of queryKeys) {
-      if (key === '$or' || key === '$and') {
+      if (key === '$or' || key === '$and' || key === '_id') {
         unpushedFilters[key] = query[key];
         continue;
       }
@@ -374,8 +517,14 @@ export class BaseModel {
           }
         }
         if (val.$ne !== undefined) {
-          firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
-          continue;
+          if (!hasDisparityClause) {
+            firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
+            hasDisparityClause = true;
+            continue;
+          } else {
+            unpushedFilters[key] = val;
+            continue;
+          }
         }
         // Opportunistically push range queries to Firestore
         const opKeys = Object.keys(val);
@@ -389,11 +538,7 @@ export class BaseModel {
         }
         unpushedFilters[key] = val;
       } else {
-        if (key === '_id') {
-           unpushedFilters[key] = val;
-        } else {
-           firestoreQuery = firestoreQuery.where(key, '==', val);
-        }
+        firestoreQuery = firestoreQuery.where(key, '==', val);
       }
     }
 
@@ -423,19 +568,30 @@ export class BaseModel {
     try {
         snapshot = await firestoreQuery.get();
     } catch(e: any) {
-        // If query requires an index we don't have, fallback to un-sorted/un-limited query
-        if (e.message && e.message.includes('index')) {
-             console.warn(`Firestore Index required. Falling back to in-memory sort/limit for collection ${this.collectionName}`);
-             console.warn(`To permanently fix this and speed up the query, create the index using this link:\n${e.message}`);
+        // If query requires an index we don't have or hits query constraints, fallback to safe query + in-memory filtering
+        const isIndexErr = e.message && (e.message.includes('index') || e.message.includes('FAILED_PRECONDITION') || e.code === 9);
+        const isArgErr = e.message && (e.message.includes('INVALID_ARGUMENT') || e.code === 3 || e.message.includes('NOT_EQUAL'));
+
+        if (isIndexErr || isArgErr) {
+             if (isIndexErr) {
+               console.warn(`Firestore Index required. Falling back to in-memory sort/limit for collection ${this.collectionName}`);
+               console.warn(`To permanently fix this and speed up the query, create the index using this link:\n${e.message}`);
+             } else {
+               console.warn(`Firestore query constraint fallback for collection ${this.collectionName}: ${e.message}`);
+             }
              let fallbackQuery: any = this.collection;
              for (const key of queryKeys) {
-                if (key !== '$or' && key !== '$and' && !(query[key] !== null && typeof query[key] === 'object' && !(query[key] instanceof Date))) {
+                if (key !== '$or' && key !== '$and' && key !== '_id' && !(query[key] !== null && typeof query[key] === 'object' && !(query[key] instanceof Date))) {
                    fallbackQuery = fallbackQuery.where(key, '==', query[key]);
                 } else if (query[key]?.$in && Array.isArray(query[key].$in) && query[key].$in.length <= 30) {
                    fallbackQuery = fallbackQuery.where(key, 'in', query[key].$in);
                 }
              }
              snapshot = await fallbackQuery.get();
+             // Mark all filters to be evaluated in memory since fallbackQuery stripped them
+             for (const key of queryKeys) {
+               unpushedFilters[key] = query[key];
+             }
         } else {
              throw e;
         }
@@ -444,108 +600,7 @@ export class BaseModel {
     let results = snapshot.docs.map((doc: any) => convertTimestamps({ _id: doc.id, ...doc.data() }));
 
     if (Object.keys(unpushedFilters).length > 0) {
-      const imQuery = unpushedFilters;
-      results = results.filter((item: any) => {
-        for (const key of Object.keys(imQuery)) {
-          if (key === '$or') {
-             const orConditions = imQuery[key];
-             let match = false;
-              for (const cond of orConditions) {
-                let condMatch = true;
-                for (const condKey of Object.keys(cond)) {
-                  const condVal = cond[condKey];
-                  let keyMatch = false;
-                  
-                  if (item[condKey] === condVal || item[condKey]?.toString() === condVal?.toString()) {
-                      keyMatch = true;
-                  } else if (condVal && typeof condVal === 'object' && !Array.isArray(condVal)) {
-                      if (condVal.$regex) {
-                          const regex = new RegExp(condVal.$regex, 'i');
-                          if (regex.test(item[condKey])) keyMatch = true;
-                      }
-                      if (condVal.$in && Array.isArray(condVal.$in)) {
-                          if (condVal.$in.some((v: any) => v === item[condKey] || v?.toString() === item[condKey]?.toString())) {
-                              keyMatch = true;
-                          }
-                      }
-                      if (condVal.$gte !== undefined || condVal.$lte !== undefined || condVal.$gt !== undefined || condVal.$lt !== undefined) {
-                        let val = item[condKey];
-                        let isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
-                        
-                        if (isDateObj) {
-                          if (typeof val.toDate === 'function') val = val.toDate().getTime();
-                          else if (val instanceof Date) val = val.getTime();
-                        }
-                        
-                        const checkOp = (filterVal: any, isDate: boolean) => {
-                          if (isDate) {
-                            if (filterVal instanceof Date) return filterVal.getTime();
-                            if (typeof filterVal === 'string') return new Date(filterVal).getTime();
-                          }
-                          return filterVal;
-                        };
-
-                        let rangeMatch = true;
-                        if (condVal.$gte !== undefined && val < checkOp(condVal.$gte, isDateObj)) rangeMatch = false;
-                        if (condVal.$gt !== undefined && val <= checkOp(condVal.$gt, isDateObj)) rangeMatch = false;
-                        if (condVal.$lte !== undefined && val > checkOp(condVal.$lte, isDateObj)) rangeMatch = false;
-                        if (condVal.$lt !== undefined && val >= checkOp(condVal.$lt, isDateObj)) rangeMatch = false;
-                        
-                        if (rangeMatch) keyMatch = true;
-                      }
-                  }
-                  
-                  if (!keyMatch) {
-                      condMatch = false;
-                      break;
-                  }
-                }
-                
-                if (condMatch) {
-                    match = true;
-                    break;
-                }
-             }
-             if (!match) return false;
-             continue;
-          }
-
-          if (imQuery[key] && typeof imQuery[key] === 'object' && !Array.isArray(imQuery[key])) {
-            if (imQuery[key].$in) {
-               if (!imQuery[key].$in.includes(item[key])) return false;
-            } else if (
-              imQuery[key].$gte !== undefined ||
-              imQuery[key].$lte !== undefined ||
-              imQuery[key].$gt !== undefined ||
-              imQuery[key].$lt !== undefined
-            ) {
-              let val = item[key];
-              let isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
-              
-              if (isDateObj) {
-                if (typeof val.toDate === 'function') val = val.toDate().getTime();
-                else if (val instanceof Date) val = val.getTime();
-              }
-              
-              const checkOp = (filterVal: any, isDate: boolean) => {
-                if (isDate) {
-                  if (filterVal instanceof Date) return filterVal.getTime();
-                  if (typeof filterVal === 'string') return new Date(filterVal).getTime();
-                }
-                return filterVal;
-              };
-
-              if (imQuery[key].$gte !== undefined && val < checkOp(imQuery[key].$gte, isDateObj)) return false;
-              if (imQuery[key].$gt !== undefined && val <= checkOp(imQuery[key].$gt, isDateObj)) return false;
-              if (imQuery[key].$lte !== undefined && val > checkOp(imQuery[key].$lte, isDateObj)) return false;
-              if (imQuery[key].$lt !== undefined && val >= checkOp(imQuery[key].$lt, isDateObj)) return false;
-            }
-          } else {
-             if (item[key] !== imQuery[key] && item[key]?.toString() !== imQuery[key]?.toString()) return false;
-          }
-        }
-        return true;
-      });
+      results = results.filter((item: any) => matchesAllFilters(item, unpushedFilters));
     }
 
     // Apply in-memory sort and limit if we had in-memory filters (since we couldn't push them to Firestore)
