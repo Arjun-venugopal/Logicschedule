@@ -1,29 +1,103 @@
 import { getDb } from '../config/firebase';
+import { FieldValue } from 'firebase-admin/firestore';
 
-function convertTimestamps(obj: any): any {
-  if (obj === null || obj === undefined) return obj;
-  if (typeof obj.toDate === 'function') return obj.toDate();
-  if (Array.isArray(obj)) return obj.map(convertTimestamps);
-  if (typeof obj === 'object') {
-    if (obj instanceof Date) return obj;
-    const newObj: any = {};
-    for (const key of Object.keys(obj)) {
-      newObj[key] = convertTimestamps(obj[key]);
+function convertTimestampsInPlace(obj: any): any {
+  if (obj === null || obj === undefined || typeof obj !== 'object' || obj instanceof Date) {
+    return obj;
+  }
+  if (typeof obj.toDate === 'function') {
+    return obj.toDate();
+  }
+  if (Array.isArray(obj)) {
+    for (let i = 0; i < obj.length; i++) {
+      obj[i] = convertTimestampsInPlace(obj[i]);
     }
-    return newObj;
+    return obj;
+  }
+  const keys = Object.keys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      delete obj[key];
+      continue;
+    }
+    obj[key] = convertTimestampsInPlace(obj[key]);
   }
   return obj;
 }
 
+function sanitizeObject(obj: any): any {
+  if (!obj || typeof obj !== 'object' || obj instanceof Date) return obj;
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeObject);
+  }
+  const clean: any = {};
+  const keys = Object.keys(obj);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') {
+      continue;
+    }
+    clean[key] = sanitizeObject(obj[key]);
+  }
+  return clean;
+}
+
+function applySelect(doc: any, selectStr?: string): any {
+  if (!doc || !selectStr || typeof selectStr !== 'string') return doc;
+  const fields = selectStr.trim().split(/\s+/).filter(Boolean);
+  if (fields.length === 0) return doc;
+
+  const isExclusion = fields.every(f => f.startsWith('-'));
+  const isExplicitInclusion = fields.some(f => !f.startsWith('-'));
+
+  if (isExclusion) {
+    const excludeKeys = new Set(fields.map(f => f.replace(/^-/, '')));
+    for (const key of excludeKeys) {
+      delete doc[key];
+    }
+    return doc;
+  }
+
+  if (isExplicitInclusion) {
+    const includeKeys = new Set(fields.filter(f => !f.startsWith('-')));
+    if (!fields.includes('-_id')) {
+      includeKeys.add('_id');
+    }
+    const keys = Object.keys(doc);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (!includeKeys.has(key)) {
+        delete doc[key];
+      }
+    }
+    return doc;
+  }
+
+  return doc;
+}
+
 function matchesCondition(item: any, key: string, filterVal: any): boolean {
+  if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
   const itemVal = item ? item[key] : undefined;
 
   if (filterVal !== null && typeof filterVal === 'object' && !(filterVal instanceof Date) && !Array.isArray(filterVal)) {
-    // Regex operator
-    if (filterVal.$regex) {
+    // Regex operator with ReDoS security guards
+    if (filterVal.$regex !== undefined) {
       const flags = filterVal.$options || 'i';
-      const regex = new RegExp(filterVal.$regex, flags);
-      if (!regex.test(itemVal || '')) return false;
+      let regex: RegExp;
+      if (filterVal.$regex instanceof RegExp) {
+        regex = filterVal.$regex;
+      } else {
+        const patternStr = String(filterVal.$regex);
+        if (patternStr.length > 250) return false;
+        try {
+          regex = new RegExp(patternStr, flags);
+        } catch {
+          return false;
+        }
+      }
+      if (!regex.test(itemVal !== null && itemVal !== undefined ? String(itemVal) : '')) return false;
     }
 
     // $ne operator
@@ -117,7 +191,11 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
 
 function matchesAllFilters(item: any, filters: any): boolean {
   if (!item || !filters) return true;
-  for (const key of Object.keys(filters)) {
+  const keys = Object.keys(filters);
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+
     if (key === '$or') {
       const orConditions = filters[key];
       if (Array.isArray(orConditions)) {
@@ -147,27 +225,48 @@ function matchesAllFilters(item: any, filters: any): boolean {
   return true;
 }
 
-class QueryMock {
-  constructor(private results: any[]) {}
-  
-  populate(field: string, select?: string) { return this; }
-  select(fields: string) { return this; }
-  lean() { return this; }
-  sort(obj: any) { 
-    // naive sort mock
-    return this; 
+const modelRegistry = new WeakMap<object, BaseModel>();
+
+export class FirestoreDocument {
+  [key: string]: any;
+
+  async populate(path: string | any[], select?: string) {
+    const model = modelRegistry.get(this);
+    if (model) {
+      const populates = Array.isArray(path)
+        ? path.map(p => typeof p === 'string' ? { path: p, select: '' } : p)
+        : [{ path, select: select || '' }];
+      await (model as any)._applyPopulates(this, populates);
+    }
+    return this;
   }
-  limit(n: number) { 
-    this.results = this.results.slice(0, n);
-    return this; 
+
+  async deleteOne() {
+    const model = modelRegistry.get(this);
+    if (model && this._id) {
+      await model.collection.doc(this._id).delete();
+    }
   }
-  
-  // To allow await on this object
-  then(resolve: any, reject: any) {
-    return Promise.resolve(this.results).then(resolve, reject);
-  }
-  catch(reject: any) {
-    return Promise.resolve(this.results).catch(reject);
+
+  async save() {
+    const model = modelRegistry.get(this);
+    if (!model || !this._id) return this;
+    const updateData: any = {};
+    const keys = Object.keys(this);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key === '_id' || key === '__proto__' || key === 'constructor' || key === 'prototype' || typeof this[key] === 'function') {
+        continue;
+      }
+      const val = this[key];
+      if (val && typeof val === 'object' && val._id && !(val instanceof Date)) {
+        updateData[key] = val._id;
+      } else {
+        updateData[key] = val;
+      }
+    }
+    await model.collection.doc(this._id).update({ ...updateData, updatedAt: new Date() });
+    return this;
   }
 }
 
@@ -184,45 +283,8 @@ export class BaseModel {
 
   private _attachMethods(doc: any) {
     if (!doc || typeof doc !== 'object') return doc;
-    
-    // Add populate method
-    Object.defineProperty(doc, 'populate', {
-      value: async (path: string, select?: string) => {
-        await this._applyPopulates(doc, [{ path, select: select || '' }]);
-        return doc;
-      },
-      enumerable: false,
-      configurable: true,
-      writable: true
-    });
-
-    Object.defineProperty(doc, 'deleteOne', {
-      value: async () => {
-        await this.collection.doc(doc._id).delete();
-      },
-      enumerable: false,
-      configurable: true,
-      writable: true
-    });
-
-    // Add save method
-    Object.defineProperty(doc, 'save', {
-      value: async () => {
-        const updateData = { ...doc };
-        delete updateData._id;
-        for (const key of Object.keys(updateData)) {
-           if (updateData[key] && typeof updateData[key] === 'object' && updateData[key]._id && !(updateData[key] instanceof Date)) {
-              updateData[key] = updateData[key]._id;
-           }
-        }
-        await this.collection.doc(doc._id).update({ ...updateData, updatedAt: new Date() });
-        return doc;
-      },
-      enumerable: false,
-      configurable: true,
-      writable: true
-    });
-
+    Object.setPrototypeOf(doc, FirestoreDocument.prototype);
+    modelRegistry.set(doc, this);
     return doc;
   }
 
@@ -233,13 +295,31 @@ export class BaseModel {
       _sort: null as any,
       _limit: null as number | null,
       _startAfter: null as string | null,
+      _select: null as string | null,
+      _lean: false as boolean,
       
-      populate: (path: string, select?: string) => {
-        chain._populates.push({ path, select: select || '' });
+      populate: (path: string | any[], select?: string) => {
+        if (Array.isArray(path)) {
+          for (const p of path) {
+            if (typeof p === 'string') {
+              chain._populates.push({ path: p, select: '' });
+            } else if (p && p.path) {
+              chain._populates.push({ path: p.path, select: p.select || '' });
+            }
+          }
+        } else if (path) {
+          chain._populates.push({ path, select: select || '' });
+        }
         return chain;
       },
-      select: () => chain,
-      lean: () => chain,
+      select: (fields: string) => {
+        chain._select = fields;
+        return chain;
+      },
+      lean: () => {
+        chain._lean = true;
+        return chain;
+      },
       sort: (obj: any) => {
         chain._sort = obj;
         return chain;
@@ -272,23 +352,34 @@ export class BaseModel {
           if (!id) return null;
           const doc = await this.collection.doc(id).get();
           if (!doc.exists) return null;
-          let result = convertTimestamps({ _id: doc.id, ...doc.data() });
-          result = this._attachMethods(result);
+          const data = doc.data();
+          convertTimestampsInPlace(data);
+          let result: any = { _id: doc.id, ...data };
+          if (chain._select) applySelect(result, chain._select);
+          if (!chain._lean) result = this._attachMethods(result);
           result = await this._applyPopulates(result, chain._populates);
           return result;
         }
 
-        let results = await this._fetchAndFilter(queryObj, chain._limit, chain._sort, chain._startAfter);
+        const effectiveLimit = isFindOne ? 1 : chain._limit;
+        let results = await this._fetchAndFilter(queryObj, effectiveLimit, chain._sort, chain._startAfter, isFindOne);
         if (isFindOne) {
           if (results.length === 0) return null;
           let result = results[0];
-          result = this._attachMethods(result);
+          if (chain._select) applySelect(result, chain._select);
+          if (!chain._lean) result = this._attachMethods(result);
           result = await this._applyPopulates(result, chain._populates);
           return result;
         }
 
+        if (chain._select) {
+          results.forEach((r: any) => applySelect(r, chain._select));
+        }
+        if (!chain._lean) {
+          results = results.map((r: any) => this._attachMethods(r));
+        }
+
         // Apply populates to all results efficiently using pre-batched cache
-        results = results.map(r => this._attachMethods(r));
         if (chain._populates.length > 0) {
           const populateCache: Record<string, Promise<any>> = {};
           const db = getDb();
@@ -303,10 +394,10 @@ export class BaseModel {
 
             if (collectionName) {
               const uniqueIds = new Set<string>();
-              for (const r of results) {
-                const idVal = r[path];
+              for (let i = 0; i < results.length; i++) {
+                const idVal = results[i][path];
                 if (typeof idVal === 'string' && idVal.trim()) {
-                  uniqueIds.add(idVal);
+                  uniqueIds.add(idVal.trim());
                 }
               }
 
@@ -315,11 +406,24 @@ export class BaseModel {
                 const chunkSize = 100;
                 for (let i = 0; i < idsArr.length; i += chunkSize) {
                   const chunkIds = idsArr.slice(i, i + chunkSize);
-                  const docRefs = chunkIds.map(id => db.collection(collectionName).doc(id));
+                  const docRefs = chunkIds.map(refId => db.collection(collectionName).doc(refId));
                   const batchPromise = db.getAll(...docRefs).then((snapshots: any[]) => {
                     const map = new Map<string, any>();
                     snapshots.forEach(ref => {
-                      map.set(ref.id, ref.exists ? convertTimestamps({ _id: ref.id, ...ref.data() }) : null);
+                      if (ref.exists) {
+                        const d = ref.data();
+                        convertTimestampsInPlace(d);
+                        const docObj: any = { _id: ref.id, ...d };
+                        if (collectionName === 'users') {
+                          delete docObj.password;
+                        }
+                        if (pop.select) {
+                          applySelect(docObj, pop.select);
+                        }
+                        map.set(ref.id, docObj);
+                      } else {
+                        map.set(ref.id, null);
+                      }
                     });
                     return map;
                   }).catch(err => {
@@ -327,9 +431,9 @@ export class BaseModel {
                     return new Map<string, any>();
                   });
 
-                  chunkIds.forEach(id => {
-                    const cacheKey = `${collectionName}_${id}`;
-                    populateCache[cacheKey] = batchPromise.then(map => map.get(id) || null);
+                  chunkIds.forEach(refId => {
+                    const cacheKey = `${collectionName}_${refId}`;
+                    populateCache[cacheKey] = batchPromise.then(map => map.get(refId) || null);
                   });
                 }
               }
@@ -353,7 +457,9 @@ export class BaseModel {
     let hasInClause = false;
     let hasDisparityClause = false;
 
-    for (const key of queryKeys) {
+    for (let i = 0; i < queryKeys.length; i++) {
+      const key = queryKeys[i];
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       if (key === '$or' || key === '$and' || key === '_id') {
         unpushedFilters[key] = query[key];
         continue;
@@ -426,19 +532,31 @@ export class BaseModel {
       else if (path === 'user') collectionName = 'users';
 
       if (collectionName && typeof doc[path] === 'string') {
+        const docId = doc[path].trim();
         if (cache) {
-          const cacheKey = `${collectionName}_${doc[path]}`;
+          const cacheKey = `${collectionName}_${docId}`;
           if (!cache[cacheKey]) {
-            cache[cacheKey] = db.collection(collectionName).doc(doc[path]).get().then((ref: any) => {
-              return ref.exists ? convertTimestamps({ _id: ref.id, ...ref.data() }) : null;
+            cache[cacheKey] = db.collection(collectionName).doc(docId).get().then((ref: any) => {
+              if (!ref.exists) return null;
+              const d = ref.data();
+              convertTimestampsInPlace(d);
+              const obj: any = { _id: ref.id, ...d };
+              if (collectionName === 'users') delete obj.password;
+              if (pop.select) applySelect(obj, pop.select);
+              return obj;
             });
           }
           const popDoc = await cache[cacheKey];
           if (popDoc) doc[path] = popDoc;
         } else {
-          const ref = await db.collection(collectionName).doc(doc[path]).get();
+          const ref = await db.collection(collectionName).doc(docId).get();
           if (ref.exists) {
-            doc[path] = convertTimestamps({ _id: ref.id, ...ref.data() });
+            const d = ref.data();
+            convertTimestampsInPlace(d);
+            const obj: any = { _id: ref.id, ...d };
+            if (collectionName === 'users') delete obj.password;
+            if (pop.select) applySelect(obj, pop.select);
+            doc[path] = obj;
           }
         }
       }
@@ -446,31 +564,42 @@ export class BaseModel {
     return doc;
   }
 
-  async _fetchAndFilter(query: any = {}, limitOpt: number | null, sortOpt: any, startAfterOpt?: string | null): Promise<any[]> {
+  async _fetchAndFilter(
+    query: any = {}, 
+    limitOpt: number | null, 
+    sortOpt: any, 
+    startAfterOpt?: string | null,
+    isFindOne: boolean = false
+  ): Promise<any[]> {
     let firestoreQuery: any = this.collection;
     let queryKeys = Object.keys(query);
 
     if (query._id && typeof query._id === 'string' && Object.keys(query).length === 1) {
       const doc = await this.collection.doc(query._id).get();
-      return doc.exists ? [convertTimestamps({ _id: doc.id, ...doc.data() })] : [];
+      if (!doc.exists) return [];
+      const data = doc.data();
+      convertTimestampsInPlace(data);
+      return [{ _id: doc.id, ...data }];
     }
 
     if (query._id && typeof query._id === 'string') {
       const doc = await this.collection.doc(query._id).get();
       if (!doc.exists) return [];
-      const item = convertTimestamps({ _id: doc.id, ...doc.data() });
+      const data = doc.data();
+      convertTimestampsInPlace(data);
+      const item = { _id: doc.id, ...data };
       return matchesAllFilters(item, query) ? [item] : [];
     }
 
     // Special case: if $in is empty array, return [] immediately
-    for (const key of queryKeys) {
+    for (let i = 0; i < queryKeys.length; i++) {
+      const key = queryKeys[i];
       if (query[key] && Array.isArray(query[key].$in) && query[key].$in.length === 0) {
         return [];
       }
     }
 
-    // Special case: single field $in with > 30 items (e.g. batch: { $in: batchIds })
-    // Chunk into 30-item queries so we don't scan the whole collection!
+    // Special case: single field $in with > 30 items
     if (queryKeys.length === 1 && query[queryKeys[0]] && Array.isArray(query[queryKeys[0]].$in) && query[queryKeys[0]].$in.length > 30) {
       const key = queryKeys[0];
       const allIds = query[key].$in;
@@ -482,7 +611,9 @@ export class BaseModel {
       for (const chunk of chunks) {
         const snap = await this.collection.where(key, 'in', chunk).get();
         snap.docs.forEach((doc: any) => {
-          allDocs.push(convertTimestamps({ _id: doc.id, ...doc.data() }));
+          const data = doc.data();
+          convertTimestampsInPlace(data);
+          allDocs.push({ _id: doc.id, ...data });
         });
       }
       if (sortOpt) {
@@ -501,7 +632,9 @@ export class BaseModel {
     let hasInClause = false;
     let hasDisparityClause = false;
 
-    for (const key of queryKeys) {
+    for (let i = 0; i < queryKeys.length; i++) {
+      const key = queryKeys[i];
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
       if (key === '$or' || key === '$and' || key === '_id') {
         unpushedFilters[key] = query[key];
         continue;
@@ -568,7 +701,6 @@ export class BaseModel {
     try {
         snapshot = await firestoreQuery.get();
     } catch(e: any) {
-        // If query requires an index we don't have or hits query constraints, fallback to safe query + in-memory filtering
         const isIndexErr = e.message && (e.message.includes('index') || e.message.includes('FAILED_PRECONDITION') || e.code === 9);
         const isArgErr = e.message && (e.message.includes('INVALID_ARGUMENT') || e.code === 3 || e.message.includes('NOT_EQUAL'));
 
@@ -588,7 +720,6 @@ export class BaseModel {
                 }
              }
              snapshot = await fallbackQuery.get();
-             // Mark all filters to be evaluated in memory since fallbackQuery stripped them
              for (const key of queryKeys) {
                unpushedFilters[key] = query[key];
              }
@@ -597,14 +728,31 @@ export class BaseModel {
         }
     }
     
-    let results = snapshot.docs.map((doc: any) => convertTimestamps({ _id: doc.id, ...doc.data() }));
+    const hasUnpushed = Object.keys(unpushedFilters).length > 0;
+    const targetLimit = isFindOne ? 1 : limitOpt;
+    const canEarlyExit = Boolean(targetLimit && (!sortOpt || !hasUnpushed));
+    const results: any[] = [];
 
-    if (Object.keys(unpushedFilters).length > 0) {
-      results = results.filter((item: any) => matchesAllFilters(item, unpushedFilters));
+    for (let i = 0; i < snapshot.docs.length; i++) {
+      const docSnap = snapshot.docs[i];
+      const data = docSnap.data();
+      convertTimestampsInPlace(data);
+      const item = { _id: docSnap.id, ...data };
+
+      if (hasUnpushed) {
+        if (!matchesAllFilters(item, unpushedFilters)) {
+          continue;
+        }
+      }
+
+      results.push(item);
+      if (canEarlyExit && results.length >= targetLimit!) {
+        break;
+      }
     }
 
-    // Apply in-memory sort and limit if we had in-memory filters (since we couldn't push them to Firestore)
-    if (Object.keys(unpushedFilters).length > 0 || (snapshot.docs.length > 0 && results.length < snapshot.docs.length)) {
+    // Apply in-memory sort and limit if we had in-memory filters or couldn't sort natively
+    if (hasUnpushed || (snapshot.docs.length > 0 && results.length < snapshot.docs.length)) {
        if (sortOpt) {
           const sortKey = Object.keys(sortOpt)[0];
           const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;
@@ -614,8 +762,8 @@ export class BaseModel {
              return 0;
           });
        }
-       if (limitOpt) {
-          results = results.slice(0, limitOpt);
+       if (limitOpt && results.length > limitOpt) {
+          return results.slice(0, limitOpt);
        }
     }
 
@@ -636,20 +784,24 @@ export class BaseModel {
   }
 
   async create(data: any): Promise<any> {
-    const docRef = await this.collection.add({ ...data, createdAt: new Date(), updatedAt: new Date() });
-    const newDoc = { ...data, _id: docRef.id };
+    const cleanData = sanitizeObject(data);
+    delete cleanData._id;
+    const docRef = await this.collection.add({ ...cleanData, createdAt: new Date(), updatedAt: new Date() });
+    const newDoc = { ...cleanData, _id: docRef.id };
     return this._attachMethods(newDoc);
   }
 
   async updateOne(query: any, data: any): Promise<void> {
-    const doc = await this._fetchAndFilter(query, null, null).then(res => res.length > 0 ? res[0] : null);
+    const doc = await this._fetchAndFilter(query, 1, null, null, true).then(res => res.length > 0 ? res[0] : null);
     if (doc) {
-      await this.collection.doc(doc._id).update({ ...data, updatedAt: new Date() });
+      const cleanData = sanitizeObject(data.$set || data);
+      delete cleanData._id;
+      await this.collection.doc(doc._id).update({ ...cleanData, updatedAt: new Date() });
     }
   }
 
   async deleteOne(query: any): Promise<void> {
-    const doc = await this._fetchAndFilter(query, null, null).then(res => res.length > 0 ? res[0] : null);
+    const doc = await this._fetchAndFilter(query, 1, null, null, true).then(res => res.length > 0 ? res[0] : null);
     if (doc) {
       await this.collection.doc(doc._id).delete();
     }
@@ -661,8 +813,8 @@ export class BaseModel {
     for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
       const batch = getDb().batch();
       const chunk = docs.slice(i, i + BATCH_LIMIT);
-      for (const doc of chunk) {
-        batch.delete(this.collection.doc(doc._id));
+      for (let j = 0; j < chunk.length; j++) {
+        batch.delete(this.collection.doc(chunk[j]._id));
       }
       await batch.commit();
     }
@@ -671,13 +823,16 @@ export class BaseModel {
   async insertMany(docs: any[]): Promise<any[]> {
     const inserted: any[] = [];
     const BATCH_LIMIT = 500;
+    const now = new Date();
     for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
       const batch = getDb().batch();
       const chunk = docs.slice(i, i + BATCH_LIMIT);
-      for (const doc of chunk) {
+      for (let j = 0; j < chunk.length; j++) {
+        const cleanDoc = sanitizeObject(chunk[j]);
+        delete cleanDoc._id;
         const docRef = this.collection.doc();
-        batch.set(docRef, { ...doc, createdAt: new Date(), updatedAt: new Date() });
-        inserted.push({ ...doc, _id: docRef.id });
+        batch.set(docRef, { ...cleanDoc, createdAt: now, updatedAt: now });
+        inserted.push(this._attachMethods({ ...cleanDoc, _id: docRef.id }));
       }
       await batch.commit();
     }
@@ -685,28 +840,48 @@ export class BaseModel {
   }
 
   async findByIdAndUpdate(id: string, update: any, options?: any): Promise<any> {
-    if (!id) return null;
+    if (!id || typeof id !== 'string') return null;
+    const cleanId = id.trim();
     let updateData = { ...(update.$set || update) };
     
+    // Security: sanitize prototype pollution keys and immutable _id
+    delete updateData.__proto__;
+    delete updateData.constructor;
+    delete updateData.prototype;
+    delete updateData._id;
+
     // Handle $inc for Firestore natively using FieldValue.increment
-    if (update.$inc) {
-      const { FieldValue } = require('firebase-admin/firestore');
-      for (const key of Object.keys(update.$inc)) {
+    if (update.$inc && typeof update.$inc === 'object') {
+      const keys = Object.keys(update.$inc);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
         updateData[key] = FieldValue.increment(update.$inc[key]);
       }
-      delete updateData.$inc; // Make sure we don't save $inc literally
+      delete updateData.$inc;
     }
     
-    // Handle naive $push
-    if (update.$push) {
-      // Mock push manually (naively)
+    // Handle $push for Firestore natively using FieldValue.arrayUnion
+    if (update.$push && typeof update.$push === 'object') {
+      const keys = Object.keys(update.$push);
+      for (let i = 0; i < keys.length; i++) {
+        const key = keys[i];
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        const pushVal = update.$push[key];
+        if (pushVal && pushVal.$each && Array.isArray(pushVal.$each)) {
+          updateData[key] = FieldValue.arrayUnion(...pushVal.$each);
+        } else {
+          updateData[key] = FieldValue.arrayUnion(pushVal);
+        }
+      }
+      delete updateData.$push;
     }
 
     try {
-      await this.collection.doc(id).update({ ...updateData, updatedAt: new Date() });
-      return this.findById(id);
+      await this.collection.doc(cleanId).update({ ...updateData, updatedAt: new Date() });
+      return this.findById(cleanId);
     } catch (e: any) {
-      if (e.code === 5 || e.message.includes('NOT_FOUND') || e.message.includes('No document to update')) {
+      if (e.code === 5 || (e.message && (e.message.includes('NOT_FOUND') || e.message.includes('No document to update')))) {
         return null;
       }
       throw e;
@@ -717,4 +892,3 @@ export class BaseModel {
     return this._makeLazyQuery(query, true, false, false);
   }
 }
-

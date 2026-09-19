@@ -19,6 +19,29 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
     queryFn: async () => (await api.get(`/students/${studentId}`)).data,
   });
 
+  // Helper to determine next course level suggestion
+  const getNextLevelSuggestion = () => {
+    const text = `${student?.batch?.name || ''} ${student?.batch?.subject || ''}`.toLowerCase();
+    if (text.includes('level 1') || text.includes('lvl 1') || text.includes('level-1')) return 'Level 2';
+    if (text.includes('level 2') || text.includes('lvl 2') || text.includes('level-2')) return 'Level 3';
+    if (text.includes('level 3') || text.includes('lvl 3') || text.includes('level-3')) return 'Level 4';
+    if (text.includes('level 4') || text.includes('lvl 4') || text.includes('level-4')) return 'Level 5';
+    if (text.includes('level 5') || text.includes('lvl 5') || text.includes('level-5')) return 'Level 6';
+    return 'Level 2';
+  };
+
+  const handleOpenNextCourseModal = () => {
+    const nextLvl = getNextLevelSuggestion();
+    setSelectedLevel(nextLvl);
+    const subject = student?.batch?.subject?.split('-')[0]?.trim() || student?.batch?.name?.split('-')[0]?.trim() || '';
+    if (subject) {
+      setCustomBatchInput(`${subject} - ${nextLvl}`);
+    } else {
+      setCustomBatchInput(nextLvl);
+    }
+    setShowNextCourseModal(true);
+  };
+
   const { data: allBatches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
@@ -150,33 +173,40 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
             </div>
 
             {student.batch && (
-              <div className="pb-2">
+              <div className="pb-2 flex flex-wrap items-center gap-2">
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-bold shadow-lg shadow-emerald-500/5">
                   <CheckCircle2 className="w-4 h-4" /> Enrolled
                 </div>
+                <button
+                  onClick={handleOpenNextCourseModal}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold transition-all shadow-sm shadow-amber-500/10"
+                >
+                  <GraduationCap className="w-4 h-4 text-amber-400" />
+                  Advance / Next Level
+                </button>
               </div>
             )}
           </div>
 
           {/* Next Course Banner for Completed Batches */}
-          {student.batch?.status === "Completed" && (
+          {(student.batch?.status === "Completed" || attendancePercentage >= 100) && (
             <div className="bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 border border-emerald-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 shadow-lg shadow-emerald-950/20">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
                   <GraduationCap className="w-5 h-5" />
                 </div>
                 <div>
-                  <h4 className="font-bold text-white text-sm">Current Course Completed! 🎉</h4>
+                  <h4 className="font-bold text-white text-sm">Course Level Completed! 🎉</h4>
                   <p className="text-xs text-neutral-300">
-                    {student.name} finished <strong>{student.batch.name}</strong> ({student.batch.subject}). Choose their next course to continue learning.
+                    {student.name} finished <strong>{student.batch.name}</strong> ({student.batch.subject}). Move to the second level to continue learning without duplicating child details.
                   </p>
                 </div>
               </div>
               <button
-                onClick={() => setShowNextCourseModal(true)}
+                onClick={handleOpenNextCourseModal}
                 className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shrink-0 shadow-lg shadow-emerald-500/20"
               >
-                <Plus className="w-4 h-4" /> Choose Next Course
+                <Plus className="w-4 h-4" /> Move to Next Level
               </button>
             </div>
           )}
@@ -375,7 +405,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
               </div>
 
               <p className="text-xs text-neutral-400 leading-relaxed">
-                Promote <strong>{student.name}</strong> from <em>{student.batch?.name} ({student.batch?.subject})</em> to their next course level. Their completed batch will be saved in Academic History.
+                Promote <strong>{student.name}</strong> from <em>{student.batch?.name} ({student.batch?.subject})</em> to their next course level. Their completed batch will be saved in Academic History and their existing student details will be preserved without creating duplicate records.
               </p>
 
               <div>

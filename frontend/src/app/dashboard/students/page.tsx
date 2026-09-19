@@ -116,6 +116,13 @@ export default function StudentsPage() {
     return batchesSet.size;
   }, [students]);
 
+  const matchingExistingStudent = useMemo(() => {
+    if (!editStudent?.name || editStudent._id) return null;
+    const cleanName = editStudent.name.trim().toLowerCase();
+    if (cleanName.length < 2) return null;
+    return students.find((s: any) => (s.name || '').trim().toLowerCase() === cleanName) || null;
+  }, [editStudent?.name, editStudent?._id, students]);
+
   return (
     <div className="flex flex-col gap-6 max-w-7xl mx-auto h-full">
       {/* Header */}
@@ -361,12 +368,23 @@ export default function StudentsPage() {
                             onClick={() => setSelectedStudentId(student._id)}
                             className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all shadow-sm shadow-emerald-500/20"
                           >
-                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Choose Next Course
+                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance to Next Level
                           </button>
                         ) : (
-                          <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
-                            {student.batch?.name || "Unassigned"}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
+                              {student.batch?.name || "Unassigned"}
+                            </span>
+                            {hasWriteAccess && (
+                              <button
+                                onClick={() => setSelectedStudentId(student._id)}
+                                className="text-[11px] px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 font-medium transition-colors"
+                                title="Promote to next course level"
+                              >
+                                Advance Level
+                              </button>
+                            )}
+                          </div>
                         )}
                       </td>
                       <td className="px-6 py-4">
@@ -448,6 +466,34 @@ export default function StudentsPage() {
                     className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm"
                     placeholder="Enter student name"
                   />
+                  {matchingExistingStudent && (
+                    <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-start gap-2.5 animate-in fade-in">
+                      <GraduationCap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="font-bold text-amber-400">Existing Child Found: {matchingExistingStudent.name}</p>
+                        <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">
+                          Currently in <strong>{matchingExistingStudent.batch?.name || 'Unassigned Batch'}</strong>. Assigning a new batch will advance them to the next level/batch and retain all academic history without duplicating child details.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditStudent({
+                              ...editStudent,
+                              _id: matchingExistingStudent._id,
+                              name: matchingExistingStudent.name,
+                              parentName: matchingExistingStudent.parentName || editStudent.parentName || "",
+                              mobileNumber: matchingExistingStudent.mobileNumber || editStudent.mobileNumber || "",
+                              whatsappNumber: matchingExistingStudent.whatsappNumber || editStudent.whatsappNumber || "",
+                              email: matchingExistingStudent.email || editStudent.email || "",
+                            });
+                          }}
+                          className="mt-2 px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-[11px] transition-colors inline-flex items-center gap-1"
+                        >
+                          Use Existing Student Profile Details
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">

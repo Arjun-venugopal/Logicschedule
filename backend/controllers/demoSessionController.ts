@@ -4,6 +4,7 @@ import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
+import { findExistingStudent } from './studentController';
 
 // @desc    Get all demo sessions
 // @route   GET /demo-sessions
@@ -134,40 +135,66 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     const isConfirmedOnCreate = demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
     if (isConfirmedOnCreate) {
       if (!demoSession.batchAssigned) {
-        const studentQuery: any = { name: demoSession.studentName };
-        if (demoSession.studentEmail && demoSession.studentEmail.trim()) {
-          studentQuery.email = demoSession.studentEmail.trim();
-        }
-        const existingStudent = await Student.findOne(studentQuery);
-        if (!existingStudent || !existingStudent.batch) {
-          const count = await Batch.countDocuments();
-          const serialNo = count + 1;
-          const batchName = `${demoSession.studentName} 1:1 ${serialNo}`;
+        const studentCleanName = (demoSession.studentName || '').trim();
+        const existingStudent = await findExistingStudent(
+          studentCleanName,
+          demoSession.studentEmail,
+          demoSession.phoneNumber
+        );
 
-          const isTutorNotConfirmed = demoSession.classAssignedTutor === 'Teacher is not confirmed' || demoSession.classAssignedTutor === 'Teacher Not Confirmed' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
-          const teacherId = isTutorNotConfirmed
-            ? undefined
-            : (demoSession.classAssignedTutor 
-               || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
-               || undefined);
+        const count = await Batch.countDocuments();
+        const serialNo = count + 1;
+        const batchName = `${studentCleanName} 1:1 ${serialNo}`;
 
-          const newBatch = await Batch.create({
-            name: batchName,
-            subject: demoSession.subject,
-            assignedTeacher: teacherId,
-            studentsCount: 1,
-            status: 'Upcoming',
-            timing: { startTime: demoSession.startTime || '09:00', endTime: demoSession.endTime || '10:00' },
-            days: [],
-            durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
-            numberOfSessions: demoSession.numberOfSessions || null,
-          });
+        const isTutorNotConfirmed = demoSession.classAssignedTutor === 'Teacher is not confirmed' || demoSession.classAssignedTutor === 'Teacher Not Confirmed' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
+        const teacherId = isTutorNotConfirmed
+          ? undefined
+          : (demoSession.classAssignedTutor 
+             || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
+             || undefined);
 
-          demoSession.batchAssigned = newBatch._id;
-          await demoSession.save();
+        const newBatch = await Batch.create({
+          name: batchName,
+          subject: demoSession.subject,
+          assignedTeacher: teacherId,
+          studentsCount: 1,
+          status: 'Upcoming',
+          timing: { startTime: demoSession.startTime || '09:00', endTime: demoSession.endTime || '10:00' },
+          days: [],
+          durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
+          numberOfSessions: demoSession.numberOfSessions || null,
+        });
 
+        demoSession.batchAssigned = newBatch._id;
+        await demoSession.save();
+
+        if (existingStudent) {
+          // Advance/move existing student to new batch without duplicating!
+          const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
+          if (oldBatchId && oldBatchId !== newBatch._id.toString()) {
+            if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
+            const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
+              const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+              return pbId === oldBatchId;
+            });
+            if (!alreadyInPast) {
+              existingStudent.pastBatches.push({
+                batch: oldBatchId,
+                leftAt: new Date(),
+              });
+            }
+            await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
+          }
+
+          existingStudent.batch = newBatch._id;
+          if (demoSession.customerName && !existingStudent.parentName) existingStudent.parentName = demoSession.customerName;
+          if (demoSession.phoneNumber && !existingStudent.mobileNumber) existingStudent.mobileNumber = demoSession.phoneNumber;
+          if (demoSession.studentEmail && !existingStudent.email) existingStudent.email = demoSession.studentEmail;
+          if (studentCleanName) existingStudent.name = studentCleanName;
+          await existingStudent.save();
+        } else {
           await Student.create({
-            name: demoSession.studentName,
+            name: studentCleanName,
             batch: newBatch._id,
             parentName: demoSession.customerName || '',
             mobileNumber: demoSession.phoneNumber || '',
@@ -350,40 +377,66 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     const wasConfirmed = previousAdmissionConfirmed === 'Yes' || previousAdmissionConfirmed === 'Won' || previousAdmissionConfirmed === 'Teacher is not confirmed' || previousAdmissionConfirmed === 'Teacher Not Confirmed';
     if ((isAdmin || isSalesPerson) && isNowConfirmed && !wasConfirmed) {
       if (!updated.batchAssigned) {
-        const studentQuery: any = { name: updated.studentName };
-        if (updated.studentEmail && updated.studentEmail.trim()) {
-          studentQuery.email = updated.studentEmail.trim();
-        }
-        const existingStudent = await Student.findOne(studentQuery);
-        if (!existingStudent || !existingStudent.batch) {
-          const count = await Batch.countDocuments();
-          const serialNo = count + 1;
-          const batchName = `${updated.studentName} 1:1 ${serialNo}`;
+        const studentCleanName = (updated.studentName || '').trim();
+        const existingStudent = await findExistingStudent(
+          studentCleanName,
+          updated.studentEmail,
+          updated.phoneNumber
+        );
 
-          const isTutorNotConfirmed = updated.classAssignedTutor === 'Teacher is not confirmed' || updated.classAssignedTutor === 'Teacher Not Confirmed' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
-          const teacherId = isTutorNotConfirmed
-            ? undefined
-            : (updated.classAssignedTutor 
-               || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
-               || undefined);
+        const count = await Batch.countDocuments();
+        const serialNo = count + 1;
+        const batchName = `${studentCleanName} 1:1 ${serialNo}`;
 
-          const newBatch = await Batch.create({
-            name: batchName,
-            subject: updated.subject,
-            assignedTeacher: teacherId,
-            studentsCount: 1,
-            status: 'Upcoming',
-            timing: { startTime: updated.startTime || '09:00', endTime: updated.endTime || '10:00' },
-            days: [],
-            durationType: updated.numberOfSessions ? 'Custom' : '1 Month',
-            numberOfSessions: updated.numberOfSessions || null,
-          });
+        const isTutorNotConfirmed = updated.classAssignedTutor === 'Teacher is not confirmed' || updated.classAssignedTutor === 'Teacher Not Confirmed' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
+        const teacherId = isTutorNotConfirmed
+          ? undefined
+          : (updated.classAssignedTutor 
+             || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
+             || undefined);
 
-          updated.batchAssigned = newBatch._id;
-          await updated.save();
+        const newBatch = await Batch.create({
+          name: batchName,
+          subject: updated.subject,
+          assignedTeacher: teacherId,
+          studentsCount: 1,
+          status: 'Upcoming',
+          timing: { startTime: updated.startTime || '09:00', endTime: updated.endTime || '10:00' },
+          days: [],
+          durationType: updated.numberOfSessions ? 'Custom' : '1 Month',
+          numberOfSessions: updated.numberOfSessions || null,
+        });
 
+        updated.batchAssigned = newBatch._id;
+        await updated.save();
+
+        if (existingStudent) {
+          // Advance/move existing student to new batch without duplicating!
+          const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
+          if (oldBatchId && oldBatchId !== newBatch._id.toString()) {
+            if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
+            const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
+              const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+              return pbId === oldBatchId;
+            });
+            if (!alreadyInPast) {
+              existingStudent.pastBatches.push({
+                batch: oldBatchId,
+                leftAt: new Date(),
+              });
+            }
+            await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
+          }
+
+          existingStudent.batch = newBatch._id;
+          if (updated.customerName && !existingStudent.parentName) existingStudent.parentName = updated.customerName;
+          if (updated.phoneNumber && !existingStudent.mobileNumber) existingStudent.mobileNumber = updated.phoneNumber;
+          if (updated.studentEmail && !existingStudent.email) existingStudent.email = updated.studentEmail;
+          if (studentCleanName) existingStudent.name = studentCleanName;
+          await existingStudent.save();
+        } else {
           await Student.create({
-            name: updated.studentName,
+            name: studentCleanName,
             batch: newBatch._id,
             parentName: updated.customerName || '',
             mobileNumber: updated.phoneNumber || '',

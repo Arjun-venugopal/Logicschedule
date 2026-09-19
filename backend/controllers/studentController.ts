@@ -28,21 +28,31 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
     }
 
     let createdStudents = 0;
+    let advancedStudents = 0;
     
     // Pre-fetch all batches into a Map<name, id> for O(1) lookups
     const allBatches = await Batch.find({});
     const batchMap = new Map<string, string>();
     for (const b of allBatches) {
-      if (b.name) batchMap.set(b.name, b._id.toString());
+      if (b.name) batchMap.set(b.name.trim().toLowerCase(), b._id.toString());
     }
 
-    // Pre-fetch all existing student unique keys into a Set for O(1) duplicate checks
-    const allStudents = await Student.find({}).select('name batch');
-    const existingStudentKeys = new Set<string>();
+    // Pre-fetch all existing students with full batch & contact details
+    const allStudents = await Student.find({});
+    const studentByName = new Map<string, any>();
+    const studentByPhone = new Map<string, any>();
+    const studentByEmail = new Map<string, any>();
+
     for (const s of allStudents) {
-      const bId = s.batch?._id ? s.batch._id.toString() : s.batch?.toString();
-      if (s.name && bId) {
-        existingStudentKeys.add(`${bId}:${s.name}`);
+      if (s.name) {
+        studentByName.set(s.name.trim().toLowerCase(), s);
+      }
+      if (s.mobileNumber) {
+        const clean = String(s.mobileNumber).replace(/\D/g, '');
+        if (clean.length >= 8) studentByPhone.set(clean.slice(-10), s);
+      }
+      if (s.email) {
+        studentByEmail.set(String(s.email).trim().toLowerCase(), s);
       }
     }
 
@@ -51,55 +61,116 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
 
     // Process each row in memory
     for (const row of data) {
-      const studentName = row['Student Name'] || row['name'];
-      const batchName = row['Batch'] || row['batch'];
+      const rawName = row['Student Name'] || row['name'];
+      const rawBatch = row['Batch'] || row['batch'];
       const parentName = row['Parent Name'] || row['parentName'];
       const mobileNumber = row['Mobile Number'] || row['mobileNumber'];
+      const email = row['Email'] || row['email'];
 
-      if (!studentName || !batchName) {
+      if (!rawName || !rawBatch) {
         continue; // Skip invalid rows
       }
 
+      const studentName = String(rawName).trim();
+      const batchName = String(rawBatch).trim();
+      const normBatch = batchName.toLowerCase();
+
       // Find or create batch
-      let batchId = batchMap.get(batchName);
+      let batchId = batchMap.get(normBatch);
       if (!batchId) {
         let batch = await Batch.create({
           name: batchName,
-          subject: 'General',
+          subject: batchName.includes('-') ? batchName.split('-')[0].trim() : 'General',
           studentsCount: 0,
           status: 'Active',
           days: ['Monday'],
           timing: { startTime: '09:00', endTime: '10:00' },
         });
         batchId = String(batch._id);
-        batchMap.set(batchName, batchId);
+        batchMap.set(normBatch, batchId);
       }
 
       if (batchId) {
-        const studentKey = `${batchId}:${studentName}`;
-        if (!existingStudentKeys.has(studentKey)) {
-          existingStudentKeys.add(studentKey);
-          newStudentsToInsert.push({
-            name: studentName,
-            batch: batchId,
-            parentName: parentName || '',
-            mobileNumber: mobileNumber || '',
-          });
+        const normName = studentName.toLowerCase();
+        const cleanPhone = String(mobileNumber || '').replace(/\D/g, '');
+        const last10Phone = cleanPhone.length >= 8 ? cleanPhone.slice(-10) : '';
+        const normEmail = String(email || '').trim().toLowerCase();
+
+        const existingStudent = 
+          (normEmail && studentByEmail.get(normEmail)) ||
+          (last10Phone && studentByPhone.get(last10Phone)) ||
+          studentByName.get(normName);
+
+        if (existingStudent && existingStudent._id) {
+          const currBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
+          if (currBatchId === batchId) {
+            // Already in this batch, do not duplicate
+            continue;
+          }
+
+          // Advance / Move existing student to the new level/batch
+          if (currBatchId) {
+            if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
+            const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
+              const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+              return pbId === currBatchId;
+            });
+            if (!alreadyInPast) {
+              existingStudent.pastBatches.push({
+                batch: currBatchId,
+                leftAt: new Date(),
+              });
+            }
+            await Batch.findByIdAndUpdate(currBatchId, { $inc: { studentsCount: -1 } });
+          }
+
+          existingStudent.batch = batchId;
+          if (parentName) existingStudent.parentName = parentName;
+          if (mobileNumber) existingStudent.mobileNumber = mobileNumber;
+          if (email) existingStudent.email = email;
+          existingStudent.name = studentName;
+
+          await existingStudent.save();
           const curr = batchCountIncrements.get(batchId) || 0;
           batchCountIncrements.set(batchId, curr + 1);
+          advancedStudents++;
+        } else {
+          // Check if queued in same batch in this Excel file to avoid duplicates
+          const alreadyQueued = newStudentsToInsert.find((s) => s.batch === batchId && s.name.toLowerCase() === normName);
+          if (!alreadyQueued) {
+            const newDoc = {
+              name: studentName,
+              batch: batchId,
+              parentName: parentName || '',
+              mobileNumber: mobileNumber || '',
+              email: email || '',
+            };
+            newStudentsToInsert.push(newDoc);
+            studentByName.set(normName, newDoc);
+            if (last10Phone) studentByPhone.set(last10Phone, newDoc);
+            if (normEmail) studentByEmail.set(normEmail, newDoc);
+
+            const curr = batchCountIncrements.get(batchId) || 0;
+            batchCountIncrements.set(batchId, curr + 1);
+          }
         }
       }
     }
 
     if (newStudentsToInsert.length > 0) {
       await Student.insertMany(newStudentsToInsert);
-      for (const [bId, inc] of batchCountIncrements.entries()) {
-        await Batch.findByIdAndUpdate(bId, { $inc: { studentsCount: inc } });
-      }
       createdStudents = newStudentsToInsert.length;
     }
 
-    res.status(200).json({ message: `Successfully imported ${createdStudents} students and arranged batches.` });
+    for (const [bId, inc] of batchCountIncrements.entries()) {
+      if (inc > 0) {
+        await Batch.findByIdAndUpdate(bId, { $inc: { studentsCount: inc } });
+      }
+    }
+
+    res.status(200).json({ 
+      message: `Successfully processed: ${createdStudents} new students added, ${advancedStudents} students moved to next level/batch.` 
+    });
   } catch (error) {
     console.error('Error uploading students:', error);
     res.status(500).json({ message: 'Failed to process Excel file' });
@@ -180,6 +251,42 @@ const studentSchema = z.object({
   email: z.string().email("Invalid email").optional().or(z.literal('')),
 });
 
+const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+export async function findExistingStudent(studentName: string, studentEmail?: string, phoneNumber?: string) {
+  const cleanEmail = studentEmail ? String(studentEmail).trim().toLowerCase() : '';
+  const cleanPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : '';
+  const cleanName = studentName ? String(studentName).trim() : '';
+
+  // 1. Try matching by email
+  if (cleanEmail) {
+    const byEmail = await Student.findOne({ email: cleanEmail });
+    if (byEmail) return byEmail;
+  }
+
+  // 2. Try matching by phone
+  if (cleanPhone && cleanPhone.length >= 8) {
+    const allStudents = await Student.find({}).select('_id name mobileNumber email batch pastBatches');
+    const last10 = cleanPhone.slice(-10);
+    const byPhone = allStudents.find((s: any) => {
+      const p = String(s.mobileNumber || '').replace(/\D/g, '');
+      return p.length >= 8 && p.slice(-10) === last10;
+    });
+    if (byPhone) return Student.findById(byPhone._id);
+  }
+
+  // 3. Try matching by normalized name (case-insensitive & trimmed)
+  if (cleanName) {
+    const escaped = escapeRegex(cleanName);
+    const byName = await Student.findOne({
+      name: { $regex: `^\\s*${escaped}\\s*$`, $options: 'i' }
+    });
+    if (byName) return byName;
+  }
+
+  return null;
+}
+
 export const createStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const parsed = studentSchema.safeParse(req.body);
@@ -188,15 +295,60 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       return;
     }
     const { name, batch, parentName, mobileNumber, whatsappNumber, email } = parsed.data;
+    const trimmedName = name.trim();
     
-    const existingStudent = await Student.findOne({ name, batch });
-    if (existingStudent) {
+    // 1. Check if already enrolled in this exact batch
+    const existingInBatch = await Student.findOne({
+      name: { $regex: `^\\s*${escapeRegex(trimmedName)}\\s*$`, $options: 'i' },
+      batch
+    });
+    if (existingInBatch) {
       res.status(400).json({ message: 'Student already exists in this batch' });
       return;
     }
 
+    // 2. Check if student already exists in the system (e.g. moving from Level 1 to Level 2)
+    const existingStudent = await findExistingStudent(trimmedName, email, mobileNumber);
+
+    if (existingStudent) {
+      // ADVANCE / MOVE existing child to the new batch/level without creating duplicate details
+      const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
+      const newBatchId = batch;
+
+      if (oldBatchId && oldBatchId !== newBatchId) {
+        if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
+        const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
+          const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+          return pbId === oldBatchId;
+        });
+        if (!alreadyInPast) {
+          existingStudent.pastBatches.push({
+            batch: oldBatchId,
+            leftAt: new Date(),
+          });
+        }
+        await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
+      }
+
+      existingStudent.batch = newBatchId;
+      if (parentName) existingStudent.parentName = parentName;
+      if (mobileNumber) existingStudent.mobileNumber = mobileNumber;
+      if (whatsappNumber) existingStudent.whatsappNumber = whatsappNumber;
+      if (email) existingStudent.email = email;
+      if (trimmedName) existingStudent.name = trimmedName;
+
+      const updatedStudent = await existingStudent.save();
+      if (newBatchId) {
+        await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
+      }
+
+      res.status(200).json(updatedStudent);
+      return;
+    }
+
+    // 3. New child registration
     const newStudent = await Student.create({
-      name,
+      name: trimmedName,
       batch,
       parentName: parentName || '',
       mobileNumber: mobileNumber || '',
@@ -237,10 +389,16 @@ export const updateStudent = async (req: Request, res: Response, next: NextFunct
     if (oldBatchId && newBatchId && oldBatchId.toString() !== newBatchId.toString()) {
       // Add to pastBatches before changing
       if (!student.pastBatches) student.pastBatches = [];
-      student.pastBatches.push({
-        batch: oldBatchId,
-        leftAt: new Date(),
+      const alreadyInPast = student.pastBatches.some((pb: any) => {
+        const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+        return pbId === oldBatchId.toString();
       });
+      if (!alreadyInPast) {
+        student.pastBatches.push({
+          batch: oldBatchId,
+          leftAt: new Date(),
+        });
+      }
     }
 
     if (name !== undefined) student.name = name;
