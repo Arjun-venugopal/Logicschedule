@@ -45,7 +45,6 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
   const { data: allBatches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
-    enabled: showNextCourseModal,
   });
 
   const updateBatchMutation = useMutation({
@@ -351,26 +350,48 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                   )}
 
                   {/* Past Batches */}
-                  {student.pastBatches && student.pastBatches.slice().reverse().map((pb: any, idx: number) => (
-                    <div key={idx} className="p-4 flex items-center justify-between hover:bg-neutral-800/40 transition-colors relative group">
-                      <div className="flex items-center gap-4 pl-3">
-                        <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center shrink-0">
-                          <CheckCircle2 className="w-4 h-4 text-neutral-500" />
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-neutral-300 group-hover:text-white transition-colors">{pb.batch?.name || "Unknown Batch"}</h4>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <p className="text-xs text-neutral-500 font-medium">{pb.batch?.subject || "General"}</p>
-                            <span className="w-1 h-1 rounded-full bg-neutral-700" />
-                            <p className="text-[10px] text-neutral-600 font-medium">Completed {format(new Date(pb.leftAt), "MMM yyyy")}</p>
+                  {student.pastBatches && student.pastBatches.slice().reverse().map((pb: any, idx: number) => {
+                    const rawBatchId = typeof pb.batch === "object" ? pb.batch?._id : pb.batch;
+                    const matchedBatch = allBatches.find((b: any) => b._id === rawBatchId);
+                    const batchName = pb.batch?.name || pb.batchName || matchedBatch?.name || "Completed Level";
+                    const batchSubject = pb.batch?.subject || pb.batchSubject || matchedBatch?.subject || "General";
+                    let completedDateStr = "";
+                    if (pb.leftAt) {
+                      try {
+                        const dateObj = new Date(pb.leftAt);
+                        if (!isNaN(dateObj.getTime())) {
+                          completedDateStr = format(dateObj, "MMM yyyy");
+                        }
+                      } catch {
+                        completedDateStr = "";
+                      }
+                    }
+
+                    return (
+                      <div key={idx} className="p-4 flex items-center justify-between hover:bg-neutral-800/40 transition-colors relative group">
+                        <div className="flex items-center gap-4 pl-3">
+                          <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center shrink-0">
+                            <CheckCircle2 className="w-4 h-4 text-neutral-500" />
+                          </div>
+                          <div>
+                            <h4 className="text-sm font-bold text-neutral-300 group-hover:text-white transition-colors">{batchName}</h4>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <p className="text-xs text-neutral-500 font-medium">{batchSubject}</p>
+                              {completedDateStr && (
+                                <>
+                                  <span className="w-1 h-1 rounded-full bg-neutral-700" />
+                                  <p className="text-[10px] text-neutral-600 font-medium">Completed {completedDateStr}</p>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
+                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2">
+                          Completed
+                        </div>
                       </div>
-                      <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2">
-                        Completed
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ) : (
                 <div className="p-8 text-center flex flex-col items-center justify-center">

@@ -31,6 +31,11 @@ export default function CompletedClassesPage() {
     queryFn: async () => (await api.get("/students")).data,
   });
 
+  const { data: batches = [] } = useQuery({
+    queryKey: ["batches"],
+    queryFn: async () => (await api.get("/batches")).data,
+  });
+
   const updateSchedule = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/schedules/${id}`, data),
     onSuccess: () => {
@@ -40,11 +45,19 @@ export default function CompletedClassesPage() {
   });
 
   const studentBatchMap = useMemo(() => {
-    const map = new Map<string, string>();
+    const map = new Map<string, Set<string>>();
     for (const st of students) {
       if (st._id) {
+        const batchSet = new Set<string>();
         const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
-        map.set(st._id.toString(), bId);
+        if (bId) batchSet.add(bId);
+        if (st.pastBatches && Array.isArray(st.pastBatches)) {
+          st.pastBatches.forEach((pb: any) => {
+            const pbId = pb.batch?._id ? pb.batch._id.toString() : (pb.batch ? pb.batch.toString() : '');
+            if (pbId) batchSet.add(pbId);
+          });
+        }
+        map.set(st._id.toString(), batchSet);
       }
     }
     return map;
@@ -53,7 +66,7 @@ export default function CompletedClassesPage() {
   // Filter schedules that are completed OR in the past, memoized to prevent re-sorting on every render
   const pastOrCompletedClasses = useMemo(() => {
     const todayStart = new Date(new Date().setHours(0, 0, 0, 0));
-    const targetStudentBatchId = selectedStudentId ? studentBatchMap.get(selectedStudentId) : null;
+    const targetStudentBatches = selectedStudentId ? studentBatchMap.get(selectedStudentId) : null;
 
     return schedules
       .filter((s: any) => {
@@ -64,9 +77,9 @@ export default function CompletedClassesPage() {
 
         // Apply student filter via O(1) Map lookup
         if (selectedStudentId) {
-          if (!targetStudentBatchId) return false;
+          if (!targetStudentBatches || targetStudentBatches.size === 0) return false;
           const scheduleBatchId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
-          if (scheduleBatchId !== targetStudentBatchId) return false;
+          if (!targetStudentBatches.has(scheduleBatchId)) return false;
         }
 
         // Apply date filter
@@ -188,7 +201,9 @@ export default function CompletedClassesPage() {
                 >
                   <div className="space-y-3">
                     <div className="flex flex-col">
-                      <h4 className="font-semibold text-white text-base">{cls.batch?.name || "Unknown Batch"}</h4>
+                      <h4 className="font-semibold text-white text-base">
+                        {cls.batch?.name || (typeof cls.batch === 'string' ? batches.find((b: any) => b._id === cls.batch)?.name : null) || "Completed Batch"}
+                      </h4>
                       <p className="text-xs text-amber-400 font-medium">
                         {cls.subject || "No topic specified"}
                       </p>

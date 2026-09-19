@@ -33,7 +33,9 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
     // Pre-fetch all batches into a Map<name, id> for O(1) lookups
     const allBatches = await Batch.find({});
     const batchMap = new Map<string, string>();
+    const batchById = new Map<string, any>();
     for (const b of allBatches) {
+      batchById.set(b._id.toString(), b);
       if (b.name) batchMap.set(b.name.trim().toLowerCase(), b._id.toString());
     }
 
@@ -88,6 +90,7 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
         });
         batchId = String(batch._id);
         batchMap.set(normBatch, batchId);
+        batchById.set(batchId, batch);
       }
 
       if (batchId) {
@@ -116,8 +119,11 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
               return pbId === currBatchId;
             });
             if (!alreadyInPast) {
+              const oldB = batchById.get(currBatchId);
               existingStudent.pastBatches.push({
                 batch: currBatchId,
+                batchName: oldB?.name,
+                batchSubject: oldB?.subject,
                 leftAt: new Date(),
               });
             }
@@ -211,7 +217,9 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
       if (limit) queryChain = queryChain.limit(limit);
       if (startAfter) queryChain = queryChain.startAfter(startAfter);
 
-      const students = await queryChain.populate('batch', 'name subject status');
+      const students = await queryChain
+        .populate('batch', 'name subject status')
+        .populate('pastBatches.batch', 'name subject status');
       res.status(200).json(students);
       return;
     }
@@ -220,7 +228,9 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
     if (limit) queryChain = queryChain.limit(limit);
     if (startAfter) queryChain = queryChain.startAfter(startAfter);
 
-    const students = await queryChain.populate('batch', 'name subject status');
+    const students = await queryChain
+      .populate('batch', 'name subject status')
+      .populate('pastBatches.batch', 'name subject status');
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch all students' });
@@ -322,8 +332,19 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
           return pbId === oldBatchId;
         });
         if (!alreadyInPast) {
+          let oldBName = '';
+          let oldBSub = '';
+          try {
+            const oldB = await Batch.findById(oldBatchId);
+            if (oldB) {
+              oldBName = oldB.name;
+              oldBSub = oldB.subject;
+            }
+          } catch {}
           existingStudent.pastBatches.push({
             batch: oldBatchId,
+            batchName: oldBName,
+            batchSubject: oldBSub,
             leftAt: new Date(),
           });
         }
@@ -383,19 +404,33 @@ export const updateStudent = async (req: Request, res: Response, next: NextFunct
     }
 
     // Handle batch change logic
-    const oldBatchId = student.batch;
-    const newBatchId = batch;
+    const oldBatchId = student.batch?._id ? student.batch._id.toString() : (typeof student.batch === 'string' ? student.batch : student.batch?.toString());
+    const newBatchId = batch ? batch.toString() : undefined;
 
-    if (oldBatchId && newBatchId && oldBatchId.toString() !== newBatchId.toString()) {
+    if (oldBatchId && newBatchId && oldBatchId !== newBatchId) {
       // Add to pastBatches before changing
       if (!student.pastBatches) student.pastBatches = [];
       const alreadyInPast = student.pastBatches.some((pb: any) => {
         const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
-        return pbId === oldBatchId.toString();
+        return pbId === oldBatchId;
       });
       if (!alreadyInPast) {
+        let oldBatchName = '';
+        let oldBatchSubject = '';
+        try {
+          const oldBatchDoc = await Batch.findById(oldBatchId);
+          if (oldBatchDoc) {
+            oldBatchName = oldBatchDoc.name;
+            oldBatchSubject = oldBatchDoc.subject;
+          }
+        } catch (e) {
+          console.warn('Failed to fetch old batch info for snapshot:', e);
+        }
+
         student.pastBatches.push({
           batch: oldBatchId,
+          batchName: oldBatchName || (typeof student.batch === 'object' ? student.batch.name : undefined),
+          batchSubject: oldBatchSubject || (typeof student.batch === 'object' ? student.batch.subject : undefined),
           leftAt: new Date(),
         });
       }
@@ -411,12 +446,15 @@ export const updateStudent = async (req: Request, res: Response, next: NextFunct
     const updatedStudent = await student.save();
 
     // If batch changed, update counts
-    if (oldBatchId && newBatchId && oldBatchId.toString() !== newBatchId.toString()) {
+    if (oldBatchId && newBatchId && oldBatchId !== newBatchId) {
       await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
       await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
     } else if (!oldBatchId && newBatchId) {
       await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
     }
+
+    await student.populate('batch', 'name subject status');
+    await student.populate('pastBatches.batch', 'name subject status');
 
     res.status(200).json(student);
   } catch (error) {

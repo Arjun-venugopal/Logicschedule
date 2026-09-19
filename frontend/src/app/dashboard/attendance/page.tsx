@@ -218,7 +218,7 @@ export default function AttendancePage() {
           >
             <option value="">All Students</option>
             {filteredStudentsWithSchedules.map((s: any) => (
-              <option key={s._id} value={s._id}>{s.name} ({s.batch?.name || 'Unknown Batch'})</option>
+              <option key={s._id} value={s._id}>{s.name} ({s.batch?.name || 'Unassigned Batch'})</option>
             ))}
           </select>
         </div>
@@ -251,7 +251,7 @@ export default function AttendancePage() {
                   </div>
                   <div>
                     <h2 className="text-2xl font-bold text-white">{student.name}</h2>
-                    <p className="text-neutral-400 text-sm font-medium mt-1">Batch: {student.batch?.name || 'Unknown Batch'}</p>
+                    <p className="text-neutral-400 text-sm font-medium mt-1">Batch: {student.batch?.name || 'Unassigned Batch'}</p>
                   </div>
                 </div>
 

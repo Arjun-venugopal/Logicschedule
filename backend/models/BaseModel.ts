@@ -77,8 +77,71 @@ function applySelect(doc: any, selectStr?: string): any {
   return doc;
 }
 
+function getNestedValues(obj: any, path: string): any[] {
+  if (!obj || typeof obj !== 'object') return [];
+  const parts = path.split('.');
+  let current: any[] = [obj];
+
+  for (const part of parts) {
+    const next: any[] = [];
+    for (const item of current) {
+      if (item === null || item === undefined) continue;
+      if (Array.isArray(item)) {
+        for (const sub of item) {
+          if (sub && sub[part] !== undefined) {
+            next.push(sub[part]);
+          }
+        }
+      } else if (item[part] !== undefined) {
+        if (Array.isArray(item[part])) {
+          next.push(...item[part]);
+        } else {
+          next.push(item[part]);
+        }
+      }
+    }
+    current = next;
+  }
+  return current;
+}
+
+function getCollectionNameForPath(path: string): string {
+  if (
+    path === 'assignedTeacher' ||
+    path === 'teacher' ||
+    path === 'replacementTeacher' ||
+    path === 'classAssignedTutor' ||
+    path.endsWith('.teacher') ||
+    path.endsWith('.assignedTeacher')
+  ) {
+    return 'teachers';
+  }
+  if (path === 'batch' || path.endsWith('.batch')) {
+    return 'batches';
+  }
+  if (path === 'user' || path.endsWith('.user')) {
+    return 'users';
+  }
+  if (path === 'student' || path.endsWith('.student')) {
+    return 'students';
+  }
+  return '';
+}
+
 function matchesCondition(item: any, key: string, filterVal: any): boolean {
   if (key === '__proto__' || key === 'constructor' || key === 'prototype') return false;
+
+  if (key.includes('.')) {
+    const vals = getNestedValues(item, key);
+    if (vals.length === 0) {
+      if (filterVal !== null && typeof filterVal === 'object' && filterVal.$exists === false) {
+        return true;
+      }
+      return false;
+    }
+    return vals.some(v => matchesCondition({ temp: v }, 'temp', filterVal));
+  }
+
   const itemVal = item ? item[key] : undefined;
 
   if (filterVal !== null && typeof filterVal === 'object' && !(filterVal instanceof Date) && !Array.isArray(filterVal)) {
@@ -261,6 +324,19 @@ export class FirestoreDocument {
       const val = this[key];
       if (val && typeof val === 'object' && val._id && !(val instanceof Date)) {
         updateData[key] = val._id;
+      } else if (Array.isArray(val)) {
+        updateData[key] = val.map((item: any) => {
+          if (item && typeof item === 'object') {
+            const cleanItem: any = { ...item };
+            if (cleanItem.batch && typeof cleanItem.batch === 'object' && cleanItem.batch._id) {
+              if (!cleanItem.batchName && cleanItem.batch.name) cleanItem.batchName = cleanItem.batch.name;
+              if (!cleanItem.batchSubject && cleanItem.batch.subject) cleanItem.batchSubject = cleanItem.batch.subject;
+              cleanItem.batch = cleanItem.batch._id;
+            }
+            return cleanItem;
+          }
+          return item;
+        });
       } else {
         updateData[key] = val;
       }
@@ -387,17 +463,38 @@ export class BaseModel {
           // Pre-collect unique document IDs for each path
           for (const pop of chain._populates) {
             const path = pop.path;
-            let collectionName = '';
-            if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher' || path === 'classAssignedTutor') collectionName = 'teachers';
-            else if (path === 'batch') collectionName = 'batches';
-            else if (path === 'user') collectionName = 'users';
+            const collectionName = getCollectionNameForPath(path);
 
             if (collectionName) {
               const uniqueIds = new Set<string>();
               for (let i = 0; i < results.length; i++) {
-                const idVal = results[i][path];
-                if (typeof idVal === 'string' && idVal.trim()) {
-                  uniqueIds.add(idVal.trim());
+                if (path.includes('.')) {
+                  const parts = path.split('.');
+                  const parentProp = parts[0];
+                  const childProp = parts[1];
+                  const container = results[i][parentProp];
+                  if (Array.isArray(container)) {
+                    for (const elem of container) {
+                      if (elem) {
+                        const targetVal = elem[childProp];
+                        const idVal = typeof targetVal === 'string' ? targetVal.trim() : (targetVal && typeof targetVal === 'object' && targetVal._id ? targetVal._id : null);
+                        if (typeof idVal === 'string' && idVal.trim()) {
+                          uniqueIds.add(idVal.trim());
+                        }
+                      }
+                    }
+                  } else if (container && typeof container === 'object') {
+                    const targetVal = container[childProp];
+                    const idVal = typeof targetVal === 'string' ? targetVal.trim() : (targetVal && typeof targetVal === 'object' && targetVal._id ? targetVal._id : null);
+                    if (typeof idVal === 'string' && idVal.trim()) {
+                      uniqueIds.add(idVal.trim());
+                    }
+                  }
+                } else {
+                  const idVal = results[i][path];
+                  if (typeof idVal === 'string' && idVal.trim()) {
+                    uniqueIds.add(idVal.trim());
+                  }
                 }
               }
 
@@ -524,19 +621,14 @@ export class BaseModel {
     
     for (const pop of populates) {
       const path = pop.path;
-      if (!doc[path]) continue;
+      const collectionName = getCollectionNameForPath(path);
+      if (!collectionName) continue;
 
-      let collectionName = '';
-      if (path === 'assignedTeacher' || path === 'teacher' || path === 'replacementTeacher' || path === 'classAssignedTutor') collectionName = 'teachers';
-      else if (path === 'batch') collectionName = 'batches';
-      else if (path === 'user') collectionName = 'users';
-
-      if (collectionName && typeof doc[path] === 'string') {
-        const docId = doc[path].trim();
+      const fetchPopDoc = async (id: string) => {
         if (cache) {
-          const cacheKey = `${collectionName}_${docId}`;
+          const cacheKey = `${collectionName}_${id}`;
           if (!cache[cacheKey]) {
-            cache[cacheKey] = db.collection(collectionName).doc(docId).get().then((ref: any) => {
+            cache[cacheKey] = db.collection(collectionName).doc(id).get().then((ref: any) => {
               if (!ref.exists) return null;
               const d = ref.data();
               convertTimestampsInPlace(d);
@@ -546,18 +638,56 @@ export class BaseModel {
               return obj;
             });
           }
-          const popDoc = await cache[cacheKey];
-          if (popDoc) doc[path] = popDoc;
+          return await cache[cacheKey];
         } else {
-          const ref = await db.collection(collectionName).doc(docId).get();
+          const ref = await db.collection(collectionName).doc(id).get();
           if (ref.exists) {
             const d = ref.data();
             convertTimestampsInPlace(d);
             const obj: any = { _id: ref.id, ...d };
             if (collectionName === 'users') delete obj.password;
             if (pop.select) applySelect(obj, pop.select);
-            doc[path] = obj;
+            return obj;
           }
+          return null;
+        }
+      };
+
+      if (path.includes('.')) {
+        const parts = path.split('.');
+        const parentProp = parts[0];
+        const childProp = parts[1];
+        if (doc[parentProp]) {
+          if (Array.isArray(doc[parentProp])) {
+            for (let idx = 0; idx < doc[parentProp].length; idx++) {
+              const item = doc[parentProp][idx];
+              if (!item) continue;
+              const targetVal = item[childProp];
+              const docId = typeof targetVal === 'string' ? targetVal.trim() : (targetVal && typeof targetVal === 'object' && targetVal._id ? targetVal._id : null);
+              if (docId) {
+                const popDoc = await fetchPopDoc(docId);
+                if (popDoc) {
+                  item[childProp] = popDoc;
+                }
+              }
+            }
+          } else if (typeof doc[parentProp] === 'object') {
+            const targetVal = doc[parentProp][childProp];
+            const docId = typeof targetVal === 'string' ? targetVal.trim() : (targetVal && typeof targetVal === 'object' && targetVal._id ? targetVal._id : null);
+            if (docId) {
+              const popDoc = await fetchPopDoc(docId);
+              if (popDoc) {
+                doc[parentProp][childProp] = popDoc;
+              }
+            }
+          }
+        }
+      } else {
+        if (!doc[path]) continue;
+        if (typeof doc[path] === 'string') {
+          const docId = doc[path].trim();
+          const popDoc = await fetchPopDoc(docId);
+          if (popDoc) doc[path] = popDoc;
         }
       }
     }
