@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
+import Student from '../models/Student';
 import { serverCache } from '../utils/cache';
 
 // Day name → JS getDay() index
@@ -255,8 +256,6 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
-
-import Student from '../models/Student';
 
 // @desc    Get batch analytics (schedules, attendance, progress)
 // @route   GET /batches/:id/analytics
