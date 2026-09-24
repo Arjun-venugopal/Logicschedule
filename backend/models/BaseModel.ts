@@ -290,6 +290,43 @@ function matchesAllFilters(item: any, filters: any): boolean {
 
 const modelRegistry = new WeakMap<object, BaseModel>();
 
+interface PopDocCacheEntry {
+  data: any;
+  expiresAt: number;
+}
+const globalPopulateCache = new Map<string, PopDocCacheEntry>();
+
+export function getCachedPopDoc(collectionName: string, id: string): any | null {
+  const cacheKey = `${collectionName}_${id}`;
+  const entry = globalPopulateCache.get(cacheKey);
+  if (!entry) return null;
+  if (Date.now() > entry.expiresAt) {
+    globalPopulateCache.delete(cacheKey);
+    return null;
+  }
+  return entry.data;
+}
+
+export function setCachedPopDoc(collectionName: string, id: string, doc: any, ttlMs: number = 180_000): void {
+  const cacheKey = `${collectionName}_${id}`;
+  globalPopulateCache.set(cacheKey, {
+    data: doc,
+    expiresAt: Date.now() + ttlMs,
+  });
+}
+
+export function invalidatePopulateCache(collectionName?: string): void {
+  if (!collectionName) {
+    globalPopulateCache.clear();
+    return;
+  }
+  for (const key of globalPopulateCache.keys()) {
+    if (key.startsWith(`${collectionName}_`)) {
+      globalPopulateCache.delete(key);
+    }
+  }
+}
+
 export class FirestoreDocument {
   [key: string]: any;
 
@@ -307,6 +344,7 @@ export class FirestoreDocument {
   async deleteOne() {
     const model = modelRegistry.get(this);
     if (model && this._id) {
+      invalidatePopulateCache(model.collectionName);
       await model.collection.doc(this._id).delete();
     }
   }
@@ -341,6 +379,7 @@ export class FirestoreDocument {
         updateData[key] = val;
       }
     }
+    invalidatePopulateCache(model.collectionName);
     await model.collection.doc(this._id).update({ ...updateData, updatedAt: new Date() });
     return this;
   }
@@ -499,39 +538,57 @@ export class BaseModel {
               }
 
               if (uniqueIds.size > 0) {
-                const idsArr = Array.from(uniqueIds);
-                const chunkSize = 100;
-                for (let i = 0; i < idsArr.length; i += chunkSize) {
-                  const chunkIds = idsArr.slice(i, i + chunkSize);
-                  const docRefs = chunkIds.map(refId => db.collection(collectionName).doc(refId));
-                  const batchPromise = db.getAll(...docRefs).then((snapshots: any[]) => {
-                    const map = new Map<string, any>();
-                    snapshots.forEach(ref => {
-                      if (ref.exists) {
-                        const d = ref.data();
-                        convertTimestampsInPlace(d);
-                        const docObj: any = { _id: ref.id, ...d };
-                        if (collectionName === 'users') {
-                          delete docObj.password;
-                        }
-                        if (pop.select) {
-                          applySelect(docObj, pop.select);
-                        }
-                        map.set(ref.id, docObj);
-                      } else {
-                        map.set(ref.id, null);
-                      }
-                    });
-                    return map;
-                  }).catch(err => {
-                    console.error(`Batched populate error for ${collectionName}:`, err);
-                    return new Map<string, any>();
-                  });
+                const uncachedIds: string[] = [];
+                for (const id of uniqueIds) {
+                  const cached = getCachedPopDoc(collectionName, id);
+                  if (cached) {
+                    const docObj: any = { ...cached };
+                    if (pop.select) {
+                      applySelect(docObj, pop.select);
+                    }
+                    populateCache[`${collectionName}_${id}`] = Promise.resolve(docObj);
+                  } else {
+                    uncachedIds.push(id);
+                  }
+                }
 
-                  chunkIds.forEach(refId => {
-                    const cacheKey = `${collectionName}_${refId}`;
-                    populateCache[cacheKey] = batchPromise.then(map => map.get(refId) || null);
-                  });
+                if (uncachedIds.length > 0) {
+                  const chunkSize = 100;
+                  for (let i = 0; i < uncachedIds.length; i += chunkSize) {
+                    const chunkIds = uncachedIds.slice(i, i + chunkSize);
+                    const docRefs = chunkIds.map(refId => db.collection(collectionName).doc(refId));
+                    const batchPromise = db.getAll(...docRefs).then((snapshots: any[]) => {
+                      const map = new Map<string, any>();
+                      snapshots.forEach(ref => {
+                        if (ref.exists) {
+                          const d = ref.data();
+                          convertTimestampsInPlace(d);
+                          const rawObj: any = { _id: ref.id, ...d };
+                          if (collectionName === 'users') {
+                            delete rawObj.password;
+                          }
+                          setCachedPopDoc(collectionName, ref.id, rawObj);
+
+                          const docObj: any = { ...rawObj };
+                          if (pop.select) {
+                            applySelect(docObj, pop.select);
+                          }
+                          map.set(ref.id, docObj);
+                        } else {
+                          map.set(ref.id, null);
+                        }
+                      });
+                      return map;
+                    }).catch(err => {
+                      console.error(`Batched populate error for ${collectionName}:`, err);
+                      return new Map<string, any>();
+                    });
+
+                    chunkIds.forEach(refId => {
+                      const cacheKey = `${collectionName}_${refId}`;
+                      populateCache[cacheKey] = batchPromise.then(map => map.get(refId) || null);
+                    });
+                  }
                 }
               }
             }
@@ -625,6 +682,13 @@ export class BaseModel {
       if (!collectionName) continue;
 
       const fetchPopDoc = async (id: string) => {
+        const cached = getCachedPopDoc(collectionName, id);
+        if (cached) {
+          const obj: any = { ...cached };
+          if (pop.select) applySelect(obj, pop.select);
+          return obj;
+        }
+
         if (cache) {
           const cacheKey = `${collectionName}_${id}`;
           if (!cache[cacheKey]) {
@@ -632,8 +696,10 @@ export class BaseModel {
               if (!ref.exists) return null;
               const d = ref.data();
               convertTimestampsInPlace(d);
-              const obj: any = { _id: ref.id, ...d };
-              if (collectionName === 'users') delete obj.password;
+              const rawObj: any = { _id: ref.id, ...d };
+              if (collectionName === 'users') delete rawObj.password;
+              setCachedPopDoc(collectionName, ref.id, rawObj);
+              const obj: any = { ...rawObj };
               if (pop.select) applySelect(obj, pop.select);
               return obj;
             });
@@ -644,8 +710,10 @@ export class BaseModel {
           if (ref.exists) {
             const d = ref.data();
             convertTimestampsInPlace(d);
-            const obj: any = { _id: ref.id, ...d };
-            if (collectionName === 'users') delete obj.password;
+            const rawObj: any = { _id: ref.id, ...d };
+            if (collectionName === 'users') delete rawObj.password;
+            setCachedPopDoc(collectionName, ref.id, rawObj);
+            const obj: any = { ...rawObj };
             if (pop.select) applySelect(obj, pop.select);
             return obj;
           }
@@ -914,6 +982,7 @@ export class BaseModel {
   }
 
   async create(data: any): Promise<any> {
+    invalidatePopulateCache(this.collectionName);
     const cleanData = sanitizeObject(data);
     delete cleanData._id;
     const docRef = await this.collection.add({ ...cleanData, createdAt: new Date(), updatedAt: new Date() });
@@ -924,6 +993,7 @@ export class BaseModel {
   async updateOne(query: any, data: any): Promise<void> {
     const doc = await this._fetchAndFilter(query, 1, null, null, true).then(res => res.length > 0 ? res[0] : null);
     if (doc) {
+      invalidatePopulateCache(this.collectionName);
       const cleanData = sanitizeObject(data.$set || data);
       delete cleanData._id;
       await this.collection.doc(doc._id).update({ ...cleanData, updatedAt: new Date() });
@@ -933,11 +1003,13 @@ export class BaseModel {
   async deleteOne(query: any): Promise<void> {
     const doc = await this._fetchAndFilter(query, 1, null, null, true).then(res => res.length > 0 ? res[0] : null);
     if (doc) {
+      invalidatePopulateCache(this.collectionName);
       await this.collection.doc(doc._id).delete();
     }
   }
 
   async deleteMany(query: any): Promise<void> {
+    invalidatePopulateCache(this.collectionName);
     const docs = await this._fetchAndFilter(query, null, null);
     const BATCH_LIMIT = 500;
     for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
@@ -951,6 +1023,7 @@ export class BaseModel {
   }
 
   async insertMany(docs: any[]): Promise<any[]> {
+    invalidatePopulateCache(this.collectionName);
     const inserted: any[] = [];
     const BATCH_LIMIT = 500;
     const now = new Date();
@@ -969,7 +1042,7 @@ export class BaseModel {
     return inserted;
   }
 
-  async findByIdAndUpdate(id: string, update: any, options?: any): Promise<any> {
+  async findByIdAndUpdate(id: string, update: any, _options?: any): Promise<any> {
     if (!id || typeof id !== 'string') return null;
     const cleanId = id.trim();
     let updateData = { ...(update.$set || update) };
@@ -1008,6 +1081,7 @@ export class BaseModel {
     }
 
     try {
+      invalidatePopulateCache(this.collectionName);
       await this.collection.doc(cleanId).update({ ...updateData, updatedAt: new Date() });
       return this.findById(cleanId);
     } catch (e: any) {

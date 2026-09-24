@@ -1,7 +1,7 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Download, Printer } from "lucide-react";
+import { useState } from "react";
+import { Download } from "lucide-react";
 
 interface ReportData {
   studentName: string;
@@ -32,7 +32,6 @@ interface ReportData {
 
 interface Props {
   report: ReportData;
-  onClose?: () => void;
 }
 
 const TASKS = [
@@ -44,8 +43,7 @@ const TASKS = [
   { key: "timeManagement" as const, label: "Time Management", icon: "⏱️" },
 ];
 
-export default function DemoReportPDF({ report, onClose }: Props) {
-  const printRef = useRef<HTMLDivElement>(null);
+export default function DemoReportPDF({ report }: Props) {
   const [isGenerating, setIsGenerating] = useState(false);
 
   const handlePrint = async () => {
@@ -402,7 +400,7 @@ export default function DemoReportPDF({ report, onClose }: Props) {
       ]);
 
       const html2canvas = html2canvasModule.default;
-      // @ts-ignore
+      // @ts-expect-error dynamic module constructor resolution
       const JsPDFConstructor = jsPDFModule.default?.jsPDF || jsPDFModule.default || jsPDFModule.jsPDF || jsPDFModule;
 
       // Wait for iframe resources (like the logo image and fonts) to fully load

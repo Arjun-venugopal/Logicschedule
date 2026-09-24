@@ -46,7 +46,7 @@ export function getTeacherStatusForDate(teacher: any, dateVal: Date | string): {
 // @desc    Get all teachers
 // @route   GET /teachers
 // @access  Private
-export const getTeachers = async (req: Request, res: Response) => {
+export const getTeachers = async (_req: Request, res: Response) => {
   try {
     const teachers = await Teacher.find({}).populate('user', 'name email role mustChangePassword').lean();
     

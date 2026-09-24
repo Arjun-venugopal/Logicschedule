@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, Edit2 } from "lucide-react";
+import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, KeyRound, Edit2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -19,7 +19,7 @@ export default function SalesPeoplePage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
   const router = useRouter();
-  const { canWrite, isAdmin, isSuperAdmin } = usePermissions() as any;
+  const { canWrite } = usePermissions() as any;
   const isSuperAdminOrAdmin = user?.role === "Super Admin" || user?.role === "Admin";
   // Sub Admin might have write access if they have salesPeople.write = true
   const hasWriteAccess = isSuperAdminOrAdmin || canWrite("salesPeople");
@@ -33,7 +33,6 @@ export default function SalesPeoplePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; tempPassword: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
-  const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [editSalesPerson, setEditSalesPerson] = useState<any>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -96,14 +95,6 @@ export default function SalesPeoplePage() {
     await navigator.clipboard.writeText(text);
     setCopied(id);
     setTimeout(() => setCopied(null), 2000);
-  };
-
-  const toggleReveal = (id: string) => {
-    setRevealedIds((prev) => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
   };
 
   const openEditModal = (sp: any) => {
@@ -230,7 +221,6 @@ export default function SalesPeoplePage() {
             </thead>
             <tbody className="divide-y divide-neutral-800/50">
               {filteredSalesPeople.map((sp: any) => {
-                const isRevealed = revealedIds.has(sp._id);
                 // The tempPassword field isn't saved in plaintext in the DB, so we can't show it here later.
                 // It is only visible right after creation. If needed, Admin can reset it.
                 return (

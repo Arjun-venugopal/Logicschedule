@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import { format, parseISO } from "date-fns";
-import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Check, Lock, Edit2 } from "lucide-react";
+import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Lock, Edit2 } from "lucide-react";
 import { useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 

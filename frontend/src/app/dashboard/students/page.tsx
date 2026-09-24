@@ -1,16 +1,14 @@
 "use client";
 
-import { useState, useRef, useMemo, memo } from "react";
+import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Download, Plus, Edit2, Trash2, X, GraduationCap } from "lucide-react";
+import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Plus, Edit2, Trash2, X, GraduationCap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useDebounce } from "@/hooks/useDebounce";
 import dynamic from "next/dynamic";
-import type { Student, Batch } from "@/types";
 
 // Dynamically import heavy modal
 const StudentDetailsModal = dynamic(

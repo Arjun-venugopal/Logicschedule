@@ -5,7 +5,7 @@ import Teacher from '../models/Teacher';
 // @desc    Get all sub admins
 // @route   GET /api/users/sub-admins
 // @access  Private/Admin
-export const getSubAdmins = async (req: Request, res: Response): Promise<void> => {
+export const getSubAdmins = async (_req: Request, res: Response): Promise<void> => {
   try {
     const { getDb } = await import('../config/firebase');
     const snapshot = await getDb().collection('users').where('role', '==', 'Sub Admin').get();

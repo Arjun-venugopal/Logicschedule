@@ -18,8 +18,7 @@ import {
   Plus,
   Trash2,
   KeyRound,
-  Shield,
-  Info
+  Shield
 } from "lucide-react";
 
 interface Slot {

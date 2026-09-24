@@ -1,4 +1,4 @@
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';

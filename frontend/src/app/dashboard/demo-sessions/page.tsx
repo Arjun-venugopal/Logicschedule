@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect, useMemo, Fragment } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths } from "date-fns";
 import {
@@ -17,7 +17,6 @@ import {
   Calendar,
   AlignLeft,
   Info,
-  Search,
   Check,
   Video,
   CheckCircle2,
@@ -183,11 +182,6 @@ export default function DemoSessionsPage() {
     queryFn: async () => (await api.get("/schedules")).data,
   });
 
-  const { data: batches = [] } = useQuery<any[]>({
-    queryKey: ["batches"],
-    queryFn: async () => (await api.get("/batches")).data,
-  });
-
   const { data: demoSlots = [], isLoading: isLoadingSlots } = useQuery<any[]>({
     queryKey: ["demo-slots"],
     queryFn: async () => (await api.get("/demo-slots")).data,
@@ -223,11 +217,12 @@ export default function DemoSessionsPage() {
   });
 
   useEffect(() => {
-    if (isTeacher && user?.email && teachers.length > 0 && !slotForm.teacher) {
-      const myTeacher = teachers.find((t) => t.email === user.email);
-      if (myTeacher) {
-        setSlotForm((prev) => ({ ...prev, teacher: myTeacher._id }));
-      }
+    if (isTeacher && user?.email && teachers.length > 0) {
+      setSlotForm((prev) => {
+        if (prev.teacher) return prev;
+        const myTeacher = teachers.find((t) => t.email === user.email);
+        return myTeacher ? { ...prev, teacher: myTeacher._id } : prev;
+      });
     }
   }, [isTeacher, user, teachers]);
 
@@ -919,7 +914,6 @@ export default function DemoSessionsPage() {
         ) : isTeacher || viewMode === "grid" ? (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 bg-neutral-900/30">
             {sortedSessions.map((session) => {
-              const sessionDate = new Date(session.date);
               const statusColors: Record<string, string> = {
                 Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
                 Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",

@@ -1,13 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import multer from 'multer';
 import * as xlsx from 'xlsx';
 import { z } from 'zod';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
-
-// Setup multer for memory storage
-const upload = multer({ storage: multer.memoryStorage() });
 
 export const uploadStudents = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -387,7 +383,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
   }
 };
 
-export const updateStudent = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+export const updateStudent = async (req: Request, res: Response): Promise<void> => {
   try {
     const parsed = studentSchema.partial().safeParse(req.body);
     if (!parsed.success) {
@@ -443,7 +439,7 @@ export const updateStudent = async (req: Request, res: Response, next: NextFunct
     if (whatsappNumber !== undefined) student.whatsappNumber = whatsappNumber;
     if (email !== undefined) student.email = email;
 
-    const updatedStudent = await student.save();
+    await student.save();
 
     // If batch changed, update counts
     if (oldBatchId && newBatchId && oldBatchId !== newBatchId) {

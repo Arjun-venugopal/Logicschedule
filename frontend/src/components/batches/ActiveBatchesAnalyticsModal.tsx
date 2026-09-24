@@ -2,8 +2,8 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { motion, AnimatePresence } from "framer-motion";
-import { X, BookOpen, Users, CalendarCheck, Clock, Award, BarChart3, TrendingUp, Search, ExternalLink, Sparkles } from "lucide-react";
+import { motion } from "framer-motion";
+import { X, BookOpen, Users, CalendarCheck, BarChart3, TrendingUp, Search, ExternalLink } from "lucide-react";
 import { useState, useMemo } from "react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { BatchAnalyticsModal } from "./BatchAnalyticsModal";

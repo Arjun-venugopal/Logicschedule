@@ -5,9 +5,7 @@ import { api } from "@/lib/axios";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, Calendar, MessageSquare, AlertTriangle } from "lucide-react";
-import { format, parseISO } from "date-fns";
+import { Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, AlertTriangle } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
 export default function TeacherPerformancePage() {
@@ -49,7 +47,7 @@ export default function TeacherPerformancePage() {
     );
   }
 
-  const { teacher, stats, recentFeedback = [] } = performance;
+  const { teacher, stats } = performance;
 
   const pieChartData = [
     { name: "Completed", value: stats.completedClasses },
@@ -134,7 +132,7 @@ export default function TeacherPerformancePage() {
                   startAngle={90}
                   endAngle={-270}
                 >
-                  {pieChartData.map((entry, index) => (
+                  {pieChartData.map((_, index) => (
                     <Cell key={`cell-${index}`} fill={PIE_COLORS[index]} />
                   ))}
                 </Pie>

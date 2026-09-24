@@ -5,9 +5,8 @@ import { api } from "@/lib/axios";
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock3 } from "lucide-react";
-import { format, addWeeks, addMonths, addYears, addDays, differenceInDays, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
-import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -22,16 +21,6 @@ const ActiveBatchesAnalyticsModal = dynamic(
   { ssr: false }
 );
 
-const DURATION_PRESETS = [
-  { label: "1 Week", value: "1 Week" },
-  { label: "2 Weeks", value: "2 Weeks" },
-  { label: "1 Month", value: "1 Month" },
-  { label: "3 Months", value: "3 Months" },
-  { label: "6 Months", value: "6 Months" },
-  { label: "1 Year", value: "1 Year" },
-  { label: "Custom", value: "Custom" },
-];
-
 const STATUS_COLORS: Record<string, string> = {
   Upcoming: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   Active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
@@ -40,45 +29,6 @@ const STATUS_COLORS: Record<string, string> = {
   Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
   Dropped: "bg-red-500/10 text-red-400 border-red-500/20",
 };
-
-function computeEndDate(startDate: string, durationType: string): string {
-  if (!startDate || durationType === "Custom") return "";
-  const d = parseISO(startDate);
-  if (durationType === "1 Week") return format(addWeeks(d, 1), "yyyy-MM-dd");
-  if (durationType === "2 Weeks") return format(addWeeks(d, 2), "yyyy-MM-dd");
-  if (durationType === "1 Month") return format(addMonths(d, 1), "yyyy-MM-dd");
-  if (durationType === "3 Months") return format(addMonths(d, 3), "yyyy-MM-dd");
-  if (durationType === "6 Months") return format(addMonths(d, 6), "yyyy-MM-dd");
-  if (durationType === "1 Year") return format(addYears(d, 1), "yyyy-MM-dd");
-  return "";
-}
-
-function computeEndDateBySessions(startDate: string, sessions: number | "", days: string[]): string {
-  if (!startDate || !sessions || typeof sessions !== "number" || sessions <= 0 || !days || days.length === 0) return "";
-  
-  const daysMap: Record<string, number> = {
-    Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3, Thursday: 4, Friday: 5, Saturday: 6,
-  };
-  const activeDays = new Set(days.map(d => daysMap[d]));
-  
-  let current = parseISO(startDate);
-  let sessionsCounted = 0;
-  
-  if (activeDays.has(current.getDay())) {
-    sessionsCounted++;
-  }
-  
-  let loopCount = 0;
-  while (sessionsCounted < sessions && loopCount < 5000) {
-    current = addDays(current, 1);
-    if (activeDays.has(current.getDay())) {
-      sessionsCounted++;
-    }
-    loopCount++;
-  }
-  
-  return format(current, "yyyy-MM-dd");
-}
 
 function batchProgress(completedClassesCount?: number, totalClassesCount?: number): number {
   if (!totalClassesCount || totalClassesCount <= 0) return 0;
@@ -98,7 +48,6 @@ type BatchForm = {
   meetingLink: string;
   durationType: string;
   startDate: string;
-  endDate: string;
   status: string;
   numberOfSessions: number | "";
   preCompletedClasses?: number | "";
@@ -113,9 +62,8 @@ const emptyForm = (): BatchForm => ({
   endTime: "10:00",
   days: [],
   meetingLink: "",
-  durationType: "1 Month",
+  durationType: "Custom",
   startDate: "",
-  endDate: "",
   status: "Upcoming",
   numberOfSessions: "",
   preCompletedClasses: "",
@@ -124,7 +72,6 @@ const emptyForm = (): BatchForm => ({
 export default function BatchesPage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
-  const router = useRouter();
   const { searchQuery } = useSearchStore();
   const { canWrite } = usePermissions();
   const hasWriteAccess = canWrite("batches");
@@ -139,20 +86,6 @@ export default function BatchesPage() {
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterCourse, setFilterCourse] = useState<string>("");
-
-  useEffect(() => {
-    if (form.durationType === "Custom") {
-      if (form.numberOfSessions && form.startDate && form.days.length > 0) {
-        const computedEnd = computeEndDateBySessions(form.startDate, form.numberOfSessions, form.days);
-        if (computedEnd && form.endDate !== computedEnd) {
-          setForm(f => ({ ...f, endDate: computedEnd }));
-        }
-      } else if (!form.numberOfSessions && form.endDate !== "") {
-        // Clear end date if number of sessions is cleared
-        setForm(f => ({ ...f, endDate: "" }));
-      }
-    }
-  }, [form.numberOfSessions, form.startDate, form.days, form.durationType]);
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -197,9 +130,8 @@ export default function BatchesPage() {
       endTime: b.timing?.endTime || "10:00",
       days: b.days || [],
       meetingLink: b.meetingLink || "",
-      durationType: b.numberOfSessions ? "Custom" : (b.durationType || "1 Month"),
+      durationType: b.durationType || "Custom",
       startDate: b.startDate ? format(new Date(b.startDate), "yyyy-MM-dd") : "",
-      endDate: b.endDate ? format(new Date(b.endDate), "yyyy-MM-dd") : "",
       status: b.status || "Upcoming",
       numberOfSessions: b.numberOfSessions || "",
       preCompletedClasses: b.preCompletedClasses || "",
@@ -455,11 +387,9 @@ export default function BatchesPage() {
                     </p>
                   </div>
                   <div className="bg-neutral-800/60 rounded-xl p-3">
-                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Batch Duration</p>
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes (Sessions)</p>
                     <p className="text-lg font-bold text-white whitespace-nowrap overflow-hidden text-ellipsis">
-                      {batch.durationType === 'Custom' && batch.numberOfSessions 
-                        ? `${batch.numberOfSessions} Hours` 
-                        : (batch.durationType === 'Custom' ? 'Custom' : (batch.durationType || "—"))}
+                      {batch.numberOfSessions ? `${batch.numberOfSessions} Classes` : "Ongoing"}
                     </p>
                   </div>
                   <div className="bg-neutral-800/60 rounded-xl p-3 overflow-hidden">
@@ -470,16 +400,15 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Date Range + Progress */}
-                {((batch.startDate && batch.endDate) || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
+                {/* Start Date + Progress */}
+                {(batch.startDate || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
                   <div>
-                    {batch.startDate && batch.endDate && (
-                      <div className="flex items-center justify-between text-[10px] text-neutral-500 mb-1.5">
+                    {batch.startDate && (
+                      <div className="flex items-center text-[10px] text-neutral-500 mb-1.5">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          {format(new Date(batch.startDate), "MMM d, yyyy")}
+                          Started: {format(new Date(batch.startDate), "MMM d, yyyy")}
                         </span>
-                        <span>{format(new Date(batch.endDate), "MMM d, yyyy")}</span>
                       </div>
                     )}
                     <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
@@ -660,73 +589,40 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Duration */}
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">Batch Duration</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DURATION_PRESETS.map((p) => (
-                      <button
-                        key={p.value}
-                        type="button"
-                        onClick={() => {
-                          const end = computeEndDate(form.startDate, p.value);
-                          setForm({ ...form, durationType: p.value, endDate: end, numberOfSessions: p.value === "Custom" ? form.numberOfSessions : "" });
-                        }}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                          form.durationType === p.value
-                            ? "brand-gradient text-black border-transparent"
-                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    ))}
-                  </div>
-                  {form.durationType === "Custom" && (
-                    <div className="mt-3 max-w-xs animate-in fade-in slide-in-from-top-1 duration-200">
-                      <label className="block text-xs font-semibold text-neutral-400 mb-1.5">Enter Number of Hours (Sessions)</label>
-                      <input
-                        type="number"
-                        min={0}
-                        step="any"
-                        placeholder="e.g. 20"
-                        value={form.numberOfSessions}
-                        onChange={(e) => setForm({ ...form, numberOfSessions: e.target.value ? Number(e.target.value) : "", durationType: "Custom" })}
-                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Start + End Date */}
-                <div className="grid grid-cols-2 gap-3">
+                {/* Start Date & Total Classes */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-neutral-300 mb-1.5">Start Date</label>
                     <input
                       type="date"
                       value={form.startDate}
-                      onChange={(e) => {
-                        const end = computeEndDate(e.target.value, form.durationType);
-                        setForm({ ...form, startDate: e.target.value, endDate: end });
-                      }}
+                      onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">End Date</label>
+                    <div className="flex items-center justify-between mb-1.5">
+                      <label className="block text-sm font-medium text-neutral-300">Total Classes (Sessions)</label>
+                      <span className="text-[11px] text-neutral-500">Optional</span>
+                    </div>
                     <input
-                      type="date"
-                      value={form.endDate}
-                      onChange={(e) => setForm({ ...form, endDate: e.target.value, durationType: "Custom" })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                      type="number"
+                      min={0}
+                      step="any"
+                      placeholder="e.g. 20 (or leave empty for ongoing)"
+                      value={form.numberOfSessions}
+                      onChange={(e) => setForm({ ...form, numberOfSessions: e.target.value ? Number(e.target.value) : "" })}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
                     />
                   </div>
                 </div>
-                
-                {/* Pre-completed classes (if start date is in the past) */}
-                {form.startDate && new Date(form.startDate) < new Date(new Date().setHours(0,0,0,0)) && (
+
+                {/* Pre-completed classes (if start date is in the past or batch is Completed) */}
+                {((form.startDate && new Date(form.startDate) < new Date(new Date().setHours(0,0,0,0))) || form.status === "Completed") && (
                   <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Classes Already Completed</label>
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
+                      {form.status === "Completed" ? "Total Completed Classes" : "Classes Already Completed"}
+                    </label>
                     <input
                       type="number"
                       min={0}
@@ -735,7 +631,11 @@ export default function BatchesPage() {
                       onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
                     />
-                    <p className="text-xs text-neutral-500 mt-1.5">Because the start date is in the past, specify how many classes have already been completed.</p>
+                    <p className="text-xs text-neutral-500 mt-1.5">
+                      {form.status === "Completed"
+                        ? "Specify how many classes were completed for this batch."
+                        : "Because the start date is in the past, specify how many classes have already been completed."}
+                    </p>
                   </div>
                 )}
 

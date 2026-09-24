@@ -12,24 +12,24 @@ const DAY_INDEX: Record<string, number> = {
 };
 
 /**
- * Generate schedule entries for every matching class day between startDate and endDate.
- * Skips days that already have a schedule for the same batch+date.
+ * Generate schedule entries for every matching class day starting from startDate.
+ * If numberOfSessions is set, generates that exact number of classes.
+ * Otherwise, generates schedules for 6 months (180 days) so classes are never cut off.
  */
 async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0): Promise<number> {
-  const { _id, assignedTeacher, timing, days, meetingLink, startDate, endDate } = batch;
+  const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
 
-  if (!startDate || !endDate || !days?.length || !timing?.startTime || !timing?.endTime) {
+  if (!startDate || !days?.length || !timing?.startTime || !timing?.endTime) {
     return 0; // Not enough info to auto-generate
   }
 
   const start = new Date(startDate);
-  const end = new Date(endDate);
   const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
 
-  // Pre-fetch all schedules for this batch in the date range to avoid N+1 queries in the loop
+  // Pre-fetch all schedules for this batch from startDate onwards
   const existingSchedules = await Schedule.find({
     batch: _id,
-    date: { $gte: start, $lte: end }
+    date: { $gte: start }
   }).select('date');
 
   const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
@@ -37,7 +37,19 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
   const schedulesToCreate: any[] = [];
   const cursor = new Date(start);
 
-  while (cursor <= end) {
+  const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
+  const maxScanDays = 365;
+  let daysScanned = 0;
+  let matchingDaysCount = existingSchedules.length;
+
+  while (daysScanned < maxScanDays) {
+    if (targetSessions > 0 && matchingDaysCount >= targetSessions) {
+      break;
+    }
+    if (targetSessions === 0 && daysScanned >= 180) {
+      break;
+    }
+
     if (selectedDayIndexes.has(cursor.getDay())) {
       const cursorTime = new Date(cursor).getTime();
 
@@ -53,9 +65,13 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
           meetingLink: meetingLink || '',
           notes: isCompleted ? `Auto-generated as Completed (Late join)` : `Auto-generated for batch`,
         });
+        existingTimes.add(cursorTime);
       }
+      matchingDaysCount++;
     }
+
     cursor.setDate(cursor.getDate() + 1);
+    daysScanned++;
   }
 
   if (schedulesToCreate.length > 0) {
@@ -102,6 +118,7 @@ export const getBatches = async (req: any, res: Response) => {
 
     const completedCountMap: Record<string, number> = {};
     const totalCountMap: Record<string, number> = {};
+    const lastCompletedDateMap: Record<string, Date> = {};
 
     allSchedules.forEach((s: any) => {
       const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
@@ -109,15 +126,25 @@ export const getBatches = async (req: any, res: Response) => {
       totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
       if (s.status === 'Completed') {
         completedCountMap[bId] = (completedCountMap[bId] || 0) + 1;
+        if (s.date) {
+          const sDate = new Date(s.date);
+          if (!isNaN(sDate.getTime()) && (!lastCompletedDateMap[bId] || sDate > lastCompletedDateMap[bId])) {
+            lastCompletedDateMap[bId] = sDate;
+          }
+        }
       }
     });
 
     const enrichedBatches = batches.map((b: any) => {
       const batchObj = b.toObject ? b.toObject() : b;
+      const bId = batchObj._id.toString();
+      const completedCount = completedCountMap[bId] || 0;
+      const totalCount = totalCountMap[bId] || 0;
+
       return {
         ...batchObj,
-        completedClassesCount: completedCountMap[batchObj._id.toString()] || 0,
-        totalClassesCount: totalCountMap[batchObj._id.toString()] || 0
+        completedClassesCount: completedCount,
+        totalClassesCount: totalCount
       };
     });
 
@@ -137,7 +164,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     const {
       name, subject, assignedTeacher, studentsCount,
       timing, days, meetingLink,
-      startDate, endDate, durationType, status, numberOfSessions, preCompletedClasses
+      startDate, durationType, status, numberOfSessions, preCompletedClasses
     } = req.body;
 
     if (!name || !subject) {
@@ -154,19 +181,19 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       days: days || [],
       meetingLink: meetingLink || '',
       startDate: startDate ? new Date(startDate) : undefined,
-      endDate: endDate ? new Date(endDate) : undefined,
-      durationType: durationType || '1 Month',
+      durationType: durationType || 'Custom',
       status: status || 'Upcoming',
       numberOfSessions: numberOfSessions || null,
       preCompletedClasses: preCompletedClasses || 0,
     });
 
-    // Auto-generate calendar schedules for every class day in the duration
+    // Auto-generate calendar schedules for classes based on numberOfSessions or rolling window
     const generated = await generateSchedulesForBatch(batch, preCompletedClasses || 0);
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
 
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
+    serverCache.clearPattern('schedules_');
 
     const populated = await batch.populate('assignedTeacher', 'name email');
     res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), schedulesGenerated: generated });
@@ -190,8 +217,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     const datesChanged =
       (req.body.startDate !== undefined && String(req.body.startDate) !== String(batch.startDate)) ||
-      (req.body.endDate !== undefined && String(req.body.endDate) !== String(batch.endDate)) ||
       (req.body.days !== undefined && JSON.stringify(req.body.days) !== JSON.stringify(batch.days)) ||
+      (req.body.numberOfSessions !== undefined && req.body.numberOfSessions !== batch.numberOfSessions) ||
       (req.body.timing !== undefined);
 
     batch.name = req.body.name ?? batch.name;
@@ -208,8 +235,6 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     if (req.body.startDate !== undefined)
       batch.startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
-    if (req.body.endDate !== undefined)
-      batch.endDate = req.body.endDate ? new Date(req.body.endDate) : undefined;
 
     const updated = await batch.save();
 
@@ -222,6 +247,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
+    serverCache.clearPattern('schedules_');
 
     await updated.populate('assignedTeacher', 'name email');
     res.json(updated);
@@ -250,6 +276,7 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
     await Batch.deleteOne({ _id: batch._id });
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
+    serverCache.clearPattern('schedules_');
     res.json({ message: 'Batch and its schedules removed' });
   } catch (error: any) {
     console.error('Delete batch error:', error.message);

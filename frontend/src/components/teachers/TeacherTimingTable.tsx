@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -14,12 +14,9 @@ import {
   PlayCircle,
   UserX,
   UserCheck,
-  Eye,
-  Timer,
-  BookOpen
+  X,
+  Timer
 } from "lucide-react";
-import { TeacherDayTimelineModal } from "./TeacherDayTimelineModal";
-import { TeacherWeeklyAvailabilityModal } from "./TeacherWeeklyAvailabilityModal";
 import { usePermissions } from "@/hooks/usePermissions";
 
 interface TeacherTimingData {
@@ -72,8 +69,11 @@ export function TeacherTimingTable() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "Free" | "In Class" | "Class Starting Soon" | "On Leave">("ALL");
-  const [selectedTimelineTeacher, setSelectedTimelineTeacher] = useState<TeacherTimingData | null>(null);
-  const [selectedWeeklyAvailTeacher, setSelectedWeeklyAvailTeacher] = useState<TeacherTimingData | null>(null);
+
+  // Leave Modal State
+  const [leaveModalTeacher, setLeaveModalTeacher] = useState<TeacherTimingData | null>(null);
+  const [leaveDate, setLeaveDate] = useState<string>(selectedDate);
+  const [leaveReason, setLeaveReason] = useState<string>("");
 
   // Fetch teacher timings
   const { data, isLoading, refetch, isRefetching } = useQuery({
@@ -85,23 +85,57 @@ export function TeacherTimingTable() {
     refetchInterval: false, // Manual refresh via Refresh button to preserve Firestore quota
   });
 
-  // Local clock state to ensure relative time tickers update live
-  const [nowTime, setNowTime] = useState<Date>(new Date());
-  useEffect(() => {
-    const timer = setInterval(() => setNowTime(new Date()), 10_000);
-    return () => clearInterval(timer);
-  }, []);
-
-  // Status mutation (e.g. toggle On Leave / Available)
+  // Mutation to update teacher leave status & schedule
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      return api.put(`/teachers/${id}`, { status });
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      return api.put(`/teachers/${id}`, data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setLeaveModalTeacher(null);
+      setLeaveReason("");
     },
   });
+
+  const handleSetAvailable = (t: TeacherTimingData) => {
+    // Remove conflicting On Leave entry for the selected date from dutyStatusSchedule
+    const newSchedules = (t.dutyStatusSchedule || []).filter((s: any) => {
+      return !(selectedDate >= s.startDate && selectedDate <= s.endDate && s.status === "On Leave");
+    });
+    updateStatusMutation.mutate({
+      id: t._id,
+      data: {
+        status: "Available",
+        dutyStatusSchedule: newSchedules,
+      },
+    });
+  };
+
+  const handleOpenLeaveModal = (t: TeacherTimingData) => {
+    setLeaveModalTeacher(t);
+    setLeaveDate(selectedDate);
+    setLeaveReason("");
+  };
+
+  const handleConfirmLeave = () => {
+    if (!leaveModalTeacher) return;
+    const newScheduleItem = {
+      id: Date.now().toString(),
+      startDate: leaveDate,
+      endDate: leaveDate,
+      status: "On Leave",
+      reason: leaveReason.trim() || "Leave",
+    };
+    const newSchedules = [...(leaveModalTeacher.dutyStatusSchedule || []), newScheduleItem];
+    updateStatusMutation.mutate({
+      id: leaveModalTeacher._id,
+      data: {
+        status: "On Leave",
+        dutyStatusSchedule: newSchedules,
+      },
+    });
+  };
 
   const summary = data?.summary || {
     totalTeachers: 0,
@@ -384,7 +418,7 @@ export function TeacherTimingTable() {
                   <th className="py-4 px-5 font-semibold">Current Activity / Class</th>
                   <th className="py-4 px-5 font-semibold">Next Scheduled Class</th>
                   <th className="py-4 px-5 font-semibold">Class Start Countdown</th>
-                  <th className="py-4 px-5 font-semibold text-right">Actions & Timeline</th>
+                  <th className="py-4 px-5 font-semibold text-right">Leave Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60 text-xs">
@@ -442,7 +476,7 @@ export function TeacherTimingTable() {
                         {isInClass && (
                           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 text-xs font-semibold shadow-sm shadow-red-500/10">
                             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-                            In Class Now {t.currentClass?.minutesLeft !== null && t.currentClass?.minutesLeft !== undefined ? `(${t.currentClass.minutesLeft}m left)` : ""}
+                            In Class Now
                           </span>
                         )}
                         {isStartingSoon && (
@@ -487,13 +521,6 @@ export function TeacherTimingTable() {
                                   {t.currentClass.minutesLeft}m left
                                 </span>
                               )}
-                            </div>
-                            {/* Class Progress Bar */}
-                            <div className="w-full bg-neutral-800 h-1.5 rounded-full overflow-hidden mt-1">
-                              <div
-                                className="bg-gradient-to-r from-red-500 to-amber-500 h-full rounded-full transition-all"
-                                style={{ width: `${t.currentClass.progress}%` }}
-                              />
                             </div>
                           </div>
                         ) : (t as any).lastCompletedClass ? (
@@ -566,58 +593,31 @@ export function TeacherTimingTable() {
                         )}
                       </td>
 
-                      {/* Actions & Timeline */}
+                      {/* Leave Action Button */}
                       <td className="py-4 px-5 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          {/* View Weekly Availability */}
-                          <button
-                            onClick={() => setSelectedWeeklyAvailTeacher(t)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-emerald-400 hover:text-emerald-300 rounded-lg text-xs font-medium transition-colors border border-neutral-700"
-                            title="View Teacher Weekly Availability Schedule"
-                          >
-                            <Calendar className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Weekly Availability</span>
-                          </button>
-
-                          {/* View Day Timeline */}
-                          <button
-                            onClick={() => setSelectedTimelineTeacher(t)}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 hover:text-amber-300 rounded-lg text-xs font-medium transition-colors border border-neutral-700"
-                            title="View Today's Complete Timeline"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                            <span>Timeline</span>
-                          </button>
-
-                          {/* Toggle On Leave / Available */}
-                          {hasWriteAccess && (
+                        {hasWriteAccess && (
+                          isOnLeave || t.status === "On Leave" ? (
                             <button
-                              onClick={() => {
-                                const newStatus = t.status === "On Leave" ? "Available" : "On Leave";
-                                updateStatusMutation.mutate({ id: t._id, status: newStatus });
-                              }}
+                              onClick={() => handleSetAvailable(t)}
                               disabled={updateStatusMutation.isPending}
-                              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1 border ${
-                                t.status === "On Leave"
-                                  ? "bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
-                                  : "bg-neutral-800 hover:bg-red-500/20 text-neutral-400 hover:text-red-400 border-neutral-700 hover:border-red-500/30"
-                              }`}
-                              title={t.status === "On Leave" ? "Set Teacher to Available" : "Mark Teacher On Leave"}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all shadow-sm shadow-emerald-500/10 hover:scale-[1.02] cursor-pointer"
+                              title="Currently On Leave. Click to set Available."
                             >
-                              {t.status === "On Leave" ? (
-                                <>
-                                  <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Set Available</span>
-                                </>
-                              ) : (
-                                <>
-                                  <UserX className="w-3.5 h-3.5 text-neutral-400" />
-                                  <span>Mark Leave</span>
-                                </>
-                              )}
+                              <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>Set Available</span>
                             </button>
-                          )}
-                        </div>
+                          ) : (
+                            <button
+                              onClick={() => handleOpenLeaveModal(t)}
+                              disabled={updateStatusMutation.isPending}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-neutral-800 hover:bg-red-500/20 text-neutral-300 hover:text-red-400 border border-neutral-700 hover:border-red-500/30 transition-all hover:scale-[1.02] cursor-pointer"
+                              title="Mark this teacher On Leave"
+                            >
+                              <UserX className="w-3.5 h-3.5 text-neutral-400" />
+                              <span>Mark Leave</span>
+                            </button>
+                          )
+                        )}
                       </td>
                     </tr>
                   );
@@ -628,21 +628,103 @@ export function TeacherTimingTable() {
         )}
       </div>
 
-      {/* Teacher Timeline Modal */}
-      <TeacherDayTimelineModal
-        isOpen={!!selectedTimelineTeacher}
-        onClose={() => setSelectedTimelineTeacher(null)}
-        teacher={selectedTimelineTeacher}
-        selectedDate={selectedDate}
-      />
+      {/* Mark Leave Modal */}
+      <AnimatePresence>
+        {leaveModalTeacher && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl"
+            >
+              <div className="flex items-center justify-between p-5 border-b border-neutral-800">
+                <div className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400">
+                    <UserX className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-base">Mark Teacher On Leave</h3>
+                    <p className="text-xs text-neutral-400">Update availability and leave records</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setLeaveModalTeacher(null)}
+                  className="text-neutral-500 hover:text-white transition-colors p-1"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-      {/* Teacher Weekly Availability Modal */}
-      <TeacherWeeklyAvailabilityModal
-        isOpen={!!selectedWeeklyAvailTeacher}
-        onClose={() => setSelectedWeeklyAvailTeacher(null)}
-        teacher={selectedWeeklyAvailTeacher}
-        canEdit={hasWriteAccess}
-      />
+              <div className="p-5 space-y-4">
+                {/* Teacher Summary */}
+                <div className="flex items-center gap-3 p-3 bg-neutral-950/60 rounded-xl border border-neutral-800">
+                  <div className="w-9 h-9 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
+                    {leaveModalTeacher.name.charAt(0)}
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-sm font-semibold text-white truncate">{leaveModalTeacher.name}</p>
+                    <p className="text-xs text-neutral-400 font-mono truncate">{leaveModalTeacher.email}</p>
+                  </div>
+                </div>
+
+                {/* Date Input */}
+                <div>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1.5 flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-amber-400" />
+                    Leave Date
+                  </label>
+                  <input
+                    type="date"
+                    value={leaveDate}
+                    onChange={(e) => setLeaveDate(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white font-mono focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Reason Input */}
+                <div>
+                  <label className="block text-xs font-medium text-neutral-300 mb-1.5">
+                    Reason / Note <span className="text-neutral-500 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={leaveReason}
+                    onChange={(e) => setLeaveReason(e.target.value)}
+                    placeholder="e.g. Sick Leave, Medical, Personal"
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="p-4 border-t border-neutral-800 bg-neutral-950/40 flex items-center justify-end gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setLeaveModalTeacher(null)}
+                  className="px-4 py-2 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmLeave}
+                  disabled={updateStatusMutation.isPending}
+                  className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-lg shadow-red-600/20"
+                >
+                  {updateStatusMutation.isPending ? "Updating..." : "Confirm Leave"}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

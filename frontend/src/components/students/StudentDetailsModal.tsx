@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, Phone, BookOpen, Mail, MapPin, Calendar, Activity, CheckCircle2, History, MessageCircle, GraduationCap, ChevronRight, Plus } from "lucide-react";
+import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus } from "lucide-react";
 import { format } from "date-fns";
 
 export function StudentDetailsModal({ studentId, onClose }: { studentId: string; onClose: () => void }) {

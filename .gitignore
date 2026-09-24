@@ -12,6 +12,7 @@ out/
 .parcel-cache/
 
 # Environment files
+.agents/
 .env
 .env.local
 .env.development.local

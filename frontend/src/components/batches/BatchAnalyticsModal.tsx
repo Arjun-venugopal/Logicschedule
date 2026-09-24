@@ -115,7 +115,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                       dataKey="value"
                       stroke="none"
                     >
-                      {pieChartData.map((entry, index) => (
+                      {pieChartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index % PIE_COLORS.length]} />
                       ))}
                     </Pie>

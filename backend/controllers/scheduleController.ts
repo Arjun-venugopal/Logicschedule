@@ -1,42 +1,97 @@
 import { Request, Response } from 'express';
 import Schedule from '../models/Schedule';
+import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import { checkIntervalConflict } from '../utils/scheduleHelper';
-import { serverCache } from '../utils/cache';
+import { serverCache, saveDiskCache, readDiskCache } from '../utils/cache';
 
 // @desc    Get all schedules
 // @route   GET /schedules
 // @access  Private
 export const getSchedules = async (req: any, res: Response) => {
-  try {
-    let query: any = {};
+  const isTeacher = req.user && req.user.role === 'Teacher';
+  const cacheKey = isTeacher ? `schedules_teacher_${req.user._id}` : 'schedules_all';
 
-    // If logged in user is a Teacher, only fetch their schedules
-    if (req.user && req.user.role === 'Teacher') {
+  try {
+    const cached = serverCache.get(cacheKey) || readDiskCache(cacheKey);
+    if (cached) {
+      // Re-populate serverCache if found from disk
+      serverCache.set(cacheKey, cached, 60_000);
+      res.json(cached);
+      return;
+    }
+
+    let schedules: any[] = [];
+
+    // If logged in user is a Teacher, only fetch their schedules using indexed queries
+    if (isTeacher) {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (teacher) {
-        query = {
-          $or: [
-            { teacher: teacher._id },
-            { replacementTeacher: teacher._id }
-          ]
-        };
+        // Query teacher and replacementTeacher using native Firestore indexed queries instead of scanning all documents
+        const [primarySchedules, replacementSchedules] = await Promise.all([
+          Schedule.find({ teacher: teacher._id })
+            .sort({ date: -1 })
+            .populate('teacher', 'name email')
+            .populate('batch', 'name subject')
+            .populate('replacementTeacher', 'name email'),
+          Schedule.find({ replacementTeacher: teacher._id })
+            .sort({ date: -1 })
+            .populate('teacher', 'name email')
+            .populate('batch', 'name subject')
+            .populate('replacementTeacher', 'name email')
+        ]);
+
+        const map = new Map<string, any>();
+        primarySchedules.forEach((s: any) => map.set(s._id.toString(), s));
+        replacementSchedules.forEach((s: any) => map.set(s._id.toString(), s));
+        schedules = Array.from(map.values()).sort((a: any, b: any) => {
+          const tA = a.date ? new Date(a.date).getTime() : 0;
+          const tB = b.date ? new Date(b.date).getTime() : 0;
+          return tB - tA;
+        });
       } else {
         res.json([]);
         return;
       }
+    } else {
+      schedules = await Schedule.find({})
+        .sort({ date: -1 })
+        .populate('teacher', 'name email')
+        .populate('batch', 'name subject')
+        .populate('replacementTeacher', 'name email');
     }
 
-    const schedules = await Schedule.find(query)
-      .sort({ date: -1 })
-      .populate('teacher', 'name email')
-      .populate('batch', 'name subject')
-      .populate('replacementTeacher', 'name email');
+    // Cache schedules in memory and persistent disk
+    serverCache.set(cacheKey, schedules, 60_000);
+    saveDiskCache(cacheKey, schedules);
+    if (!isTeacher) {
+      saveDiskCache('schedules_all', schedules);
+    }
     res.json(schedules);
   } catch (error: any) {
     console.error('Get schedules error:', error.message);
-    res.status(500).json({ message: 'Server error' });
+    // Graceful fallback to stale cache or disk cache if quota is exhausted or temporary connection error
+    let fallback = serverCache.getStale ? serverCache.getStale(cacheKey) : serverCache.get(cacheKey);
+    if (!fallback) {
+      fallback = readDiskCache(cacheKey);
+    }
+    if (!fallback && isTeacher) {
+      const allSchedules: any = readDiskCache('schedules_all');
+      if (Array.isArray(allSchedules)) {
+        fallback = allSchedules.filter((s: any) =>
+          (s.teacher?._id || s.teacher) === req.user._id ||
+          (s.replacementTeacher?._id || s.replacementTeacher) === req.user._id
+        );
+      }
+    }
+
+    if (fallback) {
+      console.warn('Returning cached fallback schedules due to error/quota:', error.message);
+      res.json(fallback);
+      return;
+    }
+    res.status(500).json({ message: 'Server error: database quota temporarily reached. Please try again shortly.' });
   }
 };
 
@@ -83,6 +138,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
     serverCache.clearPattern('timings_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('batches_');
+    serverCache.clearPattern('schedules_');
 
     res.status(201).json(populated);
   } catch (error: any) {
@@ -96,9 +152,6 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
 // @access  Private
 export const updateSchedule = async (req: any, res: Response): Promise<void> => {
   try {
-    console.log(`[updateSchedule] Attempting to update schedule ${req.params.id as string}`);
-    console.log(`[updateSchedule] Payload:`, JSON.stringify(req.body, null, 2));
-
     const schedule = await Schedule.findById(req.params.id as string);
 
     if (schedule) {
@@ -114,10 +167,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         }
       }
 
-      console.log(`[updateSchedule] User role: ${req.user.role}, isAdmin: ${isAdmin}, isAssignedTeacher: ${isAssignedTeacher}`);
-
       if (!isAdmin && !isAssignedTeacher) {
-        console.log(`[updateSchedule] Not authorized!`);
         res.status(403).json({ message: 'Not authorized to update this schedule' });
         return;
       }
@@ -135,7 +185,6 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
         if (req.body.attendance !== undefined) {
-          console.log(`[updateSchedule] Admin updating attendance:`, req.body.attendance);
           (schedule as any).attendance = req.body.attendance;
         }
       } else {
@@ -145,18 +194,36 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
         if (req.body.meetingLink !== undefined) schedule.meetingLink = req.body.meetingLink;
         if (req.body.attendance !== undefined) {
-          console.log(`[updateSchedule] Teacher updating attendance:`, req.body.attendance);
           (schedule as any).attendance = req.body.attendance;
         }
       }
 
-      console.log(`[updateSchedule] Saving schedule...`);
       const updatedSchedule = await schedule.save();
-      console.log(`[updateSchedule] Save successful.`);
+
+      // Sync batch status if all classes are completed
+      if (updatedSchedule.batch) {
+        try {
+          const batchId = updatedSchedule.batch?._id ? updatedSchedule.batch._id : updatedSchedule.batch;
+          const batch = await Batch.findById(batchId.toString());
+          if (batch) {
+            const allBatchSchedules = await Schedule.find({ batch: batch._id });
+            const allCompleted = allBatchSchedules.length > 0 &&
+              allBatchSchedules.every((s: any) => s.status === 'Completed');
+
+            if (allCompleted && batch.status !== 'Completed') {
+              batch.status = 'Completed';
+              await batch.save();
+            }
+          }
+        } catch (err: any) {
+          console.error('[updateSchedule] Error syncing batch status:', err.message);
+        }
+      }
 
       serverCache.clearPattern('timings_');
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
+      serverCache.clearPattern('schedules_');
 
       res.json(updatedSchedule);
     } else {
@@ -180,6 +247,7 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
       serverCache.clearPattern('timings_');
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
+      serverCache.clearPattern('schedules_');
       res.json({ message: 'Schedule removed' });
     } else {
       res.status(404).json({ message: 'Schedule not found' });

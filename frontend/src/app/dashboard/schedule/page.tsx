@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, BookOpen, Calendar, AlignLeft, Info, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, BookOpen, Calendar, AlignLeft, Info, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -133,20 +133,31 @@ export default function SchedulePage() {
     calendarDays = eachDayOfInterval({ start: startDate, end: endDate });
   }
 
-  // Queries
-  const { data: schedules = [] } = useQuery<PopulatedScheduleEntry[]>({
+  // Queries with caching and background fetch prevention
+  const { 
+    data: schedules = [], 
+    isLoading: isLoadingSchedules, 
+    isError: isErrorSchedules, 
+    refetch: refetchSchedules 
+  } = useQuery<PopulatedScheduleEntry[]>({
     queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
+    staleTime: 2 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: teachers = [] } = useQuery<Teacher[]>({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: batches = [] } = useQuery<Batch[]>({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: students = [] } = useQuery({
@@ -255,20 +266,23 @@ export default function SchedulePage() {
     });
   }, [schedules, isTeacher, filterTeacher, filterBatch]);
 
-  const { cellEventMap, dayEventsMap, teacherScheduleMap, teacherDateScheduleMap } = useMemo(() => {
-    const cellMap = new Map<string, PopulatedScheduleEntry>();
+  const { cellEventMap, dayEventsMap } = useMemo(() => {
+    const cellMap = new Map<string, PopulatedScheduleEntry[]>();
     const dayMap = new Map<string, PopulatedScheduleEntry[]>();
-    const teacherMap = new Map<string, PopulatedScheduleEntry[]>();
-    const teacherDateMap = new Map<string, PopulatedScheduleEntry[]>();
 
     for (const s of filteredSchedules) {
       if (!s.date) continue;
       const sDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
       const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
-      const tId = s.teacher?._id ? s.teacher._id.toString() : (s.teacher ? s.teacher.toString() : "");
 
       // Cell key format: "yyyy-MM-dd_hour"
-      cellMap.set(`${sDateStr}_${sHour}`, s);
+      const cellKey = `${sDateStr}_${sHour}`;
+      let cellList = cellMap.get(cellKey);
+      if (!cellList) {
+        cellList = [];
+        cellMap.set(cellKey, cellList);
+      }
+      cellList.push(s);
 
       // Day events
       let list = dayMap.get(sDateStr);
@@ -277,39 +291,19 @@ export default function SchedulePage() {
         dayMap.set(sDateStr, list);
       }
       list.push(s);
-
-      // Teacher schedules map: Map<teacherId, Class[]>
-      if (tId) {
-        let tList = teacherMap.get(tId);
-        if (!tList) {
-          tList = [];
-          teacherMap.set(tId, tList);
-        }
-        tList.push(s);
-
-        // Teacher + Date map: Map<teacherId + ":" + date, Class[]>
-        const tdKey = `${tId}:${sDateStr}`;
-        let tdList = teacherDateMap.get(tdKey);
-        if (!tdList) {
-          tdList = [];
-          teacherDateMap.set(tdKey, tdList);
-        }
-        tdList.push(s);
-      }
     }
 
     return {
       cellEventMap: cellMap,
       dayEventsMap: dayMap,
-      teacherScheduleMap: teacherMap,
-      teacherDateScheduleMap: teacherDateMap,
     };
   }, [filteredSchedules]);
 
-  // Match schedule to a day+hour cell with O(1) complexity
-  const getEventForCell = (dayDate: Date, hour: number) => {
+  // Match schedules to a day+hour cell with O(1) complexity
+  const getEventsForCell = (dayDate: Date, hour: number): PopulatedScheduleEntry[] => {
     const key = `${format(dayDate, "yyyy-MM-dd")}_${hour}`;
-    return cellEventMap.get(key);
+    const list = cellEventMap.get(key) || [];
+    return [...list].sort((a: any, b: any) => a.startTime.localeCompare(b.startTime));
   };
 
   const getEventsForDay = (dayDate: Date) => {
@@ -441,7 +435,23 @@ export default function SchedulePage() {
 
       {/* Calendar Grid */}
       <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col flex-1 min-h-0 shadow-lg">
-        {viewMode === "month" ? (
+        {isLoadingSchedules ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-neutral-400">
+            <Loader2 className="w-8 h-8 text-amber-500 animate-spin mb-3" />
+            <p className="text-sm font-medium">Loading schedule calendar data...</p>
+          </div>
+        ) : isErrorSchedules ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-12 text-red-400">
+            <AlertTriangle className="w-8 h-8 mb-3" />
+            <p className="text-sm font-medium mb-3">Unable to load schedule data</p>
+            <button
+              onClick={() => refetchSchedules()}
+              className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl text-xs font-semibold"
+            >
+              Retry
+            </button>
+          </div>
+        ) : viewMode === "month" ? (
           <div className="flex flex-col h-full overflow-x-auto custom-scrollbar bg-neutral-950">
             <div className="min-w-[800px] h-full flex flex-col flex-1">
               <div className="grid grid-cols-7 border-b border-neutral-800 bg-neutral-900 shrink-0">
@@ -549,87 +559,94 @@ export default function SchedulePage() {
                   </div>
 
                   {calendarDays.map((dayDate, dayIdx) => {
-                    const event = getEventForCell(dayDate, hour);
-                    const color = event ? colorForIndex(event._id) : SLOT_COLORS[0];
+                    const events = getEventsForCell(dayDate, hour);
                     return (
                       <div
                         key={dayIdx}
-                        className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer"
+                        className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer min-h-[76px]"
                         onClick={() => {
-                          if (!event && !isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
+                          if (events.length === 0 && !isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
                         }}
                       >
-                        {event ? (
-                          <motion.div
-                            layoutId={event._id}
-                            initial={{ opacity: 0, scale: 0.96 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className={`absolute inset-1 rounded-xl border ${color.bg} ${color.border} p-2 overflow-hidden cursor-default`}
-                          >
-                            {/* Event content */}
-                            <div className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
-                              {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
-                            </div>
-                            <div className={`text-[10px] truncate opacity-70 ${color.text}`}>
-                              {event.teacher?.name || (typeof event.teacher === "string" ? event.teacher : "Teacher")}
-                            </div>
-
-                            {event.subject && (
-                              <div className="text-[9px] truncate font-medium border border-amber-500/20 px-1 py-0.5 rounded bg-black/30 text-amber-300 inline-block mt-0.5 max-w-full">
-                                Topic: {event.subject}
-                              </div>
-                            )}
-
-                            <div className={`text-[9px] truncate opacity-50 ${color.text} mt-0.5`}>
-                              {event.startTime} – {event.endTime}
-                            </div>
-
-                            {/* Status badge */}
-                            {event.status !== "Scheduled" && (
-                              <span className={`absolute top-1.5 right-1.5 text-[8px] px-1 py-0.5 rounded font-semibold ${
-                                event.status === "Completed" ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40" :
-                                event.status === "Cancelled" ? "bg-red-500/30 text-red-300" :
-                                "bg-neutral-500/30 text-neutral-300"
-                              }`}>
-                                {event.status === "Completed" ? "✓ Class Finished" : event.status}
-                              </span>
-                            )}
-
-                            {/* Action buttons (hover) */}
-                            <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                              {event.meetingLink && (
-                                <a
-                                  href={event.meetingLink}
-                                  target="_blank"
-                                  rel="noreferrer"
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1 rounded bg-blue-500/30 hover:bg-blue-500/50 transition-colors"
-                                  title="Join Meeting"
+                        {events.length > 0 ? (
+                          <div className="h-full flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+                            {events.map((event) => {
+                              const color = colorForIndex(event._id);
+                              return (
+                                <motion.div
+                                  key={event._id}
+                                  initial={{ opacity: 0, scale: 0.96 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  className={`relative rounded-xl border ${color.bg} ${color.border} p-2 overflow-hidden group/item cursor-default shadow-sm`}
                                 >
-                                  <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
-                                </a>
-                              )}
-                              {canEditSchedule(event) && (
-                                <>
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); openEdit(event); }}
-                                    className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                    title={isTeacher ? "Add session notes / topic" : "Edit Class"}
-                                  >
-                                    <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
-                                  </button>
-                                  {!isTeacher && (
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
-                                      className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
-                                    >
-                                      <Trash2 className="w-2.5 h-2.5 text-red-300" />
-                                    </button>
+                                  {/* Event content */}
+                                  <div className="flex items-center justify-between gap-1">
+                                    <span className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
+                                      {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
+                                    </span>
+                                    {event.status !== "Scheduled" && (
+                                      <span className={`text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 ${
+                                        event.status === "Completed" ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40" :
+                                        event.status === "Cancelled" ? "bg-red-500/30 text-red-300" :
+                                        "bg-neutral-500/30 text-neutral-300"
+                                      }`}>
+                                        {event.status === "Completed" ? "✓ Finished" : event.status}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
+                                    {event.teacher?.name || (typeof event.teacher === "string" ? event.teacher : "Teacher")}
+                                  </div>
+
+                                  {event.subject && (
+                                    <div className="text-[9px] truncate font-medium border border-amber-500/20 px-1 py-0.5 rounded bg-black/30 text-amber-300 inline-block mt-0.5 max-w-full">
+                                      Topic: {event.subject}
+                                    </div>
                                   )}
-                                </>
-                              )}
-                            </div>
-                          </motion.div>
+
+                                  <div className={`text-[9px] truncate opacity-50 ${color.text} mt-0.5`}>
+                                    {event.startTime} – {event.endTime}
+                                  </div>
+
+                                  {/* Action buttons (hover) */}
+                                  <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                    {event.meetingLink && (
+                                      <a
+                                        href={event.meetingLink}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="p-1 rounded bg-blue-500/30 hover:bg-blue-500/50 transition-colors"
+                                        title="Join Meeting"
+                                      >
+                                        <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
+                                      </a>
+                                    )}
+                                    {canEditSchedule(event) && (
+                                      <>
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); openEdit(event); }}
+                                          className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                          title={isTeacher ? "Add session notes / topic" : "Edit Class"}
+                                        >
+                                          <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
+                                        </button>
+                                        {!isTeacher && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
+                                            className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
+                                          >
+                                            <Trash2 className="w-2.5 h-2.5 text-red-300" />
+                                          </button>
+                                        )}
+                                      </>
+                                    )}
+                                  </div>
+                                </motion.div>
+                              );
+                            })}
+                          </div>
                         ) : (
                           !isTeacher && hasWriteAccess && (
                             <div className="absolute inset-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity border border-dashed border-neutral-700 flex items-center justify-center">

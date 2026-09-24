@@ -285,7 +285,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                       startAngle={90}
                       endAngle={-270}
                     >
-                      {pieChartData.map((entry, index) => (
+                      {pieChartData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={PIE_COLORS[index]} />
                       ))}
                     </Pie>

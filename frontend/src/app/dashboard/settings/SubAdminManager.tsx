@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { Plus, Trash2, Edit2, CheckCircle2, AlertCircle, ShieldAlert } from "lucide-react";
+import { Plus, Trash2, Edit2, AlertCircle, ShieldAlert } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 const MODULES = [

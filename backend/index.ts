@@ -90,7 +90,7 @@ app.use('/users', userRoutes);
 app.use('/sales-people', salesRoutes);
 app.use('/demo-reports', demoReportRoutes);
 
-app.get('/', (req, res) => {
+app.get('/', (_req, res) => {
   res.send('API is running...');
 });
 

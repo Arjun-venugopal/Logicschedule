@@ -4,11 +4,11 @@ import User from '../models/User';
 // @desc    Get all sales people
 // @route   GET /api/sales-people
 // @access  Private/Admin
-export const getSalesPeople = async (req: Request, res: Response): Promise<void> => {
+export const getSalesPeople = async (_req: Request, res: Response): Promise<void> => {
   try {
     const { getDb } = await import('../config/firebase');
     const snapshot = await getDb().collection('users').where('role', '==', 'Sales Person').get();
-    
+
     const uniqueMap = new Map<string, any>();
     snapshot.docs.forEach(doc => {
       const data = doc.data();
@@ -102,7 +102,7 @@ export const updateSalesPerson = async (req: Request, res: Response): Promise<vo
     if (password) updateData.password = password;
 
     await User.update(id, updateData);
-    
+
     // Fetch updated user to return
     const updatedUser = await User.findById(id);
 

@@ -3,24 +3,17 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar as CalendarIcon,
   Clock,
   Search,
-  Filter,
   RefreshCw,
   User,
-  BookOpen,
   CheckCircle2,
-  AlertCircle,
   XCircle,
   ChevronLeft,
   ChevronRight,
   Edit,
-  Eye,
-  SlidersHorizontal,
-  Sparkles,
   Layers
 } from "lucide-react";
 import { TeacherWeeklyAvailabilityModal } from "./TeacherWeeklyAvailabilityModal";
@@ -118,7 +111,7 @@ export function AllTeachersAvailabilityCalendar() {
     refetchInterval: false, // Manual refresh via Refresh button to preserve Firestore quota
   });
 
-  const teachers: TeacherTimingData[] = data?.teachers || [];
+  const teachers: TeacherTimingData[] = useMemo(() => data?.teachers || [], [data?.teachers]);
 
   // Extract all unique subjects across teachers for filter dropdown
   const allSubjects = useMemo(() => {

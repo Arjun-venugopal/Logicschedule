@@ -113,33 +113,25 @@ export function TeacherWeeklyAvailabilityModal({
     return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
   };
 
+  const getSlotMinutes = (slot: Slot): number => {
+    if (!slot.startTime || !slot.endTime) return 0;
+    const [sh, sm] = slot.startTime.split(":").map(Number);
+    const [eh, em] = slot.endTime.split(":").map(Number);
+    const startMin = sh * 60 + sm;
+    let endMin = eh * 60 + em;
+    if (endMin < startMin) endMin += 1440;
+    return Math.max(0, endMin - startMin);
+  };
+
   const calculateHours = (slots: Slot[]) => {
-    let totalMins = 0;
-    for (const slot of slots) {
-      if (!slot.startTime || !slot.endTime) continue;
-      const [sh, sm] = slot.startTime.split(":").map(Number);
-      const [eh, em] = slot.endTime.split(":").map(Number);
-      let startMin = sh * 60 + sm;
-      let endMin = eh * 60 + em;
-      if (endMin < startMin) endMin += 1440;
-      totalMins += Math.max(0, endMin - startMin);
-    }
+    const totalMins = slots.reduce((acc, slot) => acc + getSlotMinutes(slot), 0);
     return (totalMins / 60).toFixed(1).replace(/\.0$/, "");
   };
 
   const calculateTotalWeeklyHours = (availList: DayAvailability[]) => {
-    let totalMins = 0;
-    for (const dayAvail of availList) {
-      for (const slot of dayAvail.slots) {
-        if (!slot.startTime || !slot.endTime) continue;
-        const [sh, sm] = slot.startTime.split(":").map(Number);
-        const [eh, em] = slot.endTime.split(":").map(Number);
-        let startMin = sh * 60 + sm;
-        let endMin = eh * 60 + em;
-        if (endMin < startMin) endMin += 1440;
-        totalMins += Math.max(0, endMin - startMin);
-      }
-    }
+    const totalMins = availList.reduce((acc, day) => {
+      return acc + day.slots.reduce((dAcc, slot) => dAcc + getSlotMinutes(slot), 0);
+    }, 0);
     return (totalMins / 60).toFixed(1).replace(/\.0$/, "");
   };
 
