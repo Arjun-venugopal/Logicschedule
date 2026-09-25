@@ -4,7 +4,7 @@ import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import { checkIntervalConflict } from '../utils/scheduleHelper';
-import { serverCache, saveDiskCache, readDiskCache } from '../utils/cache';
+import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -14,10 +14,8 @@ export const getSchedules = async (req: any, res: Response) => {
   const cacheKey = isTeacher ? `schedules_teacher_${req.user._id}` : 'schedules_all';
 
   try {
-    const cached = serverCache.get(cacheKey) || readDiskCache(cacheKey);
+    const cached = serverCache.get(cacheKey);
     if (cached) {
-      // Re-populate serverCache if found from disk
-      serverCache.set(cacheKey, cached, 60_000);
       res.json(cached);
       return;
     }
@@ -95,6 +93,8 @@ export const getSchedules = async (req: any, res: Response) => {
   }
 };
 
+import { normalizeDateOnlyToUtc } from './batchController';
+
 // @desc    Create a schedule
 // @route   POST /schedules
 // @access  Private/Admin
@@ -107,10 +107,12 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       return;
     }
 
+    const normalizedDate = normalizeDateOnlyToUtc(date) || new Date(date);
+
     // Check for interval conflict on the same teacher and date
     const existingTeacherSchedules = await Schedule.find({
       teacher,
-      date: new Date(date),
+      date: normalizedDate,
       status: { $ne: 'Cancelled' }
     }).select('_id startTime endTime status');
 
@@ -119,7 +121,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
     const schedule = await Schedule.create({
       teacher,
       batch,
-      date,
+      date: normalizedDate,
       startTime,
       endTime,
       status: status || 'Scheduled',
@@ -128,6 +130,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       meetingLink: meetingLink || '',
       subject: subject || '',
       notes: notes || '',
+      cancellationReason: req.body.cancellationReason || '',
     });
 
     const populated = await schedule.populate([
@@ -139,6 +142,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('schedules_');
+    deleteDiskCache('schedules_all');
 
     res.status(201).json(populated);
   } catch (error: any) {
@@ -175,7 +179,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
       if (isAdmin) {
         schedule.teacher = req.body.teacher || schedule.teacher;
         schedule.batch = req.body.batch || schedule.batch;
-        schedule.date = req.body.date || schedule.date;
+        schedule.date = req.body.date ? (normalizeDateOnlyToUtc(req.body.date) || schedule.date) : schedule.date;
         schedule.startTime = req.body.startTime || schedule.startTime;
         schedule.endTime = req.body.endTime || schedule.endTime;
         schedule.status = req.body.status || schedule.status;
@@ -187,14 +191,20 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.attendance !== undefined) {
           (schedule as any).attendance = req.body.attendance;
         }
+        if (req.body.cancellationReason !== undefined) {
+          (schedule as any).cancellationReason = req.body.cancellationReason;
+        }
       } else {
-        // Teacher edits: only allowed to change status, subject, completed class note (notes), meetingLink, and attendance
+        // Teacher edits: only allowed to change status, subject, completed class note (notes), meetingLink, attendance, and cancellationReason
         if (req.body.status !== undefined) schedule.status = req.body.status;
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
         if (req.body.meetingLink !== undefined) schedule.meetingLink = req.body.meetingLink;
         if (req.body.attendance !== undefined) {
           (schedule as any).attendance = req.body.attendance;
+        }
+        if (req.body.cancellationReason !== undefined) {
+          (schedule as any).cancellationReason = req.body.cancellationReason;
         }
       }
 
@@ -224,6 +234,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
       serverCache.clearPattern('schedules_');
+      deleteDiskCache('schedules_all');
 
       res.json(updatedSchedule);
     } else {
@@ -248,6 +259,7 @@ export const deleteSchedule = async (req: Request, res: Response): Promise<void>
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
       serverCache.clearPattern('schedules_');
+      deleteDiskCache('schedules_all');
       res.json({ message: 'Schedule removed' });
     } else {
       res.status(404).json({ message: 'Schedule not found' });

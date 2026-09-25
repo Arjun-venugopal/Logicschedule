@@ -8,24 +8,23 @@ import Student from '../models/Student';
 import { serverCache } from '../utils/cache';
 
 export function formatDateToYYYYMMDD(dateVal: Date | string): string {
-  if (!dateVal) return new Date().toLocaleDateString('en-CA');
+  if (!dateVal) return new Date().toISOString().split('T')[0];
   if (typeof dateVal === 'string') {
-    if (dateVal.includes('T')) {
-      const parsed = new Date(dateVal);
-      if (!isNaN(parsed.getTime())) {
-        const y = parsed.getFullYear();
-        const m = String(parsed.getMonth() + 1).padStart(2, '0');
-        const d = String(parsed.getDate()).padStart(2, '0');
-        return `${y}-${m}-${d}`;
-      }
-      return dateVal.split('T')[0];
-    }
-    return dateVal;
+    return dateVal.split('T')[0];
   }
-  const y = dateVal.getFullYear();
-  const m = String(dateVal.getMonth() + 1).padStart(2, '0');
-  const d = String(dateVal.getDate()).padStart(2, '0');
-  return `${y}-${m}-${d}`;
+  if (dateVal instanceof Date) {
+    if (isNaN(dateVal.getTime())) return '';
+    // If it's a UTC midnight date (or default normalized date), format UTC parts
+    if (dateVal.getUTCHours() === 0 && dateVal.getUTCMinutes() === 0 && dateVal.getUTCSeconds() === 0) {
+      const y = dateVal.getUTCFullYear();
+      const m = String(dateVal.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(dateVal.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    // Otherwise fallback to ISO split
+    return dateVal.toISOString().split('T')[0];
+  }
+  return String(dateVal).split('T')[0];
 }
 
 export function getTeacherStatusForDate(teacher: any, dateVal: Date | string): { status: string; reason?: string } {

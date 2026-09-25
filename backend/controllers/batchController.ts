@@ -3,13 +3,23 @@ import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
-import { serverCache } from '../utils/cache';
+import { serverCache, deleteDiskCache } from '../utils/cache';
 
-// Day name → JS getDay() index
+// Day name → JS getUTCDay() index
 const DAY_INDEX: Record<string, number> = {
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
   Thursday: 4, Friday: 5, Saturday: 6,
 };
+
+export function normalizeDateOnlyToUtc(val: any): Date | undefined {
+  if (!val) return undefined;
+  const str = typeof val === 'string'
+    ? val.split('T')[0]
+    : (val instanceof Date ? val.toISOString().split('T')[0] : String(val).split('T')[0]);
+  const parts = str.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[0]) || isNaN(parts[1]) || isNaN(parts[2])) return undefined;
+  return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0));
+}
 
 /**
  * Generate schedule entries for every matching class day starting from startDate.
@@ -23,20 +33,20 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
     return 0; // Not enough info to auto-generate
   }
 
-  const start = new Date(startDate);
+  const cursor = normalizeDateOnlyToUtc(startDate);
+  if (!cursor) return 0;
+
   const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
 
   // Pre-fetch all schedules for this batch from startDate onwards
   const existingSchedules = await Schedule.find({
     batch: _id,
-    date: { $gte: start }
+    date: { $gte: cursor }
   }).select('date');
 
   const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
 
   const schedulesToCreate: any[] = [];
-  const cursor = new Date(start);
-
   const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
   const maxScanDays = 365;
   let daysScanned = 0;
@@ -50,15 +60,15 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
       break;
     }
 
-    if (selectedDayIndexes.has(cursor.getDay())) {
-      const cursorTime = new Date(cursor).getTime();
+    if (selectedDayIndexes.has(cursor.getUTCDay())) {
+      const cursorTime = cursor.getTime();
 
       if (!existingTimes.has(cursorTime)) {
         const isCompleted = schedulesToCreate.length < preCompletedClasses;
         schedulesToCreate.push({
           teacher: assignedTeacher || undefined,
           batch: _id,
-          date: new Date(cursor),
+          date: new Date(cursorTime),
           startTime: timing.startTime,
           endTime: timing.endTime,
           status: isCompleted ? 'Completed' : 'Scheduled',
@@ -70,7 +80,7 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
       matchingDaysCount++;
     }
 
-    cursor.setDate(cursor.getDate() + 1);
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
     daysScanned++;
   }
 
@@ -180,7 +190,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       timing: timing || {},
       days: days || [],
       meetingLink: meetingLink || '',
-      startDate: startDate ? new Date(startDate) : undefined,
+      startDate: normalizeDateOnlyToUtc(startDate),
       durationType: durationType || 'Custom',
       status: status || 'Upcoming',
       numberOfSessions: numberOfSessions || null,
@@ -194,6 +204,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
+    deleteDiskCache('schedules_all');
 
     const populated = await batch.populate('assignedTeacher', 'name email');
     res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), schedulesGenerated: generated });
@@ -234,7 +245,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.preCompletedClasses = req.body.preCompletedClasses !== undefined ? req.body.preCompletedClasses : batch.preCompletedClasses;
 
     if (req.body.startDate !== undefined)
-      batch.startDate = req.body.startDate ? new Date(req.body.startDate) : undefined;
+      batch.startDate = normalizeDateOnlyToUtc(req.body.startDate);
 
     const updated = await batch.save();
 
@@ -248,6 +259,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
+    deleteDiskCache('schedules_all');
 
     await updated.populate('assignedTeacher', 'name email');
     res.json(updated);
@@ -277,6 +289,7 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
+    deleteDiskCache('schedules_all');
     res.json({ message: 'Batch and its schedules removed' });
   } catch (error: any) {
     console.error('Delete batch error:', error.message);

@@ -35,6 +35,31 @@ function batchProgress(completedClassesCount?: number, totalClassesCount?: numbe
   return Math.min(100, Math.round(((completedClassesCount || 0) / totalClassesCount) * 100));
 }
 
+const getSafeDateOnly = (val: any): string => {
+  if (!val) return "";
+  if (typeof val === "string") return val.split("T")[0];
+  if (val instanceof Date) {
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(val.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).split("T")[0];
+};
+
+const formatSafeDisplayDate = (val: any): string => {
+  const dateStr = getSafeDateOnly(val);
+  if (!dateStr) return "";
+  const [y, m, d] = dateStr.split("-").map(Number);
+  if (!y || !m || !d) return "";
+  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+};
+
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
 type BatchForm = {
@@ -131,7 +156,7 @@ export default function BatchesPage() {
       days: b.days || [],
       meetingLink: b.meetingLink || "",
       durationType: b.durationType || "Custom",
-      startDate: b.startDate ? format(new Date(b.startDate), "yyyy-MM-dd") : "",
+      startDate: getSafeDateOnly(b.startDate),
       status: b.status || "Upcoming",
       numberOfSessions: b.numberOfSessions || "",
       preCompletedClasses: b.preCompletedClasses || "",
@@ -407,7 +432,7 @@ export default function BatchesPage() {
                       <div className="flex items-center text-[10px] text-neutral-500 mb-1.5">
                         <span className="flex items-center gap-1">
                           <Calendar className="w-3 h-3" />
-                          Started: {format(new Date(batch.startDate), "MMM d, yyyy")}
+                          Started: {formatSafeDisplayDate(batch.startDate)}
                         </span>
                       </div>
                     )}

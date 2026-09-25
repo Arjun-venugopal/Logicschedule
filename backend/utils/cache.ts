@@ -24,6 +24,14 @@ class SimpleTtlCache {
   }
 
   set<T>(key: string, data: T, ttlMs: number = 30_000): void {
+    if (this.store.size > 500) {
+      const firstKey = this.store.keys().next().value;
+      if (firstKey) this.store.delete(firstKey);
+    }
+    if (this.backupStore.size > 500) {
+      const firstKey = this.backupStore.keys().next().value;
+      if (firstKey) this.backupStore.delete(firstKey);
+    }
     this.store.set(key, {
       data,
       expiresAt: Date.now() + ttlMs,
@@ -33,18 +41,25 @@ class SimpleTtlCache {
 
   delete(key: string): void {
     this.store.delete(key);
+    this.backupStore.delete(key);
   }
 
   clearPattern(prefix: string): void {
-    for (const key of this.store.keys()) {
+    for (const key of Array.from(this.store.keys())) {
       if (key.startsWith(prefix)) {
         this.store.delete(key);
+      }
+    }
+    for (const key of Array.from(this.backupStore.keys())) {
+      if (key.startsWith(prefix)) {
+        this.backupStore.delete(key);
       }
     }
   }
 
   clear(): void {
     this.store.clear();
+    this.backupStore.clear();
   }
 }
 
@@ -82,4 +97,15 @@ export function readDiskCache<T>(key: string): T | null {
     console.warn(`Failed to read disk cache for ${key}:`, err);
   }
   return null;
+}
+
+export function deleteDiskCache(key: string): void {
+  try {
+    const filePath = path.join(CACHE_DIR, `${key}.json`);
+    if (fs.existsSync(filePath)) {
+      fs.unlinkSync(filePath);
+    }
+  } catch (err) {
+    console.warn(`Failed to delete disk cache for ${key}:`, err);
+  }
 }

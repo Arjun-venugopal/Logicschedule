@@ -70,10 +70,12 @@ export const getDashboardStats = async (req: any, res: Response) => {
 
       // 2. Accumulate daily class count buckets
       if (s.date) {
-        const sTime = typeof s.date === 'number' ? s.date : (typeof s.date === 'string' ? new Date(s.date).getTime() : s.date.getTime());
-        const diffDays = Math.floor((sTime - weekStartMs) / (1000 * 60 * 60 * 24));
-        if (diffDays >= 0 && diffDays < 7) {
-          counts[diffDays]++;
+        const dObj = s.date instanceof Date ? s.date : new Date(s.date);
+        if (!isNaN(dObj.getTime())) {
+          const dayIdx = (dObj.getUTCDay() + 6) % 7;
+          if (dayIdx >= 0 && dayIdx < 7) {
+            counts[dayIdx]++;
+          }
         }
       }
     }

@@ -93,6 +93,18 @@ const emptyForm = (): ScheduleEntry => ({
   rescheduleEndTime: "",
 });
 
+const getSafeDateOnly = (val: any): string => {
+  if (!val) return "";
+  if (typeof val === "string") return val.split("T")[0];
+  if (val instanceof Date) {
+    const y = val.getUTCFullYear();
+    const m = String(val.getUTCMonth() + 1).padStart(2, "0");
+    const d = String(val.getUTCDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
+  return String(val).split("T")[0];
+};
+
 export default function SchedulePage() {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
@@ -205,7 +217,7 @@ export default function SchedulePage() {
     setForm({
       teacher: s.teacher?._id || s.teacher,
       batch: s.batch?._id || s.batch,
-      date: s.date ? format(new Date(s.date), "yyyy-MM-dd") : "",
+      date: getSafeDateOnly(s.date),
       startTime: s.startTime,
       endTime: s.endTime,
       status: s.status,
@@ -213,6 +225,10 @@ export default function SchedulePage() {
       subject: s.subject || "",
       notes: s.notes || "",
       attendance: s.attendance || [],
+      cancellationReason: s.cancellationReason || "",
+      rescheduleDate: "",
+      rescheduleStartTime: s.startTime || "09:00",
+      rescheduleEndTime: s.endTime || "10:00",
     });
     setEditingId(s._id);
     setModal({ open: true, mode: "edit" });
@@ -227,8 +243,17 @@ export default function SchedulePage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (modal?.mode === "edit" && editingId) {
-      if (form.status === "Cancelled" && form.rescheduleDate && form.rescheduleStartTime && form.rescheduleEndTime) {
-        const notesSuffix = `Cancelled. Reason: ${form.cancellationReason || 'Not provided'}. Rescheduled to ${format(parseISO(form.rescheduleDate), "MMM d, yyyy")} ${form.rescheduleStartTime}-${form.rescheduleEndTime}.`;
+      if (form.status === "Cancelled") {
+        const reasonText = form.cancellationReason?.trim() || "";
+        const notesSuffix = reasonText ? `Cancelled. Reason: ${reasonText}` : "Cancelled";
+        const updateData = { 
+          ...form, 
+          cancellationReason: reasonText,
+          notes: form.notes ? (form.notes.includes(notesSuffix) ? form.notes : `${notesSuffix}\n\n${form.notes}`) : notesSuffix
+        };
+        updateSchedule.mutate({ id: editingId, data: updateData });
+      } else if (form.status === "Rescheduled" && form.rescheduleDate && form.rescheduleStartTime && form.rescheduleEndTime) {
+        const notesSuffix = `Rescheduled to ${format(parseISO(form.rescheduleDate), "MMM d, yyyy")} ${form.rescheduleStartTime}-${form.rescheduleEndTime}.${form.cancellationReason ? ` Reason: ${form.cancellationReason}` : ''}`;
         const updateData = { 
           ...form, 
           notes: form.notes ? `${notesSuffix}\n\n${form.notes}` : notesSuffix
@@ -272,7 +297,7 @@ export default function SchedulePage() {
 
     for (const s of filteredSchedules) {
       if (!s.date) continue;
-      const sDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
+      const sDateStr = getSafeDateOnly(s.date);
       const sHour = parseInt(s.startTime?.split(":")[0] || "0", 10);
 
       // Cell key format: "yyyy-MM-dd_hour"
@@ -865,21 +890,44 @@ export default function SchedulePage() {
                   )}
 
                   {/* Cancellation / Reschedule Fields */}
+                  {/* Cancellation Reason (Only reason, no date needed) */}
                   {form.status === "Cancelled" && (
-                    <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl space-y-4 mb-4">
+                    <div className="p-4 bg-red-500/5 border border-red-500/20 rounded-xl space-y-3 mb-4">
                       <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4" /> Cancellation Details
+                        <AlertTriangle className="w-4 h-4" /> Cancellation Reason
                       </h4>
                       
                       <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Reason for Cancellation</label>
-                        <input
-                          type="text"
+                        <label className="text-xs font-semibold text-neutral-400">
+                          Reason for Cancellation <span className="text-red-400">*</span>
+                        </label>
+                        <textarea
+                          rows={3}
                           required
-                          placeholder="e.g. Health issue, Emergency..."
+                          placeholder="Please provide the reason for cancellation (e.g. Student unwell, Teacher emergency, Exam week...)"
                           value={form.cancellationReason || ""}
                           onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
-                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-red-500 transition-colors"
+                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-red-500 transition-colors placeholder:text-neutral-600 resize-none"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Reschedule Details (Date and time only when status is Rescheduled) */}
+                  {form.status === "Rescheduled" && (
+                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-4 mb-4">
+                      <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
+                        <Clock className="w-4 h-4" /> Reschedule Details
+                      </h4>
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-semibold text-neutral-400">Reason (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Rescheduled on student's request..."
+                          value={form.cancellationReason || ""}
+                          onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
+                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-600"
                         />
                       </div>
 
