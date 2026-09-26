@@ -3,9 +3,18 @@ interface CacheEntry<T> {
   expiresAt: number;
 }
 
-class SimpleTtlCache {
+/**
+ * High-Performance O(1) LRU Cache with TTL expiration.
+ * Evicts least-recently-used items when capacity is reached.
+ */
+class LruTtlCache {
+  private capacity: number;
   private store = new Map<string, CacheEntry<any>>();
   private backupStore = new Map<string, any>();
+
+  constructor(capacity: number = 1000) {
+    this.capacity = capacity;
+  }
 
   get<T>(key: string): T | null {
     const entry = this.store.get(key);
@@ -14,6 +23,9 @@ class SimpleTtlCache {
       this.store.delete(key);
       return null;
     }
+    // LRU promotion: re-insert key to mark as most recently used (tail of Map)
+    this.store.delete(key);
+    this.store.set(key, entry);
     return entry.data;
   }
 
@@ -24,14 +36,22 @@ class SimpleTtlCache {
   }
 
   set<T>(key: string, data: T, ttlMs: number = 30_000): void {
-    if (this.store.size > 500) {
-      const firstKey = this.store.keys().next().value;
-      if (firstKey) this.store.delete(firstKey);
+    // If key already exists, refresh its position
+    if (this.store.has(key)) {
+      this.store.delete(key);
+    } else if (this.store.size >= this.capacity) {
+      // Evict least recently used (first item in Map)
+      const lruKey = this.store.keys().next().value;
+      if (lruKey !== undefined) this.store.delete(lruKey);
     }
-    if (this.backupStore.size > 500) {
-      const firstKey = this.backupStore.keys().next().value;
-      if (firstKey) this.backupStore.delete(firstKey);
+
+    if (this.backupStore.has(key)) {
+      this.backupStore.delete(key);
+    } else if (this.backupStore.size >= this.capacity) {
+      const lruBackupKey = this.backupStore.keys().next().value;
+      if (lruBackupKey !== undefined) this.backupStore.delete(lruBackupKey);
     }
+
     this.store.set(key, {
       data,
       expiresAt: Date.now() + ttlMs,
@@ -63,7 +83,7 @@ class SimpleTtlCache {
   }
 }
 
-export const serverCache = new SimpleTtlCache();
+export const serverCache = new LruTtlCache(1000);
 
 import fs from 'fs';
 import path from 'path';
@@ -78,12 +98,11 @@ if (!fs.existsSync(CACHE_DIR)) {
 }
 
 export function saveDiskCache(key: string, data: any): void {
-  try {
-    const filePath = path.join(CACHE_DIR, `${key}.json`);
-    fs.writeFileSync(filePath, JSON.stringify(data), 'utf8');
-  } catch (err) {
-    console.warn(`Failed to save disk cache for ${key}:`, err);
-  }
+  const filePath = path.join(CACHE_DIR, `${key}.json`);
+  // Non-blocking async write to avoid stalling event loop
+  fs.promises.writeFile(filePath, JSON.stringify(data), 'utf8').catch((err) => {
+    console.warn(`Failed to save disk cache for ${key}:`, err?.message || err);
+  });
 }
 
 export function readDiskCache<T>(key: string): T | null {
@@ -100,12 +119,8 @@ export function readDiskCache<T>(key: string): T | null {
 }
 
 export function deleteDiskCache(key: string): void {
-  try {
-    const filePath = path.join(CACHE_DIR, `${key}.json`);
-    if (fs.existsSync(filePath)) {
-      fs.unlinkSync(filePath);
-    }
-  } catch (err) {
-    console.warn(`Failed to delete disk cache for ${key}:`, err);
-  }
+  const filePath = path.join(CACHE_DIR, `${key}.json`);
+  fs.promises.unlink(filePath).catch(() => {
+    // ignore if file doesn't exist
+  });
 }

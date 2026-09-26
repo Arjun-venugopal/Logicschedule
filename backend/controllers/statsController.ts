@@ -2,6 +2,7 @@ import { Response } from 'express';
 import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
+import DemoSession from '../models/DemoSession';
 import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
 import { serverCache } from '../utils/cache';
 
@@ -26,16 +27,19 @@ export const getDashboardStats = async (req: any, res: Response) => {
     const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
     const todayEnd   = new Date(now); todayEnd.setHours(23, 59, 59, 999);
 
-    // --- Core counts (Parallelized with Promise.all) ---
+    // --- Core counts (Parallelized with Promise.all across models) ---
     const teacherFilter = (isTeacher && teacherProfile) ? { assignedTeacher: teacherProfile._id } : {};
     const conflictFilter = (isTeacher && teacherProfile) ? { teacher: teacherProfile._id, conflict: true } : { conflict: true };
 
-    const [totalTeachers, totalBatches, activeBatches, conflicts] = await Promise.all([
+    const [totalTeachers, totalBatches, activeBatches, scheduleConflicts, demoConflicts] = await Promise.all([
       Teacher.countDocuments(),
       Batch.countDocuments(teacherFilter),
       Batch.countDocuments({ ...teacherFilter, status: 'Active' }),
       Schedule.countDocuments(conflictFilter),
+      DemoSession.countDocuments(conflictFilter),
     ]);
+
+    const conflicts = scheduleConflicts + demoConflicts;
 
     // --- Hours scheduled this week ---
     const dayOfWeek = now.getDay();
@@ -56,7 +60,6 @@ export const getDashboardStats = async (req: any, res: Response) => {
     let hoursScheduled = 0;
     const DAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
     const counts = [0, 0, 0, 0, 0, 0, 0];
-    const weekStartMs = weekStart.getTime();
 
     for (const s of weekSchedules) {
       // 1. Accumulate hours scheduled
@@ -85,28 +88,48 @@ export const getDashboardStats = async (req: any, res: Response) => {
       classes: counts[i],
     }));
 
-    // --- Live teacher status ---
+    // --- Live teacher status with cross-indexed schedules & demo sessions ---
     const teachers = await Teacher.find({}).select('name status subjectExpertise dutyStatusSchedule');
     
     let todaySchedulesQuery: any = {
       date: { $gte: todayStart, $lte: todayEnd },
       status: { $in: ['Scheduled', 'Completed'] }
     };
-    const todaySchedules = await Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject');
-
-    // Hash map grouping today's schedules by teacher ID for O(1) lookup
-    const teacherSchedulesMap = new Map<string, any[]>();
-    for (const s of todaySchedules) {
-      const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
-      if (sTeacherId) {
-        let list = teacherSchedulesMap.get(sTeacherId);
-        if (!list) {
-          list = [];
-          teacherSchedulesMap.set(sTeacherId, list);
-        }
-        list.push(s);
-      }
+    let todayDemosQuery: any = {
+      date: { $gte: todayStart, $lte: todayEnd },
+      status: { $in: ['Scheduled', 'Completed'] }
+    };
+    if (isTeacher && teacherProfile) {
+      todaySchedulesQuery.teacher = teacherProfile._id;
+      todayDemosQuery.teacher = teacherProfile._id;
     }
+
+    const [todaySchedules, todayDemos] = await Promise.all([
+      Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject'),
+      DemoSession.find(todayDemosQuery).populate('teacher', 'name')
+    ]);
+
+    // Hash map grouping today's schedules and demo sessions by teacher ID for O(1) lookup
+    const teacherSchedulesMap = new Map<string, any[]>();
+    const addSlotsToTeacherMap = (slots: any[], isDemo = false) => {
+      for (const s of slots) {
+        const sTeacherId = s.teacher?._id?.toString() || s.teacher?.toString();
+        if (sTeacherId) {
+          let list = teacherSchedulesMap.get(sTeacherId);
+          if (!list) {
+            list = [];
+            teacherSchedulesMap.set(sTeacherId, list);
+          }
+          if (isDemo && !s.batch) {
+            s.batch = { name: `Demo: ${s.studentName || s.subject || 'Session'}` };
+          }
+          list.push(s);
+        }
+      }
+    };
+
+    addSlotsToTeacherMap(todaySchedules, false);
+    addSlotsToTeacherMap(todayDemos, true);
 
     const currentDate = new Date();
     const currentTotalMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();

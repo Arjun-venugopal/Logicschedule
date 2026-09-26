@@ -3,6 +3,8 @@ import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
+import DemoSession from '../models/DemoSession';
+import { checkIntervalConflict } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // Day name → JS getUTCDay() index
@@ -25,6 +27,7 @@ export function normalizeDateOnlyToUtc(val: any): Date | undefined {
  * Generate schedule entries for every matching class day starting from startDate.
  * If numberOfSessions is set, generates that exact number of classes.
  * Otherwise, generates schedules for 6 months (180 days) so classes are never cut off.
+ * Detects conflicts with teacher's other batches and demo sessions in O(1) per date.
  */
 async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
@@ -46,6 +49,32 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
 
   const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
 
+  // Pre-fetch teacher's other schedules and demo sessions to detect conflicts
+  const teacherSlotsByDate = new Map<string, any[]>();
+  if (assignedTeacher) {
+    const teacherId = assignedTeacher._id ? assignedTeacher._id.toString() : assignedTeacher.toString();
+    const [tScheds, tDemos] = await Promise.all([
+      Schedule.find({ teacher: teacherId, date: { $gte: cursor }, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch'),
+      DemoSession.find({ teacher: teacherId, date: { $gte: cursor }, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
+    ]);
+
+    const addToMap = (items: any[]) => {
+      for (const item of items) {
+        if (!item.date || !item.startTime || !item.endTime) continue;
+        const dStr = normalizeDateOnlyToUtc(item.date)?.toISOString().split('T')[0];
+        if (!dStr) continue;
+        let list = teacherSlotsByDate.get(dStr);
+        if (!list) {
+          list = [];
+          teacherSlotsByDate.set(dStr, list);
+        }
+        list.push(item);
+      }
+    };
+    addToMap(tScheds);
+    addToMap(tDemos);
+  }
+
   const schedulesToCreate: any[] = [];
   const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
   const maxScanDays = 365;
@@ -65,17 +94,29 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
 
       if (!existingTimes.has(cursorTime)) {
         const isCompleted = schedulesToCreate.length < preCompletedClasses;
-        schedulesToCreate.push({
+        const dateKey = cursor.toISOString().split('T')[0];
+        const daySlots = teacherSlotsByDate.get(dateKey) || [];
+        const isConflict = checkIntervalConflict(daySlots, {
+          startTime: timing.startTime,
+          endTime: timing.endTime,
+        });
+
+        const newSlot = {
           teacher: assignedTeacher || undefined,
           batch: _id,
           date: new Date(cursorTime),
           startTime: timing.startTime,
           endTime: timing.endTime,
           status: isCompleted ? 'Completed' : 'Scheduled',
+          conflict: isConflict,
           meetingLink: meetingLink || '',
           notes: isCompleted ? `Auto-generated as Completed (Late join)` : `Auto-generated for batch`,
-        });
+        };
+
+        schedulesToCreate.push(newSlot);
         existingTimes.add(cursorTime);
+        daySlots.push(newSlot);
+        teacherSlotsByDate.set(dateKey, daySlots);
       }
       matchingDaysCount++;
     }

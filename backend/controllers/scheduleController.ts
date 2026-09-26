@@ -3,8 +3,9 @@ import Schedule from '../models/Schedule';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
-import { checkIntervalConflict } from '../utils/scheduleHelper';
+import { checkIntervalConflict, checkTeacherConflict } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
+import { normalizeDateOnlyToUtc } from './batchController';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -93,8 +94,6 @@ export const getSchedules = async (req: any, res: Response) => {
   }
 };
 
-import { normalizeDateOnlyToUtc } from './batchController';
-
 // @desc    Create a schedule
 // @route   POST /schedules
 // @access  Private/Admin
@@ -108,15 +107,17 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
     }
 
     const normalizedDate = normalizeDateOnlyToUtc(date) || new Date(date);
+    const activeTeacherId = (replacementTeacher || teacher)?._id?.toString() || (replacementTeacher || teacher)?.toString();
 
-    // Check for interval conflict on the same teacher and date
-    const existingTeacherSchedules = await Schedule.find({
-      teacher,
+    // Check for interval conflict across both regular schedules and demo sessions using binary search sweep
+    const conflictResult = await checkTeacherConflict({
+      teacherId: activeTeacherId,
       date: normalizedDate,
-      status: { $ne: 'Cancelled' }
-    }).select('_id startTime endTime status');
+      startTime,
+      endTime,
+    });
 
-    const isConflict = checkIntervalConflict(existingTeacherSchedules, { startTime, endTime });
+    const isConflict = conflictResult.hasConflict;
 
     const schedule = await Schedule.create({
       teacher,
@@ -184,7 +185,6 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         schedule.endTime = req.body.endTime || schedule.endTime;
         schedule.status = req.body.status || schedule.status;
         schedule.replacementTeacher = req.body.replacementTeacher || schedule.replacementTeacher;
-        schedule.conflict = req.body.conflict !== undefined ? req.body.conflict : schedule.conflict;
         if (req.body.meetingLink !== undefined) schedule.meetingLink = req.body.meetingLink;
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
@@ -205,6 +205,26 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         }
         if (req.body.cancellationReason !== undefined) {
           (schedule as any).cancellationReason = req.body.cancellationReason;
+        }
+      }
+
+      // Automatically recalculate conflict status dynamically
+      if (schedule.status === 'Cancelled') {
+        schedule.conflict = false;
+      } else {
+        const activeTeacherId = (schedule.replacementTeacher?._id || schedule.replacementTeacher || schedule.teacher?._id || schedule.teacher)?.toString();
+        if (activeTeacherId && schedule.date && schedule.startTime && schedule.endTime) {
+          const scheduleDate = schedule.date instanceof Date ? schedule.date : new Date(schedule.date);
+          const conflictRes = await checkTeacherConflict({
+            teacherId: activeTeacherId,
+            date: scheduleDate,
+            startTime: schedule.startTime,
+            endTime: schedule.endTime,
+            excludeScheduleId: schedule._id.toString(),
+          });
+          schedule.conflict = conflictRes.hasConflict;
+        } else if (req.body.conflict !== undefined) {
+          schedule.conflict = req.body.conflict;
         }
       }
 

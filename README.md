@@ -138,6 +138,14 @@ To ensure maximum system efficiency and low rendering latency, the repository in
 - **Problem**: Sequential database queries introduce cumulative network roundtrip latencies.
 - **DSA Solution**: Replaced sequential `await` queries with `Promise.all([...])` in database controllers to execute count queries concurrently. Added pre-collected ID sets during database population in [`BaseModel.ts`](file:///c:/Users/js202/Logicshedule/Logicschedule/backend/models/BaseModel.ts) to eliminate $N+1$ query overhead.
 
+### 5. Minute-Normalized Binary Search Sweep-Line Conflict Detection ($O(\log N)$)
+- **Problem**: String-based interval comparisons (e.g., `"9:00".localeCompare("10:00")`) suffer from ASCII lexicographic anomalies and linear $O(N)$ scanning across all bookings.
+- **DSA Solution**: Implemented numeric normalization (`timeToMinutes`) converting times into integer offsets from midnight ($0..1439$). Employs binary search upper-bound pruning on sorted intervals in [`scheduleHelper.ts`](file:///c:/Users/js202/Logicshedule/Logicschedule/backend/utils/scheduleHelper.ts) to check interval overlaps across both `Schedule` and `DemoSession` entities in $O(\log N)$ time.
+
+### 6. $O(1)$ LRU (Least Recently Used) Cache with Non-Blocking Disk Persistence
+- **Problem**: Standard TTL caching evicts strictly by insertion order (FIFO), discarding hot dashboard queries when capacity is reached, while synchronous file writes stall Node.js event loop threads.
+- **DSA Solution**: Upgraded [`cache.ts`](file:///c:/Users/js202/Logicshedule/Logicschedule/backend/utils/cache.ts) to a true $O(1)$ LRU cache promoting accessed keys on retrieval and evicting the least recently accessed keys when full. Backed by asynchronous non-blocking filesystem persistence.
+
 ---
 
 ## Key Features

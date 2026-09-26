@@ -5,6 +5,7 @@ import Schedule from '../models/Schedule';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import { findExistingStudent } from './studentController';
+import { checkTeacherConflict } from '../utils/scheduleHelper';
 
 // @desc    Get all demo sessions
 // @route   GET /demo-sessions
@@ -83,27 +84,13 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     // Only check conflicts if a teacher is assigned
     if (teacher) {
       const teacherId = (typeof teacher === 'object' && teacher !== null && teacher._id) ? teacher._id.toString() : teacher.toString();
-      // Check conflict with regular schedules
-      const scheduleConflict = await Schedule.findOne({
-        teacher: teacherId,
+      const conflictRes = await checkTeacherConflict({
+        teacherId,
         date: dateObj,
-        status: { $ne: 'Cancelled' },
-        $or: [
-          { startTime: { $lt: endTime }, endTime: { $gt: startTime } },
-        ],
+        startTime,
+        endTime,
       });
-
-      // Check conflict with other demo sessions
-      const demoConflict = await DemoSession.findOne({
-        teacher: teacherId,
-        date: dateObj,
-        status: { $ne: 'Cancelled' },
-        $or: [
-          { startTime: { $lt: endTime }, endTime: { $gt: startTime } },
-        ],
-      });
-
-      isConflict = !!scheduleConflict || !!demoConflict;
+      isConflict = conflictRes.hasConflict;
     }
 
     const demoSession = await DemoSession.create({
@@ -301,28 +288,16 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         ? demoSession.teacher._id.toString()
         : (demoSession.teacher ? demoSession.teacher.toString() : null);
 
-      if (currentTeacherId && demoSession.status !== 'Cancelled') {
-        const dateObj = new Date(demoSession.date);
-        const scheduleConflict = await Schedule.findOne({
-          teacher: currentTeacherId,
+      if (currentTeacherId && demoSession.status !== 'Cancelled' && demoSession.date && demoSession.startTime && demoSession.endTime) {
+        const dateObj = demoSession.date instanceof Date ? demoSession.date : new Date(demoSession.date);
+        const conflictRes = await checkTeacherConflict({
+          teacherId: currentTeacherId,
           date: dateObj,
-          status: { $ne: 'Cancelled' },
-          $or: [
-            { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
-          ],
+          startTime: demoSession.startTime,
+          endTime: demoSession.endTime,
+          excludeDemoId: demoSession._id.toString(),
         });
-
-        const demoConflict = await DemoSession.findOne({
-          _id: { $ne: demoSession._id },
-          teacher: currentTeacherId,
-          date: dateObj,
-          status: { $ne: 'Cancelled' },
-          $or: [
-            { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
-          ],
-        });
-
-        demoSession.conflict = !!scheduleConflict || !!demoConflict;
+        demoSession.conflict = conflictRes.hasConflict;
       } else {
         demoSession.conflict = false;
       }
@@ -343,28 +318,16 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         ? demoSession.teacher._id.toString()
         : (demoSession.teacher ? demoSession.teacher.toString() : null);
 
-      if (teacherEditorTeacherId && demoSession.status !== 'Cancelled') {
-        const dateObj = new Date(demoSession.date);
-        const scheduleConflict = await Schedule.findOne({
-          teacher: teacherEditorTeacherId,
+      if (teacherEditorTeacherId && demoSession.status !== 'Cancelled' && demoSession.date && demoSession.startTime && demoSession.endTime) {
+        const dateObj = demoSession.date instanceof Date ? demoSession.date : new Date(demoSession.date);
+        const conflictRes = await checkTeacherConflict({
+          teacherId: teacherEditorTeacherId,
           date: dateObj,
-          status: { $ne: 'Cancelled' },
-          $or: [
-            { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
-          ],
+          startTime: demoSession.startTime,
+          endTime: demoSession.endTime,
+          excludeDemoId: demoSession._id.toString(),
         });
-
-        const demoConflict = await DemoSession.findOne({
-          _id: { $ne: demoSession._id },
-          teacher: teacherEditorTeacherId,
-          date: dateObj,
-          status: { $ne: 'Cancelled' },
-          $or: [
-            { startTime: { $lt: demoSession.endTime }, endTime: { $gt: demoSession.startTime } },
-          ],
-        });
-
-        demoSession.conflict = !!scheduleConflict || !!demoConflict;
+        demoSession.conflict = conflictRes.hasConflict;
       } else {
         demoSession.conflict = false;
       }

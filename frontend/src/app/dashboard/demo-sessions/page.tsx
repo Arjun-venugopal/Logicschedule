@@ -445,9 +445,19 @@ export default function DemoSessionsPage() {
     }
   };
 
-  // Conflict Logic (real time check)
-  const getConflictStatus = () => {
+  // Conflict Logic (real time check with numeric minute parsing & memoization)
+  const hasConflict = useMemo(() => {
     if (!form.teacher || !form.date || !form.startTime || !form.endTime) return false;
+
+    const parseMin = (t: string) => {
+      if (!t) return -1;
+      const [h, m] = t.split(":").map(Number);
+      return isNaN(h) || isNaN(m) ? -1 : h * 60 + m;
+    };
+
+    const targetStart = parseMin(form.startTime);
+    const targetEnd = parseMin(form.endTime);
+    if (targetStart < 0 || targetEnd < 0 || targetEnd <= targetStart) return false;
 
     // Check regular classes
     const scheduleOverlap = schedules.some((s: any) => {
@@ -456,24 +466,27 @@ export default function DemoSessionsPage() {
       if (tId !== form.teacher) return false;
       const sDate = formatDateSafe(s.date, "yyyy-MM-dd");
       if (sDate !== form.date) return false;
-      return s.startTime < form.endTime && s.endTime > form.startTime;
+      const sStart = parseMin(s.startTime);
+      const sEnd = parseMin(s.endTime);
+      return sStart >= 0 && sEnd >= 0 && targetStart < sEnd && targetEnd > sStart;
     });
 
+    if (scheduleOverlap) return true;
+
     // Check other demo sessions
-    const demoOverlap = demoSessions.some((d) => {
+    return demoSessions.some((d) => {
       if (d._id === editingId || d.status === "Cancelled") return false;
       const tId = d.teacher?._id || (d.teacher as any);
       if (tId !== form.teacher) return false;
       const dDate = formatDateSafe(d.date, "yyyy-MM-dd");
       if (dDate !== form.date) return false;
-      return d.startTime < form.endTime && d.endTime > form.startTime;
+      const dStart = parseMin(d.startTime);
+      const dEnd = parseMin(d.endTime);
+      return dStart >= 0 && dEnd >= 0 && targetStart < dEnd && targetEnd > dStart;
     });
-
-    return scheduleOverlap || demoOverlap;
-  };
+  }, [form.teacher, form.date, form.startTime, form.endTime, schedules, demoSessions, editingId]);
 
   const availability = checkAvailabilityStatus();
-  const hasConflict = getConflictStatus();
 
   const salesExecOptions = useMemo(() => {
     const map = new Map<string, string>();
