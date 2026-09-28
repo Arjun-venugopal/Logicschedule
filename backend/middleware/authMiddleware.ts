@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import { Request, Response, NextFunction } from 'express';
 import User from '../models/User';
 import { config } from '../config/config';
+import { serverCache } from '../utils/cache';
 
 export interface AuthRequest extends Request {
   user?: any;
@@ -17,12 +18,22 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
     try {
       token = req.headers.authorization.split(' ')[1];
       const decoded: any = jwt.verify(token, config.JWT_SECRET);
-      req.user = await User.findById(decoded.id);
-      if (!req.user) {
-        res.status(401).json({ message: 'User account no longer exists' });
-        return;
+      
+      const cacheKey = `auth_user_${decoded.id}`;
+      let user = serverCache.get<any>(cacheKey);
+
+      if (!user) {
+        user = await User.findById(decoded.id);
+        if (!user) {
+          res.status(401).json({ message: 'User account no longer exists' });
+          return;
+        }
+        delete user.password;
+        // Cache user session for 60 seconds to eliminate redundant database reads
+        serverCache.set(cacheKey, user, 60_000);
       }
-      delete req.user.password;
+
+      req.user = user;
       next();
       return;
     } catch (error) {

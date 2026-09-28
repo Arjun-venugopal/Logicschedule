@@ -7,6 +7,7 @@ import { Server } from 'socket.io';
 import { connectFirebase } from './config/firebase';
 import helmet from 'helmet';
 import { config } from './config/config';
+import jwt from 'jsonwebtoken';
 
 const app = express();
 const httpServer = createServer(app);
@@ -55,6 +56,8 @@ const limiter = rateLimit({
   message: 'Too many requests from this IP, please try again later.',
 });
 
+app.set('trust proxy', 1);
+
 app.use(helmet());
 app.use(limiter);
 app.use(cors({
@@ -90,6 +93,14 @@ app.use('/users', userRoutes);
 app.use('/sales-people', salesRoutes);
 app.use('/demo-reports', demoReportRoutes);
 
+app.get('/health', (_req, res) => {
+  res.status(200).json({
+    status: 'ok',
+    uptime: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/', (_req, res) => {
   res.send('API is running...');
 });
@@ -97,12 +108,31 @@ app.get('/', (_req, res) => {
 app.use(notFound);
 app.use(errorHandler);
 
-// Real-time socket logic
+// Real-time socket authentication & room isolation
+io.use((socket, next) => {
+  const authHeader = socket.handshake.headers?.authorization;
+  const token = socket.handshake.auth?.token || (authHeader?.startsWith('Bearer ') ? authHeader.split(' ')[1] : undefined);
+  if (!token) return next();
+
+  try {
+    const decoded = jwt.verify(token, config.JWT_SECRET) as any;
+    socket.data.user = decoded;
+    next();
+  } catch {
+    next();
+  }
+});
+
 io.on('connection', (socket) => {
-  console.log(`Socket connected: ${socket.id}`);
+  const user = socket.data?.user;
+  if (user) {
+    const userId = user.id || user._id;
+    if (userId) socket.join(`user:${userId}`);
+    if (user.role) socket.join(`role:${user.role}`);
+  }
 
   socket.on('disconnect', () => {
-    console.log(`Socket disconnected: ${socket.id}`);
+    // Room memberships are automatically cleaned up by Socket.IO
   });
 });
 
@@ -114,8 +144,29 @@ try {
   console.log(`⚠️  Firebase not connected. Ensure GOOGLE_APPLICATION_CREDENTIALS is set.`);
 }
 
+// Connection Management: Keep-alive timeouts tailored for reverse proxies (Nginx / ALB)
+httpServer.keepAliveTimeout = 65000;
+httpServer.headersTimeout = 66000;
+
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
 
+// Graceful shutdown handling
+const gracefulShutdown = (signal: string) => {
+  console.log(`\n🛑 Received ${signal}. Starting graceful shutdown...`);
+  httpServer.close(() => {
+    console.log('✅ Closed HTTP and WebSocket servers. Clean exit.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.error('⚠️ Shutdown timeout exceeded, force exiting.');
+    process.exit(1);
+  }, 10000).unref();
+};
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
+export { io, httpServer };
 export default app;

@@ -6,16 +6,26 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import { findExistingStudent } from './studentController';
 import { checkTeacherConflict } from '../utils/scheduleHelper';
+import { serverCache } from '../utils/cache';
 
 // @desc    Get all demo sessions
 // @route   GET /demo-sessions
 // @access  Private
 export const getDemoSessions = async (req: any, res: Response): Promise<void> => {
   try {
+    const isTeacher = req.user && req.user.role === 'Teacher';
+    const isSales = req.user && req.user.role === 'Sales Person';
+    const cacheKey = `demo_sessions_${isTeacher ? `teacher_${req.user._id}` : (isSales ? `sales_${req.user._id}` : 'all')}`;
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     let query: any = {};
 
     // If logged in user is a Teacher, only fetch their demo sessions
-    if (req.user && req.user.role === 'Teacher') {
+    if (isTeacher) {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (teacher) {
         query = { teacher: teacher._id };
@@ -23,7 +33,7 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
         res.json([]);
         return;
       }
-    } else if (req.user && req.user.role === 'Sales Person') {
+    } else if (isSales) {
       // If logged in user is a Sales Person, fetch their demo sessions (case-insensitive) or unassigned ones
       const escapedName = req.user.name ? req.user.name.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') : '';
       query = {
@@ -52,6 +62,7 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
       return sessionObj;
     });
 
+    serverCache.set(cacheKey, maskedSessions, 30_000);
     res.json(maskedSessions);
   } catch (error: any) {
     console.error('Get demo sessions error:', error.message);
@@ -202,6 +213,9 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       }
     }
 
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.delete('teachers_all');
+    serverCache.clearPattern('stats_');
     res.status(201).json(responseObj);
   } catch (error: any) {
     console.error('Create demo session error:', error.message);
@@ -425,6 +439,9 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       }
     }
 
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.delete('teachers_all');
+    serverCache.clearPattern('stats_');
     res.json(responseObj);
   } catch (error: any) {
     console.error('Update demo session error:', error.message);
@@ -450,6 +467,9 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
       }
 
       await DemoSession.deleteOne({ _id: demoSession._id });
+      serverCache.clearPattern('demo_sessions_');
+      serverCache.delete('teachers_all');
+      serverCache.clearPattern('stats_');
       res.json({ message: 'Demo session removed' });
     } else {
       res.status(404).json({ message: 'Demo session not found' });

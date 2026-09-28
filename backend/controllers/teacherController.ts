@@ -47,6 +47,12 @@ export function getTeacherStatusForDate(teacher: any, dateVal: Date | string): {
 // @access  Private
 export const getTeachers = async (_req: Request, res: Response) => {
   try {
+    const cached = serverCache.get('teachers_all');
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
     const teachers = await Teacher.find({}).populate('user', 'name email role mustChangePassword').lean();
     
     // Calculate current dynamic availability
@@ -146,6 +152,7 @@ export const getTeachers = async (_req: Request, res: Response) => {
       };
     });
 
+    serverCache.set('teachers_all', result, 15_000);
     res.json(result);
   } catch (error: any) {
     console.error('Get teachers error:', error.message);
@@ -199,6 +206,8 @@ export const createTeacher = async (req: Request, res: Response): Promise<void> 
       status: status || 'Available',
     });
 
+    serverCache.delete('teachers_all');
+    serverCache.clearPattern('stats_');
     const populated = await teacher.populate('user', 'name email role');
     res.status(201).json(populated);
   } catch (error: any) {
@@ -251,6 +260,7 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
     }
 
     const updated = await teacher.save();
+    serverCache.delete('teachers_all');
     serverCache.clearPattern('timings_');
     serverCache.clearPattern('stats_');
 
@@ -274,6 +284,7 @@ export const deleteTeacher = async (req: Request, res: Response): Promise<void> 
     }
 
     await Teacher.deleteOne({ _id: teacher._id });
+    serverCache.delete('teachers_all');
     serverCache.clearPattern('timings_');
     serverCache.clearPattern('stats_');
     res.json({ message: 'Teacher removed' });
@@ -317,6 +328,8 @@ export const updateTeacherProfile = async (req: any, res: Response): Promise<voi
     if (req.body.dutyStatusSchedule !== undefined) teacher.dutyStatusSchedule = req.body.dutyStatusSchedule;
 
     const updated = await teacher.save();
+    serverCache.delete('teachers_all');
+    serverCache.clearPattern('stats_');
     res.json(updated);
   } catch (error: any) {
     console.error('Update teacher profile error:', error.message);
