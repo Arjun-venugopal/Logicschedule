@@ -36,7 +36,11 @@ export const protect = async (req: AuthRequest, res: Response, next: NextFunctio
       req.user = user;
       next();
       return;
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.name === 'TokenExpiredError') {
+        res.status(401).json({ message: 'Token expired, please log in again', code: 'TOKEN_EXPIRED' });
+        return;
+      }
       console.error('Token verify error:', error);
       res.status(401).json({ message: 'Not authorized, token failed' });
       return;

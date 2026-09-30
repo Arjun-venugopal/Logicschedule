@@ -1,8 +1,7 @@
-import { getDb } from '../config/firebase';
+import { getSupabase } from '../config/supabase';
 import bcrypt from 'bcrypt';
+import crypto from 'crypto';
 import { serverCache } from '../utils/cache';
-
-const getCollection = () => getDb().collection('users');
 
 export interface IUserPermissions {
   dashboard: { read: boolean; write: boolean };
@@ -42,32 +41,41 @@ const User = {
   async findOne(query: Record<string, any>): Promise<IUser | null> {
     const keys = Object.keys(query);
     if (keys.length === 0) return null;
-    let ref: any = getCollection();
-    for (const key of keys) {
-      if (query[key] !== undefined) {
-        ref = ref.where(key, '==', query[key]);
+    let q = getSupabase().from('users').select('*');
+    for (const k of keys) {
+      if (query[k] !== undefined) {
+        q = q.eq(k, query[k]);
       }
     }
-    const snapshot = await ref.limit(1).get();
-    if (snapshot.empty) return null;
-    const doc = snapshot.docs[0];
-    const data = doc.data() as IUser;
-    data._id = doc.id;
-    data.matchPassword = async function (enteredPassword: string) {
+    const { data, error } = await q.limit(1);
+    if (error || !data || data.length === 0) return null;
+    const row = data[0];
+    const user: IUser = {
+      ...(row.data || {}),
+      ...row,
+      _id: row._id,
+    };
+    delete (user as any).data;
+    user.matchPassword = async function (enteredPassword: string) {
       return await bcrypt.compare(enteredPassword, this.password || '');
     };
-    return data;
+    return user;
   },
 
   async findById(id: string): Promise<IUser | null> {
-    const doc = await getCollection().doc(id).get();
-    if (!doc.exists) return null;
-    const data = doc.data() as IUser;
-    data._id = doc.id;
-    data.matchPassword = async function (enteredPassword: string) {
+    if (!id) return null;
+    const { data, error } = await getSupabase().from('users').select('*').eq('_id', id).maybeSingle();
+    if (error || !data) return null;
+    const user: IUser = {
+      ...(data.data || {}),
+      ...data,
+      _id: data._id,
+    };
+    delete (user as any).data;
+    user.matchPassword = async function (enteredPassword: string) {
       return await bcrypt.compare(enteredPassword, this.password || '');
     };
-    return data;
+    return user;
   },
 
   async create(data: Partial<IUser>): Promise<IUser> {
@@ -76,15 +84,27 @@ const User = {
       const salt = await bcrypt.genSalt(12);
       data.password = await bcrypt.hash(data.password, salt);
     }
-    const docRef = await getCollection().add({
-      ...data,
+
+    const id = data._id || crypto.randomUUID();
+    const now = new Date().toISOString();
+    const payload: any = {
+      _id: id,
+      name: data.name,
+      email: data.email,
+      password: data.password,
+      role: data.role || 'User',
+      mustChangePassword: data.mustChangePassword ?? false,
+      permissions: data.permissions || {},
       isVerified: data.isVerified ?? false,
       failedLoginAttempts: data.failedLoginAttempts ?? 0,
       lockUntil: data.lockUntil ?? null,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    return { ...data, _id: docRef.id } as IUser;
+      createdAt: now,
+      updatedAt: now,
+      data: { ...data, _id: id, createdAt: now, updatedAt: now },
+    };
+    const { error } = await getSupabase().from('users').insert(payload);
+    if (error) throw new Error(`Supabase create user error: ${error.message}`);
+    return { ...data, _id: id } as IUser;
   },
 
   async update(id: string, updateData: Partial<IUser>): Promise<void> {
@@ -92,10 +112,15 @@ const User = {
       const salt = await bcrypt.genSalt(12);
       updateData.password = await bcrypt.hash(updateData.password, salt);
     }
-    await getCollection().doc(id).update({
-      ...updateData,
-      updatedAt: new Date(),
-    });
+
+    const now = new Date().toISOString();
+    const cleanUpdate: any = { ...updateData, updatedAt: now };
+    delete cleanUpdate._id;
+    const existing = await User.findById(id);
+    if (existing) {
+      cleanUpdate.data = { ...(existing as any), ...cleanUpdate };
+    }
+    await getSupabase().from('users').update(cleanUpdate).eq('_id', id);
     serverCache.delete(`auth_user_${id}`);
   }
 };

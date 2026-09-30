@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import { connectFirebase } from './config/firebase';
+import { connectSupabase, isSupabaseConfigured } from './config/supabase';
 import helmet from 'helmet';
 import { config } from './config/config';
 import jwt from 'jsonwebtoken';
@@ -138,10 +138,10 @@ io.on('connection', (socket) => {
 
 const PORT = config.PORT;
 
-try {
-  connectFirebase();
-} catch (error) {
-  console.log(`⚠️  Firebase not connected. Ensure GOOGLE_APPLICATION_CREDENTIALS is set.`);
+if (isSupabaseConfigured()) {
+  connectSupabase();
+} else {
+  console.warn('⚠️  Supabase is not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env');
 }
 
 // Connection Management: Keep-alive timeouts tailored for reverse proxies (Nginx / ALB)

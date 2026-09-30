@@ -2,26 +2,23 @@ import { Request, Response } from 'express';
 import User from '../models/User';
 import Teacher from '../models/Teacher';
 
+import { isSupabaseConfigured, getSupabase } from '../config/supabase';
+
 // @desc    Get all sub admins
 // @route   GET /api/users/sub-admins
 // @access  Private/Admin
 export const getSubAdmins = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const { getDb } = await import('../config/firebase');
-    const snapshot = await getDb().collection('users').where('role', '==', 'Sub Admin').get();
-    
-    const subAdmins = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        _id: doc.id,
-        name: data.name,
-        email: data.email,
-        role: data.role,
-        permissions: data.permissions,
-        createdAt: data.createdAt
-      };
-    });
-
+    const { data, error } = await getSupabase().from('users').select('*').eq('role', 'Sub Admin');
+    if (error) throw error;
+    const subAdmins = (data || []).map(row => ({
+      _id: row._id,
+      name: row.name,
+      email: row.email,
+      role: row.role,
+      permissions: row.permissions,
+      createdAt: row.createdAt
+    }));
     res.json(subAdmins);
   } catch (error: any) {
     console.error('Get sub admins error:', error.message);
@@ -163,9 +160,7 @@ export const deleteSubAdmin = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const { getDb } = await import('../config/firebase');
-    await getDb().collection('users').doc(id).delete();
-
+    await getSupabase().from('users').delete().eq('_id', id);
     res.json({ message: 'Sub admin removed' });
   } catch (error: any) {
     console.error('Delete sub admin error:', error.message);

@@ -1,30 +1,29 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 
+import { isSupabaseConfigured, getSupabase } from '../config/supabase';
+
 // @desc    Get all sales people
 // @route   GET /api/sales-people
 // @access  Private/Admin
 export const getSalesPeople = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const { getDb } = await import('../config/firebase');
-    const snapshot = await getDb().collection('users').where('role', '==', 'Sales Person').get();
-
+    const { data, error } = await getSupabase().from('users').select('*').eq('role', 'Sales Person');
+    if (error) throw error;
     const uniqueMap = new Map<string, any>();
-    snapshot.docs.forEach(doc => {
-      const data = doc.data();
-      const key = (data.email || data.name || doc.id).trim().toLowerCase();
+    (data || []).forEach(row => {
+      const key = (row.email || row.name || row._id).trim().toLowerCase();
       if (!uniqueMap.has(key)) {
         uniqueMap.set(key, {
-          _id: doc.id,
-          name: data.name,
-          email: data.email,
-          role: data.role,
-          permissions: data.permissions,
-          createdAt: data.createdAt
+          _id: row._id,
+          name: row.name,
+          email: row.email,
+          role: row.role,
+          permissions: row.permissions,
+          createdAt: row.createdAt
         });
       }
     });
-
     res.json(Array.from(uniqueMap.values()));
   } catch (error: any) {
     console.error('Get sales people error:', error.message);
@@ -131,9 +130,7 @@ export const deleteSalesPerson = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const { getDb } = await import('../config/firebase');
-    await getDb().collection('users').doc(id).delete();
-
+    await getSupabase().from('users').delete().eq('_id', id);
     res.json({ message: 'Sales person removed' });
   } catch (error: any) {
     console.error('Delete sales person error:', error.message);

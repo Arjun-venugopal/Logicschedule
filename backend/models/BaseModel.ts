@@ -1,5 +1,16 @@
-import { getDb } from '../config/firebase';
-import { FieldValue } from 'firebase-admin/firestore';
+import { getSupabase } from '../config/supabase';
+import crypto from 'crypto';
+
+const tableColumns: Record<string, string[]> = {
+  users: ['_id', 'name', 'email', 'password', 'role', 'mustChangePassword', 'permissions', 'isVerified', 'verificationToken', 'verificationExpires', 'resetPasswordToken', 'resetPasswordExpires', 'failedLoginAttempts', 'lockUntil', 'createdAt', 'updatedAt', 'data'],
+  teachers: ['_id', 'user', 'subjects', 'batches', 'dutyStatusSchedule', 'status', 'timing', 'createdAt', 'updatedAt', 'data'],
+  batches: ['_id', 'name', 'subject', 'assignedTeacher', 'replacementTeacher', 'students', 'schedule', 'timing', 'status', 'createdAt', 'updatedAt', 'data'],
+  students: ['_id', 'name', 'email', 'phone', 'batch', 'status', 'assignedTutor', 'createdAt', 'updatedAt', 'data'],
+  schedules: ['_id', 'batch', 'teacher', 'date', 'startTime', 'endTime', 'status', 'attendance', 'createdAt', 'updatedAt', 'data'],
+  demoSlots: ['_id', 'teacher', 'date', 'startTime', 'endTime', 'status', 'createdAt', 'updatedAt', 'data'],
+  demos: ['_id', 'slot', 'student', 'teacher', 'salesPerson', 'status', 'notes', 'report', 'createdAt', 'updatedAt', 'data'],
+  demoReports: ['_id', 'session', 'feedback', 'status', 'createdAt', 'updatedAt', 'data'],
+};
 
 function convertTimestampsInPlace(obj: any): any {
   if (obj === null || obj === undefined || typeof obj !== 'object' || obj instanceof Date) {
@@ -145,7 +156,7 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
   const itemVal = item ? item[key] : undefined;
 
   if (filterVal !== null && typeof filterVal === 'object' && !(filterVal instanceof Date) && !Array.isArray(filterVal)) {
-    // Regex operator with ReDoS security guards
+    // Regex operator
     if (filterVal.$regex !== undefined) {
       const flags = filterVal.$options || 'i';
       let regex: RegExp;
@@ -253,104 +264,86 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
 }
 
 function matchesAllFilters(item: any, filters: any): boolean {
-  if (!item || !filters) return true;
-  const keys = Object.keys(filters);
-  for (let i = 0; i < keys.length; i++) {
-    const key = keys[i];
-    if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+  if (!filters || Object.keys(filters).length === 0) return true;
 
-    if (key === '$or') {
-      const orConditions = filters[key];
-      if (Array.isArray(orConditions)) {
-        const orMatch = orConditions.some((cond: any) => {
-          return Object.keys(cond).every(condKey => matchesCondition(item, condKey, cond[condKey]));
-        });
-        if (!orMatch) return false;
-      }
-      continue;
-    }
+  if (filters.$or && Array.isArray(filters.$or)) {
+    const orMatched = filters.$or.some((orClause: any) => matchesAllFilters(item, orClause));
+    if (!orMatched) return false;
+  }
 
-    if (key === '$and') {
-      const andConditions = filters[key];
-      if (Array.isArray(andConditions)) {
-        const andMatch = andConditions.every((cond: any) => {
-          return Object.keys(cond).every(condKey => matchesCondition(item, condKey, cond[condKey]));
-        });
-        if (!andMatch) return false;
-      }
-      continue;
-    }
+  if (filters.$and && Array.isArray(filters.$and)) {
+    const andMatched = filters.$and.every((andClause: any) => matchesAllFilters(item, andClause));
+    if (!andMatched) return false;
+  }
 
+  for (const key of Object.keys(filters)) {
+    if (key === '$or' || key === '$and') continue;
     if (!matchesCondition(item, key, filters[key])) {
       return false;
     }
   }
+
   return true;
 }
 
-const modelRegistry = new WeakMap<object, BaseModel>();
+const modelRegistry = new WeakMap<any, BaseModel>();
+const allModels: Record<string, BaseModel> = {};
 
-interface PopDocCacheEntry {
-  data: any;
-  expiresAt: number;
-}
-const globalPopulateCache = new Map<string, PopDocCacheEntry>();
-
-export function getCachedPopDoc(collectionName: string, id: string): any | null {
-  const cacheKey = `${collectionName}_${id}`;
-  const entry = globalPopulateCache.get(cacheKey);
-  if (!entry) return null;
-  if (Date.now() > entry.expiresAt) {
-    globalPopulateCache.delete(cacheKey);
-    return null;
-  }
-  return entry.data;
-}
-
-export function setCachedPopDoc(collectionName: string, id: string, doc: any, ttlMs: number = 180_000): void {
-  const cacheKey = `${collectionName}_${id}`;
-  globalPopulateCache.set(cacheKey, {
-    data: doc,
-    expiresAt: Date.now() + ttlMs,
-  });
-}
-
-export function invalidatePopulateCache(collectionName?: string): void {
-  if (!collectionName) {
-    globalPopulateCache.clear();
-    return;
-  }
-  for (const key of globalPopulateCache.keys()) {
-    if (key.startsWith(`${collectionName}_`)) {
-      globalPopulateCache.delete(key);
-    }
-  }
-}
-
-export class FirestoreDocument {
+class FirestoreDocument {
+  _id?: string;
   [key: string]: any;
 
-  async populate(path: string | any[], select?: string) {
-    const model = modelRegistry.get(this);
-    if (model) {
-      const populates = Array.isArray(path)
-        ? path.map(p => typeof p === 'string' ? { path: p, select: '' } : p)
-        : [{ path, select: select || '' }];
-      await (model as any)._applyPopulates(this, populates);
-    }
-    return this;
+  private _getModel(): BaseModel | undefined {
+    return modelRegistry.get(this) || (this as any)._model || allModels[(this as any)._collectionName];
   }
 
-  async deleteOne() {
-    const model = modelRegistry.get(this);
-    if (model && this._id) {
-      invalidatePopulateCache(model.collectionName);
-      await model.collection.doc(this._id).delete();
+  toObject() {
+    const clean: any = {};
+    const keys = Object.keys(this);
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i];
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype' || typeof this[key] === 'function') {
+        continue;
+      }
+      clean[key] = this[key];
     }
+    return clean;
+  }
+
+  toJSON() {
+    return this.toObject();
+  }
+
+  async populate(path: string | any[], select?: string): Promise<any> {
+    const model = this._getModel();
+    if (!model) return this;
+    const populates: { path: string; select: string }[] = [];
+    if (Array.isArray(path)) {
+      for (const p of path) {
+        if (typeof p === 'string') {
+          populates.push({ path: p, select: '' });
+        } else if (p && p.path) {
+          populates.push({ path: p.path, select: p.select || '' });
+        }
+      }
+    } else if (path) {
+      populates.push({ path, select: select || '' });
+    }
+    return await (model as any)._applyPopulates(this, populates);
+  }
+
+  async deleteOne(): Promise<void> {
+    const model = this._getModel();
+    if (!model || !this._id) return;
+    await model.deleteOne({ _id: this._id });
+  }
+
+  async remove(): Promise<void> {
+    await this.deleteOne();
   }
 
   async save() {
-    const model = modelRegistry.get(this);
+    const model = this._getModel();
     if (!model || !this._id) return this;
     const updateData: any = {};
     const keys = Object.keys(this);
@@ -380,8 +373,43 @@ export class FirestoreDocument {
       }
     }
     invalidatePopulateCache(model.collectionName);
-    await model.collection.doc(this._id).update({ ...updateData, updatedAt: new Date() });
+    const now = new Date().toISOString();
+    const validCols = new Set(tableColumns[model.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+    const row: any = {
+      data: { ...(this as any), ...updateData },
+      updatedAt: now,
+    };
+    for (const k of Object.keys(updateData)) {
+      if (validCols.has(k)) row[k] = updateData[k];
+    }
+    await getSupabase().from(model.collectionName).update(row).eq('_id', this._id);
     return this;
+  }
+}
+
+const populateGlobalCache: Record<string, { doc: any; timestamp: number }> = {};
+const POPULATE_CACHE_TTL_MS = 15000;
+
+function getCachedPopDoc(collectionName: string, id: string): any | null {
+  const key = `${collectionName}_${id}`;
+  const entry = populateGlobalCache[key];
+  if (entry && (Date.now() - entry.timestamp) < POPULATE_CACHE_TTL_MS) {
+    return entry.doc;
+  }
+  return null;
+}
+
+function setCachedPopDoc(collectionName: string, id: string, doc: any) {
+  const key = `${collectionName}_${id}`;
+  populateGlobalCache[key] = { doc, timestamp: Date.now() };
+}
+
+function invalidatePopulateCache(collectionName: string) {
+  const prefix = `${collectionName}_`;
+  for (const k of Object.keys(populateGlobalCache)) {
+    if (k.startsWith(prefix)) {
+      delete populateGlobalCache[k];
+    }
   }
 }
 
@@ -390,16 +418,27 @@ export class BaseModel {
 
   constructor(collectionName: string) {
     this.collectionName = collectionName;
-  }
-
-  get collection() {
-    return getDb().collection(this.collectionName);
+    allModels[collectionName] = this;
   }
 
   private _attachMethods(doc: any) {
     if (!doc || typeof doc !== 'object') return doc;
     Object.setPrototypeOf(doc, FirestoreDocument.prototype);
     modelRegistry.set(doc, this);
+    try {
+      Object.defineProperty(doc, '_collectionName', {
+        value: this.collectionName,
+        writable: true,
+        enumerable: false,
+        configurable: true
+      });
+      Object.defineProperty(doc, '_model', {
+        value: this,
+        writable: true,
+        enumerable: false,
+        configurable: true
+      });
+    } catch {}
     return doc;
   }
 
@@ -457,19 +496,16 @@ export class BaseModel {
       },
 
       execute: async () => {
-        if (process.env.NODE_ENV === 'development') {
-          console.debug(`[Firestore] ${this.collectionName} query`);
-        }
         if (isCount) {
           return await this._executeCount(queryObj);
         }
         if (isFindById) {
           if (!id) return null;
-          const doc = await this.collection.doc(id).get();
-          if (!doc.exists) return null;
-          const data = doc.data();
-          convertTimestampsInPlace(data);
-          let result: any = { _id: doc.id, ...data };
+          const { data, error } = await getSupabase().from(this.collectionName).select('*').eq('_id', id).maybeSingle();
+          if (error || !data) return null;
+          let result: any = { ...(data.data || {}), ...data, _id: data._id };
+          delete result.data;
+          convertTimestampsInPlace(result);
           if (chain._select) applySelect(result, chain._select);
           if (!chain._lean) result = this._attachMethods(result);
           result = await this._applyPopulates(result, chain._populates);
@@ -497,7 +533,6 @@ export class BaseModel {
         // Apply populates to all results efficiently using pre-batched cache
         if (chain._populates.length > 0) {
           const populateCache: Record<string, Promise<any>> = {};
-          const db = getDb();
 
           // Pre-collect unique document IDs for each path
           for (const pop of chain._populates) {
@@ -556,31 +591,28 @@ export class BaseModel {
                   const chunkSize = 100;
                   for (let i = 0; i < uncachedIds.length; i += chunkSize) {
                     const chunkIds = uncachedIds.slice(i, i + chunkSize);
-                    const docRefs = chunkIds.map(refId => db.collection(collectionName).doc(refId));
-                    const batchPromise = db.getAll(...docRefs).then((snapshots: any[]) => {
+                    const sb = getSupabase();
+                    const batchPromise = Promise.resolve(sb.from(collectionName).select('*').in('_id', chunkIds)).then(({ data, error }) => {
                       const map = new Map<string, any>();
-                      snapshots.forEach(ref => {
-                        if (ref.exists) {
-                          const d = ref.data();
-                          convertTimestampsInPlace(d);
-                          const rawObj: any = { _id: ref.id, ...d };
+                      if (!error && data) {
+                        data.forEach((row: any) => {
+                          const rawObj: any = { ...(row.data || {}), ...row, _id: row._id };
+                          delete rawObj.data;
+                          convertTimestampsInPlace(rawObj);
                           if (collectionName === 'users') {
                             delete rawObj.password;
                           }
-                          setCachedPopDoc(collectionName, ref.id, rawObj);
-
+                          setCachedPopDoc(collectionName, row._id, rawObj);
                           const docObj: any = { ...rawObj };
                           if (pop.select) {
                             applySelect(docObj, pop.select);
                           }
-                          map.set(ref.id, docObj);
-                        } else {
-                          map.set(ref.id, null);
-                        }
-                      });
+                          map.set(row._id, docObj);
+                        });
+                      }
                       return map;
-                    }).catch(err => {
-                      console.error(`Batched populate error for ${collectionName}:`, err);
+                    }).catch((err: any) => {
+                      console.error(`Batched Supabase populate error for ${collectionName}:`, err);
                       return new Map<string, any>();
                     });
 
@@ -603,78 +635,15 @@ export class BaseModel {
     return chain;
   }
 
-  // Execute a highly optimized count
+  // Execute count
   private async _executeCount(query: any = {}): Promise<number> {
-    let firestoreQuery: any = this.collection;
-    let queryKeys = Object.keys(query);
-    const unpushedFilters: any = {};
-    let hasInClause = false;
-    let hasDisparityClause = false;
-
-    for (let i = 0; i < queryKeys.length; i++) {
-      const key = queryKeys[i];
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-      if (key === '$or' || key === '$and' || key === '_id') {
-        unpushedFilters[key] = query[key];
-        continue;
-      }
-      const val = query[key];
-      if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
-        if (val.$in && Array.isArray(val.$in)) {
-          if (val.$in.length === 0) return 0;
-          if (val.$in.length <= 30 && !hasInClause) {
-            firestoreQuery = firestoreQuery.where(key, 'in', val.$in);
-            hasInClause = true;
-            continue;
-          }
-        }
-        if (val.$ne !== undefined) {
-          if (!hasDisparityClause) {
-            firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
-            hasDisparityClause = true;
-            continue;
-          } else {
-            unpushedFilters[key] = val;
-            continue;
-          }
-        }
-        const opKeys = Object.keys(val);
-        const hasOnlyRangeOps = opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
-        if (hasOnlyRangeOps) {
-          if (val.$gte !== undefined) firestoreQuery = firestoreQuery.where(key, '>=', val.$gte);
-          if (val.$gt !== undefined) firestoreQuery = firestoreQuery.where(key, '>', val.$gt);
-          if (val.$lte !== undefined) firestoreQuery = firestoreQuery.where(key, '<=', val.$lte);
-          if (val.$lt !== undefined) firestoreQuery = firestoreQuery.where(key, '<', val.$lt);
-          continue;
-        }
-        unpushedFilters[key] = val;
-      } else {
-        firestoreQuery = firestoreQuery.where(key, '==', val);
-      }
-    }
-
-    if (Object.keys(unpushedFilters).length > 0) {
-      const results = await this._fetchAndFilter(query, null, null);
-      return results.length;
-    } else {
-      let countQuery = firestoreQuery;
-      try {
-        const snapshot = await countQuery.count().get();
-        return snapshot.data().count;
-      } catch (e: any) {
-        if (e.message && (e.message.includes('index') || e.message.includes('FAILED_PRECONDITION') || e.code === 9 || e.code === 3 || e.message.includes('INVALID_ARGUMENT') || e.message.includes('NOT_EQUAL'))) {
-          const results = await this._fetchAndFilter(query, null, null);
-          return results.length;
-        }
-        throw e;
-      }
-    }
+    const docs = await this._fetchAndFilter(query, null, null);
+    return docs.length;
   }
 
-  // Basic population implementation
-  private async _applyPopulates(doc: any, populates: { path: string, select: string }[], cache?: Record<string, Promise<any>>): Promise<any> {
+  // Population implementation
+  async _applyPopulates(doc: any, populates: { path: string, select: string }[], cache?: Record<string, Promise<any>>): Promise<any> {
     if (!doc) return doc;
-    const db = getDb();
     
     for (const pop of populates) {
       const path = pop.path;
@@ -689,16 +658,17 @@ export class BaseModel {
           return obj;
         }
 
+        const sb = getSupabase();
         if (cache) {
           const cacheKey = `${collectionName}_${id}`;
           if (!cache[cacheKey]) {
-            cache[cacheKey] = db.collection(collectionName).doc(id).get().then((ref: any) => {
-              if (!ref.exists) return null;
-              const d = ref.data();
-              convertTimestampsInPlace(d);
-              const rawObj: any = { _id: ref.id, ...d };
+            cache[cacheKey] = Promise.resolve(sb.from(collectionName).select('*').eq('_id', id).maybeSingle()).then(({ data, error }: any) => {
+              if (error || !data) return null;
+              const rawObj: any = { ...(data.data || {}), ...data, _id: data._id };
+              delete rawObj.data;
+              convertTimestampsInPlace(rawObj);
               if (collectionName === 'users') delete rawObj.password;
-              setCachedPopDoc(collectionName, ref.id, rawObj);
+              setCachedPopDoc(collectionName, data._id, rawObj);
               const obj: any = { ...rawObj };
               if (pop.select) applySelect(obj, pop.select);
               return obj;
@@ -706,18 +676,16 @@ export class BaseModel {
           }
           return await cache[cacheKey];
         } else {
-          const ref = await db.collection(collectionName).doc(id).get();
-          if (ref.exists) {
-            const d = ref.data();
-            convertTimestampsInPlace(d);
-            const rawObj: any = { _id: ref.id, ...d };
-            if (collectionName === 'users') delete rawObj.password;
-            setCachedPopDoc(collectionName, ref.id, rawObj);
-            const obj: any = { ...rawObj };
-            if (pop.select) applySelect(obj, pop.select);
-            return obj;
-          }
-          return null;
+          const { data, error } = await sb.from(collectionName).select('*').eq('_id', id).maybeSingle();
+          if (error || !data) return null;
+          const rawObj: any = { ...(data.data || {}), ...data, _id: data._id };
+          delete rawObj.data;
+          convertTimestampsInPlace(rawObj);
+          if (collectionName === 'users') delete rawObj.password;
+          setCachedPopDoc(collectionName, data._id, rawObj);
+          const obj: any = { ...rawObj };
+          if (pop.select) applySelect(obj, pop.select);
+          return obj;
         }
       };
 
@@ -752,10 +720,23 @@ export class BaseModel {
         }
       } else {
         if (!doc[path]) continue;
-        if (typeof doc[path] === 'string') {
-          const docId = doc[path].trim();
-          const popDoc = await fetchPopDoc(docId);
-          if (popDoc) doc[path] = popDoc;
+        if (Array.isArray(doc[path])) {
+          for (let idx = 0; idx < doc[path].length; idx++) {
+            const item = doc[path][idx];
+            if (!item) continue;
+            const docId = typeof item === 'string' ? item.trim() : (item && typeof item === 'object' && item._id ? String(item._id).trim() : null);
+            if (docId) {
+              const popDoc = await fetchPopDoc(docId);
+              if (popDoc) doc[path][idx] = popDoc;
+            }
+          }
+        } else {
+          const targetVal = doc[path];
+          const docId = typeof targetVal === 'string' ? targetVal.trim() : (targetVal && typeof targetVal === 'object' && targetVal._id ? String(targetVal._id).trim() : null);
+          if (docId) {
+            const popDoc = await fetchPopDoc(docId);
+            if (popDoc) doc[path] = popDoc;
+          }
         }
       }
     }
@@ -766,203 +747,68 @@ export class BaseModel {
     query: any = {}, 
     limitOpt: number | null, 
     sortOpt: any, 
-    startAfterOpt?: string | null,
+    _startAfterOpt?: string | null,
     isFindOne: boolean = false
   ): Promise<any[]> {
-    let firestoreQuery: any = this.collection;
-    let queryKeys = Object.keys(query);
-
-    if (query._id && typeof query._id === 'string' && Object.keys(query).length === 1) {
-      const doc = await this.collection.doc(query._id).get();
-      if (!doc.exists) return [];
-      const data = doc.data();
-      convertTimestampsInPlace(data);
-      return [{ _id: doc.id, ...data }];
-    }
-
-    if (query._id && typeof query._id === 'string') {
-      const doc = await this.collection.doc(query._id).get();
-      if (!doc.exists) return [];
-      const data = doc.data();
-      convertTimestampsInPlace(data);
-      const item = { _id: doc.id, ...data };
-      return matchesAllFilters(item, query) ? [item] : [];
-    }
-
-    // Special case: if $in is empty array, return [] immediately
+    const sb = getSupabase();
+    let q = sb.from(this.collectionName).select('*');
+    
+    const validCols = new Set(tableColumns[this.collectionName] || ['_id']);
+    const queryKeys = Object.keys(query);
     for (let i = 0; i < queryKeys.length; i++) {
       const key = queryKeys[i];
-      if (query[key] && Array.isArray(query[key].$in) && query[key].$in.length === 0) {
-        return [];
-      }
-    }
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype' || key === '$or' || key === '$and') continue;
 
-    // Special case: single field $in with > 30 items
-    if (queryKeys.length === 1 && query[queryKeys[0]] && Array.isArray(query[queryKeys[0]].$in) && query[queryKeys[0]].$in.length > 30) {
-      const key = queryKeys[0];
-      const allIds = query[key].$in;
-      const chunks: any[][] = [];
-      for (let i = 0; i < allIds.length; i += 30) {
-        chunks.push(allIds.slice(i, i + 30));
-      }
-      const allDocs: any[] = [];
-      for (const chunk of chunks) {
-        const snap = await this.collection.where(key, 'in', chunk).get();
-        snap.docs.forEach((doc: any) => {
-          const data = doc.data();
-          convertTimestampsInPlace(data);
-          allDocs.push({ _id: doc.id, ...data });
-        });
-      }
-      if (sortOpt) {
-        const sortKey = Object.keys(sortOpt)[0];
-        const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;
-        allDocs.sort((a: any, b: any) => {
-          if (a[sortKey] < b[sortKey]) return -1 * dir;
-          if (a[sortKey] > b[sortKey]) return 1 * dir;
-          return 0;
-        });
-      }
-      return limitOpt ? allDocs.slice(0, limitOpt) : allDocs;
-    }
+      // Only push filter down to PostgreSQL if the column actually exists in the table schema
+      if (!validCols.has(key)) continue;
 
-    const unpushedFilters: any = {};
-    let hasInClause = false;
-    let hasDisparityClause = false;
-
-    for (let i = 0; i < queryKeys.length; i++) {
-      const key = queryKeys[i];
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-      if (key === '$or' || key === '$and' || key === '_id') {
-        unpushedFilters[key] = query[key];
-        continue;
-      }
-      
       const val = query[key];
       if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
-        if (val.$in && Array.isArray(val.$in)) {
-          if (val.$in.length <= 30 && !hasInClause) {
-            firestoreQuery = firestoreQuery.where(key, 'in', val.$in);
-            hasInClause = true;
-            continue;
-          }
+        if (val.$in && Array.isArray(val.$in) && val.$in.length > 0 && val.$in.length <= 50) {
+          q = q.in(key, val.$in);
+        } else if (val.$ne !== undefined && typeof val.$ne !== 'object') {
+          q = q.neq(key, val.$ne);
         }
-        if (val.$ne !== undefined) {
-          if (!hasDisparityClause) {
-            firestoreQuery = firestoreQuery.where(key, '!=', val.$ne);
-            hasDisparityClause = true;
-            continue;
-          } else {
-            unpushedFilters[key] = val;
-            continue;
-          }
-        }
-        // Opportunistically push range queries to Firestore
-        const opKeys = Object.keys(val);
-        const hasOnlyRangeOps = opKeys.length > 0 && opKeys.every(k => ['$gt', '$gte', '$lt', '$lte'].includes(k));
-        if (hasOnlyRangeOps) {
-          if (val.$gte !== undefined) firestoreQuery = firestoreQuery.where(key, '>=', val.$gte);
-          if (val.$gt !== undefined) firestoreQuery = firestoreQuery.where(key, '>', val.$gt);
-          if (val.$lte !== undefined) firestoreQuery = firestoreQuery.where(key, '<=', val.$lte);
-          if (val.$lt !== undefined) firestoreQuery = firestoreQuery.where(key, '<', val.$lt);
-          continue;
-        }
-        unpushedFilters[key] = val;
-      } else {
-        firestoreQuery = firestoreQuery.where(key, '==', val);
+      } else if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+        q = q.eq(key, val);
       }
     }
 
-    if (Object.keys(unpushedFilters).length === 0) {
-      if (sortOpt) {
-        for (const sortKey of Object.keys(sortOpt)) {
-          const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? 'desc' : 'asc';
-          firestoreQuery = firestoreQuery.orderBy(sortKey, dir);
-        }
-      }
-      if (startAfterOpt) {
-        try {
-          const startDoc = await this.collection.doc(startAfterOpt).get();
-          if (startDoc.exists) {
-            firestoreQuery = firestoreQuery.startAfter(startDoc);
-          }
-        } catch (err) {
-          console.warn('startAfter cursor document fetch warning:', err);
-        }
-      }
-      if (limitOpt) {
-        firestoreQuery = firestoreQuery.limit(limitOpt);
-      }
+    const { data, error } = await q;
+    if (error) {
+      console.error(`Supabase query error on ${this.collectionName}:`, error.message);
+      throw error;
     }
 
-    let snapshot;
-    try {
-        snapshot = await firestoreQuery.get();
-    } catch(e: any) {
-        const isIndexErr = e.message && (e.message.includes('index') || e.message.includes('FAILED_PRECONDITION') || e.code === 9);
-        const isArgErr = e.message && (e.message.includes('INVALID_ARGUMENT') || e.code === 3 || e.message.includes('NOT_EQUAL'));
+    const items = (data || []).map((row: any) => {
+      const item = { ...(row.data || {}), ...row, _id: row._id };
+      delete item.data;
+      convertTimestampsInPlace(item);
+      return item;
+    });
 
-        if (isIndexErr || isArgErr) {
-             if (isIndexErr) {
-               console.warn(`Firestore Index required. Falling back to in-memory sort/limit for collection ${this.collectionName}`);
-               console.warn(`To permanently fix this and speed up the query, create the index using this link:\n${e.message}`);
-             } else {
-               console.warn(`Firestore query constraint fallback for collection ${this.collectionName}: ${e.message}`);
-             }
-             let fallbackQuery: any = this.collection;
-             for (const key of queryKeys) {
-                if (key !== '$or' && key !== '$and' && key !== '_id' && !(query[key] !== null && typeof query[key] === 'object' && !(query[key] instanceof Date))) {
-                   fallbackQuery = fallbackQuery.where(key, '==', query[key]);
-                } else if (query[key]?.$in && Array.isArray(query[key].$in) && query[key].$in.length <= 30) {
-                   fallbackQuery = fallbackQuery.where(key, 'in', query[key].$in);
-                }
-             }
-             snapshot = await fallbackQuery.get();
-             for (const key of queryKeys) {
-               unpushedFilters[key] = query[key];
-             }
-        } else {
-             throw e;
-        }
-    }
-    
-    const hasUnpushed = Object.keys(unpushedFilters).length > 0;
-    const targetLimit = isFindOne ? 1 : limitOpt;
-    const canEarlyExit = Boolean(targetLimit && (!sortOpt || !hasUnpushed));
     const results: any[] = [];
+    const targetLimit = isFindOne ? 1 : limitOpt;
 
-    for (let i = 0; i < snapshot.docs.length; i++) {
-      const docSnap = snapshot.docs[i];
-      const data = docSnap.data();
-      convertTimestampsInPlace(data);
-      const item = { _id: docSnap.id, ...data };
-
-      if (hasUnpushed) {
-        if (!matchesAllFilters(item, unpushedFilters)) {
-          continue;
-        }
-      }
-
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (!matchesAllFilters(item, query)) continue;
       results.push(item);
-      if (canEarlyExit && results.length >= targetLimit!) {
-        break;
-      }
+      if (targetLimit && !sortOpt && results.length >= targetLimit) break;
     }
 
-    // Apply in-memory sort and limit if we had in-memory filters or couldn't sort natively
-    if (hasUnpushed || (snapshot.docs.length > 0 && results.length < snapshot.docs.length)) {
-       if (sortOpt) {
-          const sortKey = Object.keys(sortOpt)[0];
-          const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;
-          results.sort((a: any, b: any) => {
-             if (a[sortKey] < b[sortKey]) return -1 * dir;
-             if (a[sortKey] > b[sortKey]) return 1 * dir;
-             return 0;
-          });
-       }
-       if (limitOpt && results.length > limitOpt) {
-          return results.slice(0, limitOpt);
-       }
+    if (sortOpt) {
+      const sortKey = Object.keys(sortOpt)[0];
+      const dir = sortOpt[sortKey] === -1 || sortOpt[sortKey] === 'desc' ? -1 : 1;
+      results.sort((a: any, b: any) => {
+        if (a[sortKey] < b[sortKey]) return -1 * dir;
+        if (a[sortKey] > b[sortKey]) return 1 * dir;
+        return 0;
+      });
+    }
+
+    if (limitOpt && results.length > limitOpt) {
+      return results.slice(0, limitOpt);
     }
 
     return results;
@@ -985,8 +831,21 @@ export class BaseModel {
     invalidatePopulateCache(this.collectionName);
     const cleanData = sanitizeObject(data);
     delete cleanData._id;
-    const docRef = await this.collection.add({ ...cleanData, createdAt: new Date(), updatedAt: new Date() });
-    const newDoc = { ...cleanData, _id: docRef.id };
+    const newId = data._id || crypto.randomUUID();
+    const now = new Date().toISOString();
+    const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+    const row: any = {
+      _id: newId,
+      data: cleanData,
+      createdAt: now,
+      updatedAt: now,
+    };
+    for (const k of Object.keys(cleanData)) {
+      if (validCols.has(k)) row[k] = cleanData[k];
+    }
+    const { error } = await getSupabase().from(this.collectionName).insert(row);
+    if (error) throw error;
+    const newDoc = { ...cleanData, _id: newId };
     return this._attachMethods(newDoc);
   }
 
@@ -996,7 +855,16 @@ export class BaseModel {
       invalidatePopulateCache(this.collectionName);
       const cleanData = sanitizeObject(data.$set || data);
       delete cleanData._id;
-      await this.collection.doc(doc._id).update({ ...cleanData, updatedAt: new Date() });
+      const now = new Date().toISOString();
+      const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+      const row: any = {
+        data: { ...doc, ...cleanData },
+        updatedAt: now,
+      };
+      for (const k of Object.keys(cleanData)) {
+        if (validCols.has(k)) row[k] = cleanData[k];
+      }
+      await getSupabase().from(this.collectionName).update(row).eq('_id', doc._id);
     }
   }
 
@@ -1004,40 +872,42 @@ export class BaseModel {
     const doc = await this._fetchAndFilter(query, 1, null, null, true).then(res => res.length > 0 ? res[0] : null);
     if (doc) {
       invalidatePopulateCache(this.collectionName);
-      await this.collection.doc(doc._id).delete();
+      await getSupabase().from(this.collectionName).delete().eq('_id', doc._id);
     }
   }
 
   async deleteMany(query: any): Promise<void> {
     invalidatePopulateCache(this.collectionName);
     const docs = await this._fetchAndFilter(query, null, null);
-    const BATCH_LIMIT = 500;
-    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
-      const batch = getDb().batch();
-      const chunk = docs.slice(i, i + BATCH_LIMIT);
-      for (let j = 0; j < chunk.length; j++) {
-        batch.delete(this.collection.doc(chunk[j]._id));
-      }
-      await batch.commit();
+    const ids = docs.map(d => d._id);
+    if (ids.length > 0) {
+      await getSupabase().from(this.collectionName).delete().in('_id', ids);
     }
   }
 
   async insertMany(docs: any[]): Promise<any[]> {
     invalidatePopulateCache(this.collectionName);
+    const now = new Date().toISOString();
+    const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
     const inserted: any[] = [];
-    const BATCH_LIMIT = 500;
-    const now = new Date();
-    for (let i = 0; i < docs.length; i += BATCH_LIMIT) {
-      const batch = getDb().batch();
-      const chunk = docs.slice(i, i + BATCH_LIMIT);
-      for (let j = 0; j < chunk.length; j++) {
-        const cleanDoc = sanitizeObject(chunk[j]);
-        delete cleanDoc._id;
-        const docRef = this.collection.doc();
-        batch.set(docRef, { ...cleanDoc, createdAt: now, updatedAt: now });
-        inserted.push(this._attachMethods({ ...cleanDoc, _id: docRef.id }));
+    const rows = docs.map(chunkDoc => {
+      const cleanDoc = sanitizeObject(chunkDoc);
+      const newId = cleanDoc._id || crypto.randomUUID();
+      delete cleanDoc._id;
+      const row: any = {
+        _id: newId,
+        data: cleanDoc,
+        createdAt: now,
+        updatedAt: now,
+      };
+      for (const k of Object.keys(cleanDoc)) {
+        if (validCols.has(k)) row[k] = cleanDoc[k];
       }
-      await batch.commit();
+      inserted.push(this._attachMethods({ ...cleanDoc, _id: newId }));
+      return row;
+    });
+    if (rows.length > 0) {
+      await getSupabase().from(this.collectionName).insert(rows);
     }
     return inserted;
   }
@@ -1053,43 +923,43 @@ export class BaseModel {
     delete updateData.prototype;
     delete updateData._id;
 
-    // Handle $inc for Firestore natively using FieldValue.increment
+    invalidatePopulateCache(this.collectionName);
+    const existing = await this.findById(cleanId);
+    if (!existing) return null;
+    const merged = { ...existing, ...updateData };
+
     if (update.$inc && typeof update.$inc === 'object') {
-      const keys = Object.keys(update.$inc);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
+      for (const key of Object.keys(update.$inc)) {
         if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-        updateData[key] = FieldValue.increment(update.$inc[key]);
+        merged[key] = (Number(merged[key]) || 0) + Number(update.$inc[key]);
       }
-      delete updateData.$inc;
-    }
-    
-    // Handle $push for Firestore natively using FieldValue.arrayUnion
-    if (update.$push && typeof update.$push === 'object') {
-      const keys = Object.keys(update.$push);
-      for (let i = 0; i < keys.length; i++) {
-        const key = keys[i];
-        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
-        const pushVal = update.$push[key];
-        if (pushVal && pushVal.$each && Array.isArray(pushVal.$each)) {
-          updateData[key] = FieldValue.arrayUnion(...pushVal.$each);
-        } else {
-          updateData[key] = FieldValue.arrayUnion(pushVal);
-        }
-      }
-      delete updateData.$push;
     }
 
-    try {
-      invalidatePopulateCache(this.collectionName);
-      await this.collection.doc(cleanId).update({ ...updateData, updatedAt: new Date() });
-      return this.findById(cleanId);
-    } catch (e: any) {
-      if (e.code === 5 || (e.message && (e.message.includes('NOT_FOUND') || e.message.includes('No document to update')))) {
-        return null;
+    if (update.$push && typeof update.$push === 'object') {
+      for (const key of Object.keys(update.$push)) {
+        if (key === '__proto__' || key === 'constructor' || key === 'prototype') continue;
+        const pushVal = update.$push[key];
+        const arr = Array.isArray(merged[key]) ? [...merged[key]] : [];
+        if (pushVal && pushVal.$each && Array.isArray(pushVal.$each)) {
+          arr.push(...pushVal.$each);
+        } else {
+          arr.push(pushVal);
+        }
+        merged[key] = arr;
       }
-      throw e;
     }
+
+    const now = new Date().toISOString();
+    const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+    const row: any = {
+      data: merged,
+      updatedAt: now,
+    };
+    for (const k of Object.keys(merged)) {
+      if (validCols.has(k)) row[k] = merged[k];
+    }
+    await getSupabase().from(this.collectionName).update(row).eq('_id', cleanId);
+    return this.findById(cleanId);
   }
 
   countDocuments(query: any = {}): any {
