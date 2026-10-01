@@ -184,7 +184,7 @@ export const getTeachers = async (_req: Request, res: Response) => {
       };
     });
 
-    serverCache.set('teachers_all', result, 15_000);
+    serverCache.set('teachers_all', result, 60_000);
     res.json(result);
   } catch (error: any) {
     console.error('Get teachers error:', error.message);

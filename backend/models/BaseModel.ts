@@ -684,8 +684,14 @@ export class BaseModel {
       const canUseNativeCount = keys.every(k => {
         if (!validCols.has(k)) return false;
         const val = query[k];
-        return typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' ||
-          (val && typeof val === 'object' && val.$in && Array.isArray(val.$in) && val.$in.length <= 50);
+        if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') return true;
+        if (val instanceof Date) return true;
+        if (val && typeof val === 'object') {
+          if (val.$in && Array.isArray(val.$in) && val.$in.length <= 50) return true;
+          if (val.$ne !== undefined && typeof val.$ne !== 'object') return true;
+          if (val.$gte !== undefined || val.$lte !== undefined || val.$gt !== undefined || val.$lt !== undefined) return true;
+        }
+        return false;
       });
 
       if (canUseNativeCount) {
@@ -694,8 +700,27 @@ export class BaseModel {
           const val = query[k];
           if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
             q = q.eq(k, val);
-          } else if (val?.$in && Array.isArray(val.$in)) {
-            q = q.in(k, val.$in);
+          } else if (val instanceof Date) {
+            q = q.eq(k, val.toISOString());
+          } else if (val && typeof val === 'object') {
+            if (val.$in && Array.isArray(val.$in)) {
+              q = q.in(k, val.$in);
+            }
+            if (val.$ne !== undefined) {
+              q = q.neq(k, val.$ne);
+            }
+            if (val.$gte !== undefined) {
+              q = q.gte(k, val.$gte instanceof Date ? val.$gte.toISOString() : val.$gte);
+            }
+            if (val.$gt !== undefined) {
+              q = q.gt(k, val.$gt instanceof Date ? val.$gt.toISOString() : val.$gt);
+            }
+            if (val.$lte !== undefined) {
+              q = q.lte(k, val.$lte instanceof Date ? val.$lte.toISOString() : val.$lte);
+            }
+            if (val.$lt !== undefined) {
+              q = q.lt(k, val.$lt instanceof Date ? val.$lt.toISOString() : val.$lt);
+            }
           }
         }
         const { count, error } = await q;
@@ -825,23 +850,61 @@ export class BaseModel {
     
     const validCols = new Set(tableColumns[this.collectionName] || ['_id']);
     const queryKeys = Object.keys(query);
+    let allKeysPushed = true;
+
     for (let i = 0; i < queryKeys.length; i++) {
       const key = queryKeys[i];
-      if (key === '__proto__' || key === 'constructor' || key === 'prototype' || key === '$or' || key === '$and') continue;
+      if (key === '__proto__' || key === 'constructor' || key === 'prototype' || key === '$or' || key === '$and') {
+        allKeysPushed = false;
+        continue;
+      }
 
       // Only push filter down to PostgreSQL if the column actually exists in the table schema
-      if (!validCols.has(key)) continue;
+      if (!validCols.has(key)) {
+        allKeysPushed = false;
+        continue;
+      }
 
       const val = query[key];
-      if (val !== null && typeof val === 'object' && !(val instanceof Date)) {
+      if (val instanceof Date) {
+        q = q.eq(key, val.toISOString());
+      } else if (val !== null && typeof val === 'object') {
         if (val.$in && Array.isArray(val.$in) && val.$in.length > 0 && val.$in.length <= 50) {
           q = q.in(key, val.$in);
         } else if (val.$ne !== undefined && typeof val.$ne !== 'object') {
           q = q.neq(key, val.$ne);
         }
+        if (val.$gte !== undefined) {
+          const v = val.$gte instanceof Date ? val.$gte.toISOString() : val.$gte;
+          q = q.gte(key, v);
+        }
+        if (val.$gt !== undefined) {
+          const v = val.$gt instanceof Date ? val.$gt.toISOString() : val.$gt;
+          q = q.gt(key, v);
+        }
+        if (val.$lte !== undefined) {
+          const v = val.$lte instanceof Date ? val.$lte.toISOString() : val.$lte;
+          q = q.lte(key, v);
+        }
+        if (val.$lt !== undefined) {
+          const v = val.$lt instanceof Date ? val.$lt.toISOString() : val.$lt;
+          q = q.lt(key, v);
+        }
       } else if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
         q = q.eq(key, val);
       }
+    }
+
+    if (sortOpt) {
+      const sortKey = Object.keys(sortOpt)[0];
+      if (validCols.has(sortKey)) {
+        const ascending = sortOpt[sortKey] === 1 || sortOpt[sortKey] === 'asc';
+        q = q.order(sortKey, { ascending });
+      }
+    }
+
+    if (isFindOne && allKeysPushed) {
+      q = q.limit(1);
     }
 
     const { data, error } = await q;

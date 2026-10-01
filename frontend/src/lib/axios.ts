@@ -24,6 +24,10 @@ const getBaseUrl = () => {
 
 export const api = axios.create({
   baseURL: getBaseUrl(),
+  timeout: 15000,
+  headers: {
+    'Accept': 'application/json',
+  },
 });
 
 // Inject token on every request

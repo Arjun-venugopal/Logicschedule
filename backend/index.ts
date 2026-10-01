@@ -48,6 +48,7 @@ const io = new Server(httpServer, {
 });
 
 import rateLimit from 'express-rate-limit';
+import compression from 'compression';
 
 // Global rate limiter
 const limiter = rateLimit({
@@ -58,6 +59,12 @@ const limiter = rateLimit({
 
 app.set('trust proxy', 1);
 
+// Gzip/Brotli response compression for ultra-fast API delivery
+app.use(compression({
+  threshold: 1024,
+  level: 6,
+}));
+
 app.use(helmet());
 app.use(limiter);
 app.use(cors({
@@ -67,6 +74,14 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-CSRF-Token', 'Accept-Version', 'Content-Length', 'Content-MD5', 'Date', 'X-Api-Version']
 }));
 app.use(express.json());
+
+// Enable HTTP conditional request caching headers on GET endpoints
+app.use((req, res, next) => {
+  if (req.method === 'GET') {
+    res.setHeader('Cache-Control', 'private, no-cache, no-transform');
+  }
+  next();
+});
 
 import authRoutes from './routes/authRoutes';
 import teacherRoutes from './routes/teacherRoutes';
