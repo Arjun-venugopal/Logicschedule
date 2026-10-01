@@ -59,20 +59,26 @@ interface TeacherTimingData {
   todayScheduleItems?: any[];
 }
 
+function getLocalTodayDateStr(): string {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
 export function TeacherTimingTable() {
   const queryClient = useQueryClient();
   const { canWrite } = usePermissions();
   const hasWriteAccess = canWrite("teachers");
 
-  const [selectedDate, setSelectedDate] = useState<string>(
-    new Date().toISOString().split("T")[0]
-  );
+  const [selectedDate, setSelectedDate] = useState<string>(getLocalTodayDateStr);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeFilter, setActiveFilter] = useState<"ALL" | "Free" | "In Class" | "Class Starting Soon" | "On Leave">("ALL");
 
   // Leave Modal State
   const [leaveModalTeacher, setLeaveModalTeacher] = useState<TeacherTimingData | null>(null);
-  const [leaveDate, setLeaveDate] = useState<string>(selectedDate);
+  const [leaveDate, setLeaveDate] = useState<string>(selectedDate || getLocalTodayDateStr());
   const [leaveReason, setLeaveReason] = useState<string>("");
 
   // Fetch teacher timings
@@ -167,7 +173,11 @@ export function TeacherTimingTable() {
 
   const formatTime = (time24?: string) => {
     if (!time24) return "—";
-    const [h, m] = time24.split(":").map(Number);
+    if (time24.includes("AM") || time24.includes("PM")) return time24;
+    const parts = time24.split(":");
+    const h = parseInt(parts[0], 10);
+    const m = parseInt(parts[1], 10);
+    if (isNaN(h) || isNaN(m)) return time24;
     const period = h >= 12 ? "PM" : "AM";
     const displayH = h % 12 || 12;
     return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;

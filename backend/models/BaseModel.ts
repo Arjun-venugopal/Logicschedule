@@ -225,24 +225,56 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
     // Range operators: $gte, $gt, $lte, $lt
     if (filterVal.$gte !== undefined || filterVal.$lte !== undefined || filterVal.$gt !== undefined || filterVal.$lt !== undefined) {
       let val = itemVal;
-      const isDateObj = val && (typeof val.toDate === 'function' || val instanceof Date);
-      if (isDateObj) {
-        if (typeof val.toDate === 'function') val = val.toDate().getTime();
-        else if (val instanceof Date) val = val.getTime();
-      }
 
-      const checkOp = (fVal: any, isDate: boolean) => {
-        if (isDate) {
-          if (fVal instanceof Date) return fVal.getTime();
-          if (typeof fVal === 'string') return new Date(fVal).getTime();
+      const parseDateToEpoch = (v: any): number | null => {
+        if (v === null || v === undefined) return null;
+        if (typeof v.toDate === 'function') return v.toDate().getTime();
+        if (v instanceof Date) return isNaN(v.getTime()) ? null : v.getTime();
+        if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+          const parsed = new Date(v).getTime();
+          return isNaN(parsed) ? null : parsed;
         }
-        return fVal;
+        return null;
       };
 
-      if (filterVal.$gte !== undefined && val < checkOp(filterVal.$gte, isDateObj)) return false;
-      if (filterVal.$gt !== undefined && val <= checkOp(filterVal.$gt, isDateObj)) return false;
-      if (filterVal.$lte !== undefined && val > checkOp(filterVal.$lte, isDateObj)) return false;
-      if (filterVal.$lt !== undefined && val >= checkOp(filterVal.$lt, isDateObj)) return false;
+      const valEpoch = parseDateToEpoch(val);
+      const isDateRange = (filterVal.$gte instanceof Date) || 
+                          (filterVal.$lte instanceof Date) || 
+                          (filterVal.$gt instanceof Date) || 
+                          (filterVal.$lt instanceof Date) || 
+                          (valEpoch !== null && (
+                            (typeof filterVal.$gte === 'string' && /^\d{4}-\d{2}-\d{2}/.test(filterVal.$gte)) ||
+                            (typeof filterVal.$lte === 'string' && /^\d{4}-\d{2}-\d{2}/.test(filterVal.$lte)) ||
+                            (typeof filterVal.$gt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(filterVal.$gt)) ||
+                            (typeof filterVal.$lt === 'string' && /^\d{4}-\d{2}-\d{2}/.test(filterVal.$lt))
+                          ));
+
+      if (isDateRange) {
+        if (valEpoch === null) return false;
+        val = valEpoch;
+
+        const toEpoch = (fVal: any): number => {
+          const p = parseDateToEpoch(fVal);
+          return p !== null ? p : (typeof fVal === 'number' ? fVal : new Date(fVal).getTime());
+        };
+
+        if (filterVal.$gte !== undefined && val < toEpoch(filterVal.$gte)) return false;
+        if (filterVal.$gt !== undefined && val <= toEpoch(filterVal.$gt)) return false;
+        if (filterVal.$lte !== undefined && val > toEpoch(filterVal.$lte)) return false;
+        if (filterVal.$lt !== undefined && val >= toEpoch(filterVal.$lt)) return false;
+      } else {
+        if (typeof val === 'number') {
+          if (filterVal.$gte !== undefined && val < Number(filterVal.$gte)) return false;
+          if (filterVal.$gt !== undefined && val <= Number(filterVal.$gt)) return false;
+          if (filterVal.$lte !== undefined && val > Number(filterVal.$lte)) return false;
+          if (filterVal.$lt !== undefined && val >= Number(filterVal.$lt)) return false;
+        } else {
+          if (filterVal.$gte !== undefined && val < filterVal.$gte) return false;
+          if (filterVal.$gt !== undefined && val <= filterVal.$gt) return false;
+          if (filterVal.$lte !== undefined && val > filterVal.$lte) return false;
+          if (filterVal.$lt !== undefined && val >= filterVal.$lt) return false;
+        }
+      }
     }
 
     return true;
@@ -254,6 +286,14 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
     const fTime = filterVal.getTime();
     const iTime = typeof itemVal.toDate === 'function' ? itemVal.toDate().getTime() : (itemVal instanceof Date ? itemVal.getTime() : new Date(itemVal).getTime());
     return (!isNaN(fTime) && !isNaN(iTime) && fTime === iTime);
+  }
+
+  if (typeof filterVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(filterVal)) {
+    const fDate = filterVal.split('T')[0];
+    const iDate = typeof itemVal === 'string'
+      ? itemVal.split('T')[0]
+      : (itemVal instanceof Date ? itemVal.toISOString().split('T')[0] : null);
+    if (fDate && iDate && fDate === iDate) return true;
   }
 
   if (itemVal === filterVal || itemVal?.toString() === filterVal?.toString()) {

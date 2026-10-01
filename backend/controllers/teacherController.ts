@@ -7,8 +7,37 @@ import DemoSession from '../models/DemoSession';
 import Student from '../models/Student';
 import { serverCache } from '../utils/cache';
 
+export function getKolkataNow(): { todayStr: string; currentTotalMinutes: number; now: Date } {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  let year = '', month = '', day = '', hour = '0', minute = '0';
+  for (const part of parts) {
+    if (part.type === 'year') year = part.value;
+    else if (part.type === 'month') month = part.value;
+    else if (part.type === 'day') day = part.value;
+    else if (part.type === 'hour') hour = part.value;
+    else if (part.type === 'minute') minute = part.value;
+  }
+  const h = Number(hour) % 24;
+  const m = Number(minute);
+  return {
+    todayStr: `${year}-${month}-${day}`,
+    currentTotalMinutes: h * 60 + m,
+    now
+  };
+}
+
 export function formatDateToYYYYMMDD(dateVal: Date | string): string {
-  if (!dateVal) return new Date().toISOString().split('T')[0];
+  if (!dateVal) return getKolkataNow().todayStr;
   if (typeof dateVal === 'string') {
     return dateVal.split('T')[0];
   }
@@ -21,8 +50,13 @@ export function formatDateToYYYYMMDD(dateVal: Date | string): string {
       const d = String(dateVal.getUTCDate()).padStart(2, '0');
       return `${y}-${m}-${d}`;
     }
-    // Otherwise fallback to ISO split
-    return dateVal.toISOString().split('T')[0];
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(dateVal);
   }
   return String(dateVal).split('T')[0];
 }
@@ -55,24 +89,21 @@ export const getTeachers = async (_req: Request, res: Response) => {
 
     const teachers = await Teacher.find({}).populate('user', 'name email role mustChangePassword').lean();
     
-    // Calculate current dynamic availability
-    const now = new Date();
-    const todayStart = new Date(now); todayStart.setHours(0,0,0,0);
-    const todayEnd = new Date(now); todayEnd.setHours(23,59,59,999);
-    const todayStr = formatDateToYYYYMMDD(new Date());
-    
-    // Use actual current hour and minute for comparison
-    const currentDate = new Date();
-    const currentTotalMinutes = currentDate.getHours() * 60 + currentDate.getMinutes();
+    // Calculate current dynamic availability in business timezone (Asia/Kolkata)
+    const kolkata = getKolkataNow();
+    const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
+    const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
+    const todayStr = kolkata.todayStr;
+    const currentTotalMinutes = kolkata.currentTotalMinutes;
 
     const todaySchedules = await Schedule.find({
       date: { $gte: todayStart, $lte: todayEnd },
-      status: { $in: ['Scheduled', 'Completed'] }
+      status: { $ne: 'Cancelled' }
     });
 
     const todayDemos = await DemoSession.find({
       date: { $gte: todayStart, $lte: todayEnd },
-      status: { $in: ['Scheduled', 'Completed'] }
+      status: { $ne: 'Cancelled' }
     });
 
     // Hash Maps for O(1) per-teacher schedules and demos lookups
@@ -565,35 +596,36 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    const kolkata = getKolkataNow();
     let dayStart: Date;
     let dayEnd: Date;
+    let targetDateStr: string;
 
     if (req.query.startDate && req.query.endDate) {
-      dayStart = new Date(req.query.startDate as string);
-      dayStart.setHours(0, 0, 0, 0);
-      dayEnd = new Date(req.query.endDate as string);
-      dayEnd.setHours(23, 59, 59, 999);
+      const sStr = (req.query.startDate as string).split('T')[0];
+      const eStr = (req.query.endDate as string).split('T')[0];
+      targetDateStr = sStr;
+      dayStart = new Date(`${sStr}T00:00:00.000Z`);
+      dayEnd = new Date(`${eStr}T23:59:59.999Z`);
     } else {
-      const targetDateStr = (req.query.date as string) || new Date().toISOString();
-      const targetDate = new Date(targetDateStr);
-      dayStart = new Date(targetDate); dayStart.setHours(0, 0, 0, 0);
-      dayEnd = new Date(targetDate); dayEnd.setHours(23, 59, 59, 999);
+      targetDateStr = ((req.query.date as string) || kolkata.todayStr).split('T')[0];
+      dayStart = new Date(`${targetDateStr}T00:00:00.000Z`);
+      dayEnd = new Date(`${targetDateStr}T23:59:59.999Z`);
     }
 
-    const now = new Date();
-    const isToday = now >= dayStart && now <= dayEnd;
-    const currentTotalMinutes = isToday ? now.getHours() * 60 + now.getMinutes() : -1;
+    const isToday = targetDateStr === kolkata.todayStr;
+    const currentTotalMinutes = isToday ? kolkata.currentTotalMinutes : -1;
 
     const teachers = await Teacher.find({}).populate('user', 'name email role').lean();
 
     const schedules = await Schedule.find({
       date: { $gte: dayStart, $lte: dayEnd },
-      status: { $in: ['Scheduled', 'Completed'] }
+      status: { $ne: 'Cancelled' }
     }).populate('batch', 'name subject').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean();
 
     const demos = await DemoSession.find({
       date: { $gte: dayStart, $lte: dayEnd },
-      status: { $in: ['Scheduled', 'Completed'] }
+      status: { $ne: 'Cancelled' }
     }).populate('teacher', 'name email').lean();
 
     let freeCount = 0;
@@ -676,7 +708,14 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       let minutesToNextClass: number | null = null;
       let currentClassProgress = 0;
 
-      const finishedItems = items.filter(i => isToday ? (i.endMin < currentTotalMinutes || i.status === 'Completed') : i.status === 'Completed');
+      const isPastDate = targetDateStr < kolkata.todayStr;
+      const isFutureDate = targetDateStr > kolkata.todayStr;
+
+      const finishedItems = items.filter(i => 
+        isToday 
+          ? (i.endMin < currentTotalMinutes || i.status === 'Completed') 
+          : (isPastDate ? true : i.status === 'Completed')
+      );
       if (finishedItems.length > 0) {
         const lastFinished = finishedItems[finishedItems.length - 1];
         lastCompletedClass = {
@@ -705,7 +744,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
           nextClass = upcoming;
           minutesToNextClass = upcoming.startMin - currentTotalMinutes;
         }
-      } else if (dayStart > now) {
+      } else if (isFutureDate) {
         // Future date: first scheduled class that is not completed or cancelled
         const upcoming = items.find(i => i.status !== 'Completed' && i.status !== 'Cancelled');
         if (upcoming) {
@@ -715,11 +754,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       }
 
       // Determine live status
-      const dateStr = (req.query.date as string)
-        ? (req.query.date as string).split('T')[0]
-        : dayStart.toISOString().split('T')[0];
-
-      const { status: activeDateStatus, reason: activeStatusReason } = getTeacherStatusForDate(teacher, dateStr);
+      const { status: activeDateStatus, reason: activeStatusReason } = getTeacherStatusForDate(teacher, targetDateStr);
 
       let liveStatus: 'On Leave' | 'Off Duty' | 'In Class' | 'Class Starting Soon' | 'Free' = 'Free';
 
