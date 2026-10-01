@@ -25,12 +25,16 @@ import {
   LayoutGrid,
   List,
   FileText,
-  UserCheck
+  UserCheck,
+  Filter,
+  RotateCcw,
+  SlidersHorizontal
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
-import DemoReportModal from "@/components/demo/DemoReportModal";
+import dynamic from "next/dynamic";
+const DemoReportModal = dynamic(() => import("@/components/demo/DemoReportModal"), { ssr: false });
 
 interface Teacher {
   _id: string;
@@ -661,6 +665,53 @@ export default function DemoSessionsPage() {
     });
   });
 
+  // Active Filter Helpers
+  const activeFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterDate !== "All") count++;
+    if (filterDay !== "All") count++;
+    if (filterStartDate) count++;
+    if (filterEndDate) count++;
+    if (filterTeacher) count++;
+    if (filterSalesPerson) count++;
+    if (filterStatus) count++;
+    if (filterAdmissionStatus) count++;
+    return count;
+  }, [filterDate, filterDay, filterStartDate, filterEndDate, filterTeacher, filterSalesPerson, filterStatus, filterAdmissionStatus]);
+
+  const hasActiveFilters = activeFilterCount > 0;
+
+  const handleClearAllFilters = () => {
+    setFilterTeacher("");
+    setFilterStatus("");
+    setFilterAdmissionStatus("");
+    setFilterSalesPerson("");
+    setFilterDate("All");
+    setFilterDay("All");
+    setFilterStartDate("");
+    setFilterEndDate("");
+  };
+
+  const activeSlotFilterCount = useMemo(() => {
+    let count = 0;
+    if (filterDate !== "All") count++;
+    if (filterDay !== "All") count++;
+    if (filterStartDate) count++;
+    if (filterEndDate) count++;
+    if (filterTeacher) count++;
+    return count;
+  }, [filterDate, filterDay, filterStartDate, filterEndDate, filterTeacher]);
+
+  const hasActiveSlotFilters = activeSlotFilterCount > 0;
+
+  const handleClearSlotFilters = () => {
+    setFilterTeacher("");
+    setFilterDate("All");
+    setFilterDay("All");
+    setFilterStartDate("");
+    setFilterEndDate("");
+  };
+
   const canViewFee = (sessionSalesExec?: string) => {
     if (!isSalesPerson) return true;
     if (!user?.name) return false;
@@ -670,13 +721,13 @@ export default function DemoSessionsPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
-            <Video className="w-6 h-6 text-amber-400" />
+          <h1 className="text-xl sm:text-2xl font-bold text-white flex items-center gap-2">
+            <Video className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
             Demo Sessions
           </h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             {isTeacher
               ? "View and update feedback for your upcoming prospect demo classes"
               : "Schedule and manage prospective student demo classes based on teacher availability"}
@@ -684,11 +735,11 @@ export default function DemoSessionsPage() {
         </div>
         
         {hasWriteAccess && (
-          <div className="flex items-center gap-2">
-            <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-xl flex items-center mr-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-xl flex items-center">
               <button
                 onClick={() => setActiveTab("sessions")}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                   activeTab === "sessions" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
                 }`}
               >
@@ -696,7 +747,7 @@ export default function DemoSessionsPage() {
               </button>
               <button
                 onClick={() => setActiveTab("slots")}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-all ${
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
                   activeTab === "slots" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
                 }`}
               >
@@ -707,7 +758,7 @@ export default function DemoSessionsPage() {
             {!isTeacher && activeTab === "sessions" && canManageSlots && (
               <button
                 onClick={openCreate}
-                className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
               >
                 <Plus className="w-4 h-4" /> Schedule Demo
               </button>
@@ -719,150 +770,220 @@ export default function DemoSessionsPage() {
       {/* Filters */}
       {activeTab === "sessions" && (
         <div className="flex flex-col gap-4">
-          <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
-            <div className="flex-1 min-w-[120px] max-w-[150px]">
-              <select
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="All">All Time</option>
-                <option value="Today">Today</option>
-                <option value="This Week">This Week</option>
-                <option value="This Month">This Month</option>
-                <option value="Last Month">Last Month</option>
-              </select>
-            </div>
-            <div className="flex-1 min-w-[120px] max-w-[150px]">
-              <select
-                value={filterDay}
-                onChange={(e) => setFilterDay(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="All">All Days</option>
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-                <option value="Sunday">Sunday</option>
-              </select>
-            </div>
-            {/* Start Date */}
-            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
-              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">From:</span>
-              <input
-                type="date"
-                value={filterStartDate}
-                onChange={(e) => setFilterStartDate(e.target.value)}
-                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
-                title="Filter by Start Date"
-              />
-            </div>
-            {/* End Date */}
-            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
-              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">To:</span>
-              <input
-                type="date"
-                value={filterEndDate}
-                onChange={(e) => setFilterEndDate(e.target.value)}
-                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
-                title="Filter by End Date"
-              />
-            </div>
-            {!isTeacher && (
-              <div className="flex-1 md:max-w-xs">
-                <select
-                  value={filterTeacher}
-                  onChange={(e) => setFilterTeacher(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 lg:p-5 shadow-sm space-y-3.5">
+            {/* Filter Header with active count & reset */}
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2.5 border-b border-neutral-800/80">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                  <SlidersHorizontal className="w-4 h-4" />
+                </div>
+                <span className="text-xs sm:text-sm font-semibold text-white tracking-wide">Filter Sessions</span>
+                {activeFilterCount > 0 && (
+                  <span className="px-2 py-0.5 text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+                    {activeFilterCount} active
+                  </span>
+                )}
+              </div>
+              
+              {hasActiveFilters && (
+                <button
+                  onClick={handleClearAllFilters}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-400 hover:text-white bg-neutral-800/80 hover:bg-neutral-700/80 border border-neutral-700 rounded-lg transition-colors ml-auto cursor-pointer"
                 >
-                  <option value="">All Teachers</option>
-                  {teachers.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
-                    </option>
-                  ))}
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Filters</span>
+                </button>
+              )}
+            </div>
+
+            {/* Filter Controls Grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+              {/* Date Preset */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Date Range</label>
+                <select
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
+                >
+                  <option value="All">All Time</option>
+                  <option value="Today">Today</option>
+                  <option value="This Week">This Week</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Last Month">Last Month</option>
                 </select>
               </div>
-            )}
-            {!isSalesPerson && (
-              <div className="flex-1 md:max-w-xs">
+
+              {/* Day of Week */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Day of Week</label>
                 <select
-                  value={filterSalesPerson}
-                  onChange={(e) => setFilterSalesPerson(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  value={filterDay}
+                  onChange={(e) => setFilterDay(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
                 >
-                  <option value="">All Sales Execs</option>
-                  {salesExecOptions.map((execName: string) => (
-                    <option key={execName} value={execName}>
-                      {execName}
-                    </option>
-                  ))}
+                  <option value="All">All Days</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
                 </select>
               </div>
-            )}
-            <div className="flex-1 md:max-w-xs">
-              <select
-                value={filterStatus}
-                onChange={(e) => setFilterStatus(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="">All Session Statuses</option>
-                <option value="Scheduled">Scheduled</option>
-                <option value="Completed">Completed</option>
-                <option value="Rescheduled">Rescheduled</option>
-                <option value="Cancelled">Cancelled</option>
-              </select>
+
+              {/* Start Date */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">From Date</label>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
+                  filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                }`}>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 cursor-pointer"
+                    title="Filter by Start Date"
+                  />
+                  {filterStartDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterStartDate("")}
+                      className="p-1 text-neutral-400 hover:text-white shrink-0 ml-1"
+                      title="Clear start date"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* End Date */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">To Date</label>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
+                  filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                }`}>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 cursor-pointer"
+                    title="Filter by End Date"
+                  />
+                  {filterEndDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterEndDate("")}
+                      className="p-1 text-neutral-400 hover:text-white shrink-0 ml-1"
+                      title="Clear end date"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Teacher (if not teacher) */}
+              {!isTeacher && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-neutral-400 block">Teacher</label>
+                  <select
+                    value={filterTeacher}
+                    onChange={(e) => setFilterTeacher(e.target.value)}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                      filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
+                  >
+                    <option value="">All Teachers</option>
+                    {teachers.map((t) => (
+                      <option key={t._id} value={t._id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Sales Exec (if not sales) */}
+              {!isSalesPerson && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-neutral-400 block">Sales Executive</label>
+                  <select
+                    value={filterSalesPerson}
+                    onChange={(e) => setFilterSalesPerson(e.target.value)}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                      filterSalesPerson ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
+                  >
+                    <option value="">All Sales Execs</option>
+                    {salesExecOptions.map((execName: string) => (
+                      <option key={execName} value={execName}>
+                        {execName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Session Status */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Session Status</label>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
+                >
+                  <option value="">All Session Statuses</option>
+                  <option value="Scheduled">Scheduled</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Rescheduled">Rescheduled</option>
+                  <option value="Cancelled">Cancelled</option>
+                </select>
+              </div>
+
+              {/* Admission Status */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Admission Status</label>
+                <select
+                  value={filterAdmissionStatus}
+                  onChange={(e) => setFilterAdmissionStatus(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterAdmissionStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
+                >
+                  <option value="">All Admission Status</option>
+                  <option value="Pending">Pending</option>
+                  <option value="Yes">Yes</option>
+                  <option value="Teacher is not confirmed">Teacher is not confirmed</option>
+                  <option value="No">No</option>
+                </select>
+              </div>
             </div>
-            <div className="flex-1 md:max-w-xs">
-              <select
-                value={filterAdmissionStatus}
-                onChange={(e) => setFilterAdmissionStatus(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="">All Admission Status</option>
-                <option value="Pending">Pending</option>
-                <option value="Yes">Yes</option>
-                <option value="Teacher is not confirmed">Teacher is not confirmed</option>
-                <option value="No">No</option>
-              </select>
-            </div>
-            {(filterTeacher || filterStatus || filterAdmissionStatus || filterSalesPerson || filterDate !== "All" || filterDay !== "All" || filterStartDate || filterEndDate) && (
-              <button
-                onClick={() => {
-                  setFilterTeacher("");
-                  setFilterStatus("");
-                  setFilterAdmissionStatus("");
-                  setFilterSalesPerson("");
-                  setFilterDate("All");
-                  setFilterDay("All");
-                  setFilterStartDate("");
-                  setFilterEndDate("");
-                }}
-                className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
-              >
-                Clear
-              </button>
-            )}
           </div>
           
           {/* Stats Summary & View Toggle */}
-          <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-4 flex items-center justify-between">
+          <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-500/10 rounded-lg">
                 <Calendar className="w-5 h-5 text-amber-400" />
               </div>
               <div>
                 <p className="text-xs text-neutral-400 font-medium">Total Demos Booked</p>
-                <p className="text-xl font-bold text-white">{filteredSessions.length}</p>
+                <p className="text-lg sm:text-xl font-bold text-white">{filteredSessions.length}</p>
               </div>
             </div>
-            <div className="flex items-center gap-4 text-right">
+            <div className="flex items-center justify-between w-full sm:w-auto gap-4 text-left sm:text-right">
               <div>
                 <p className="text-[10px] text-neutral-500 uppercase font-semibold">Current Filter</p>
-                <p className="text-sm font-medium text-amber-400">
+                <p className="text-xs sm:text-sm font-medium text-amber-400">
                   {filterStartDate && filterEndDate
                     ? `${formatDateSafe(filterStartDate, "dd MMM")} - ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
                     : filterStartDate
@@ -876,7 +997,7 @@ export default function DemoSessionsPage() {
               </div>
               
               {!isTeacher && (
-                <div className="flex bg-neutral-900 border border-neutral-800 p-1 rounded-xl">
+                <div className="flex bg-neutral-900 border border-neutral-800 p-1 rounded-xl shrink-0">
                   <button
                     onClick={() => setViewMode("table")}
                     className={`p-1.5 rounded-lg transition-colors ${viewMode === "table" ? "bg-neutral-800 text-white" : "text-neutral-500 hover:text-white"}`}
@@ -925,7 +1046,7 @@ export default function DemoSessionsPage() {
             )}
           </div>
         ) : isTeacher || viewMode === "grid" ? (
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 p-5 bg-neutral-900/30">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-5 bg-neutral-900/30">
             {sortedSessions.map((session) => {
               const statusColors: Record<string, string> = {
                 Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
@@ -1187,9 +1308,12 @@ export default function DemoSessionsPage() {
         <div className="space-y-6">
           {/* Add Slot Form */}
           {canManageSlots && (
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-              <h2 className="text-lg font-bold text-white mb-4">Add Available Time Slot</h2>
-              <div className={`grid grid-cols-1 ${!isTeacher ? 'md:grid-cols-5' : 'md:grid-cols-4'} gap-4 items-end`}>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5">
+              <div className="flex items-center gap-2 mb-4">
+                <Clock className="w-5 h-5 text-amber-400" />
+                <h2 className="text-base sm:text-lg font-bold text-white">Add Available Time Slot</h2>
+              </div>
+              <div className={`grid grid-cols-1 sm:grid-cols-2 ${!isTeacher ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-3 sm:gap-4 items-end`}>
                 {!isTeacher && (
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400">Teacher *</label>
@@ -1198,7 +1322,7 @@ export default function DemoSessionsPage() {
                       value={slotForm.teacher}
                       onChange={(e) => setSlotForm({ ...slotForm, teacher: e.target.value })}
                       disabled={isTeacher}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
+                      className="w-full h-10 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
                     >
                       <option value="">Select Teacher</option>
                       {teachers.map((t) => (
@@ -1214,7 +1338,7 @@ export default function DemoSessionsPage() {
                     type="date"
                     value={slotForm.date}
                     onChange={(e) => setSlotForm({ ...slotForm, date: e.target.value })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                    className="w-full h-10 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none focus:border-amber-500 [&::-webkit-calendar-picker-indicator]:invert transition-all cursor-pointer"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1224,7 +1348,7 @@ export default function DemoSessionsPage() {
                     type="time"
                     value={slotForm.startTime}
                     onChange={(e) => setSlotForm({ ...slotForm, startTime: e.target.value })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                    className="w-full h-10 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none focus:border-amber-500 [&::-webkit-calendar-picker-indicator]:invert transition-all cursor-pointer"
                   />
                 </div>
                 <div className="space-y-1.5">
@@ -1234,90 +1358,164 @@ export default function DemoSessionsPage() {
                     type="time"
                     value={slotForm.endTime}
                     onChange={(e) => setSlotForm({ ...slotForm, endTime: e.target.value })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                    className="w-full h-10 bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none focus:border-amber-500 [&::-webkit-calendar-picker-indicator]:invert transition-all cursor-pointer"
                   />
                 </div>
-                <button
-                  onClick={() => {
-                    if (slotForm.teacher && slotForm.date && slotForm.startTime && slotForm.endTime) {
-                      createSlotMutation.mutate(slotForm);
-                    }
-                  }}
-                  disabled={createSlotMutation.isPending || !slotForm.teacher}
-                  className="w-full px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white font-semibold rounded-xl transition-all text-sm border border-neutral-700 disabled:opacity-50"
-                >
-                  {createSlotMutation.isPending ? "Adding..." : "Add Slot"}
-                </button>
+                <div className="sm:col-span-2 lg:col-span-1">
+                  <button
+                    onClick={() => {
+                      if (slotForm.teacher && slotForm.date && slotForm.startTime && slotForm.endTime) {
+                        createSlotMutation.mutate(slotForm);
+                      }
+                    }}
+                    disabled={createSlotMutation.isPending || !slotForm.teacher}
+                    className="w-full h-10 px-4 brand-gradient hover:opacity-95 text-black font-semibold rounded-xl transition-all text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed shadow-md shadow-amber-500/10 cursor-pointer"
+                  >
+                    {createSlotMutation.isPending ? "Adding..." : "Add Slot"}
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
           {/* Slots Filter */}
-          <div className="flex flex-wrap items-center gap-3 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl mb-4">
-            <div className="flex-1 min-w-[120px] max-w-[150px]">
-              <select
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
-                className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
-              >
-                <option value="All">All Time</option>
-                <option value="Today">Today</option>
-                <option value="This Week">This Week</option>
-                <option value="This Month">This Month</option>
-                <option value="Last Month">Last Month</option>
-              </select>
-            </div>
-            {/* Start Date */}
-            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
-              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">From:</span>
-              <input
-                type="date"
-                value={filterStartDate}
-                onChange={(e) => setFilterStartDate(e.target.value)}
-                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
-                title="Filter by Start Date"
-              />
-            </div>
-            {/* End Date */}
-            <div className="flex items-center gap-1.5 bg-neutral-800 border border-neutral-700 rounded-xl px-2.5 py-1.5 focus-within:border-amber-500 transition-all">
-              <span className="text-xs text-neutral-400 font-medium whitespace-nowrap">To:</span>
-              <input
-                type="date"
-                value={filterEndDate}
-                onChange={(e) => setFilterEndDate(e.target.value)}
-                className="bg-transparent text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert cursor-pointer"
-                title="Filter by End Date"
-              />
-            </div>
-            {!isTeacher && (
-              <div className="flex-1 md:max-w-xs">
-                <select
-                  value={filterTeacher}
-                  onChange={(e) => setFilterTeacher(e.target.value)}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 mb-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-neutral-800/80">
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-400">
+                  <SlidersHorizontal className="w-4 h-4" />
+                </div>
+                <span className="text-xs sm:text-sm font-semibold text-white">Filter Slots</span>
+                {activeSlotFilterCount > 0 && (
+                  <span className="px-2 py-0.5 text-[11px] font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/30 rounded-full">
+                    {activeSlotFilterCount} active
+                  </span>
+                )}
+              </div>
+              {hasActiveSlotFilters && (
+                <button
+                  onClick={handleClearSlotFilters}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-neutral-400 hover:text-white bg-neutral-800/80 hover:bg-neutral-700/80 border border-neutral-700 rounded-lg transition-colors ml-auto cursor-pointer"
                 >
-                  <option value="">All Teachers</option>
-                  {teachers.map((t) => (
-                    <option key={t._id} value={t._id}>
-                      {t.name}
-                    </option>
-                  ))}
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset Filters</span>
+                </button>
+              )}
+            </div>
+
+            <div className={`grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 ${!isTeacher ? 'lg:grid-cols-5' : 'lg:grid-cols-4'} gap-2.5 sm:gap-3`}>
+              {/* Date Range */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Date Range</label>
+                <select
+                  value={filterDate}
+                  onChange={(e) => setFilterDate(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
+                >
+                  <option value="All">All Time</option>
+                  <option value="Today">Today</option>
+                  <option value="This Week">This Week</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Last Month">Last Month</option>
                 </select>
               </div>
-            )}
-            {(filterTeacher || filterDate !== "All" || filterStartDate || filterEndDate) && (
-              <button
-                onClick={() => {
-                  setFilterTeacher("");
-                  setFilterDate("All");
-                  setFilterStartDate("");
-                  setFilterEndDate("");
-                }}
-                className="px-3 py-2 text-xs font-semibold bg-neutral-800 border border-neutral-700 rounded-xl text-neutral-400 hover:text-white transition-colors"
-              >
-                Clear
-              </button>
-            )}
+
+              {/* Day of Week */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">Day of Week</label>
+                <select
+                  value={filterDay}
+                  onChange={(e) => setFilterDay(e.target.value)}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                    filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                  }`}
+                >
+                  <option value="All">All Days</option>
+                  <option value="Monday">Monday</option>
+                  <option value="Tuesday">Tuesday</option>
+                  <option value="Wednesday">Wednesday</option>
+                  <option value="Thursday">Thursday</option>
+                  <option value="Friday">Friday</option>
+                  <option value="Saturday">Saturday</option>
+                  <option value="Sunday">Sunday</option>
+                </select>
+              </div>
+
+              {/* Start Date */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">From Date</label>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
+                  filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                }`}>
+                  <input
+                    type="date"
+                    value={filterStartDate}
+                    onChange={(e) => setFilterStartDate(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 cursor-pointer"
+                    title="Filter by Start Date"
+                  />
+                  {filterStartDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterStartDate("")}
+                      className="p-1 text-neutral-400 hover:text-white shrink-0 ml-1"
+                      title="Clear start date"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* End Date */}
+              <div className="space-y-1">
+                <label className="text-[11px] font-medium text-neutral-400 block">To Date</label>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
+                  filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                }`}>
+                  <input
+                    type="date"
+                    value={filterEndDate}
+                    onChange={(e) => setFilterEndDate(e.target.value)}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white outline-none [&::-webkit-calendar-picker-indicator]:invert [&::-webkit-calendar-picker-indicator]:opacity-70 cursor-pointer"
+                    title="Filter by End Date"
+                  />
+                  {filterEndDate && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterEndDate("")}
+                      className="p-1 text-neutral-400 hover:text-white shrink-0 ml-1"
+                      title="Clear end date"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Teacher */}
+              {!isTeacher && (
+                <div className="space-y-1">
+                  <label className="text-[11px] font-medium text-neutral-400 block">Teacher</label>
+                  <select
+                    value={filterTeacher}
+                    onChange={(e) => setFilterTeacher(e.target.value)}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
+                      filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
+                  >
+                    <option value="">All Teachers</option>
+                    {teachers.map((t) => (
+                      <option key={t._id} value={t._id}>
+                        {t.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Slots List */}
@@ -1404,17 +1602,17 @@ export default function DemoSessionsPage() {
       {/* Create / Edit Modal */}
       <AnimatePresence>
         {modal?.open && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
-              <div className="flex items-center justify-between p-6 border-b border-neutral-800 bg-neutral-900/50">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 bg-neutral-900 sticky top-0 z-10 shrink-0">
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                  <h2 className="text-base sm:text-lg font-bold text-white flex items-center gap-2">
                     {modal.mode === "create" ? (
                       <>
                         <Plus className="w-5 h-5 text-amber-500" />
@@ -1440,7 +1638,7 @@ export default function DemoSessionsPage() {
               </div>
 
               {/* Form Content */}
-              <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+              <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 custom-scrollbar">
                 {isTeacher ? (
                   /* Teacher Edit View (Read only details, editable notes & status) */
                   <div className="space-y-4">
@@ -1563,7 +1761,7 @@ export default function DemoSessionsPage() {
                   /* Admin Full Edit/Create View */
                   <div className="space-y-4">
                     {/* Student details */}
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Student Name</label>
                         <input
@@ -1593,7 +1791,7 @@ export default function DemoSessionsPage() {
                     <hr className="border-neutral-800 my-4" />
                     <h3 className="text-sm font-bold text-white mb-2">Admission Tracker Details</h3>
 
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Customer Name</label>
                         <input
@@ -1758,7 +1956,7 @@ export default function DemoSessionsPage() {
                     </div>
 
                     {/* Date and Time slots */}
-                    <div className="grid grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Date</label>
                         <input

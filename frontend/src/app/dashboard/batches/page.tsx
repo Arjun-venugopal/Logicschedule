@@ -227,22 +227,22 @@ export default function BatchesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Batches</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">Create and manage class batches with schedules and meeting links</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Batches</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">Create and manage class batches with schedules and meeting links</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
           <button
             onClick={() => setShowActiveAnalyticsModal(true)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-neutral-900 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 font-semibold rounded-xl transition-all text-sm shadow-md"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-neutral-900 border border-neutral-700 hover:border-amber-500/50 text-neutral-200 font-semibold rounded-xl transition-all text-xs sm:text-sm shadow-md"
           >
             <BookOpen className="w-4 h-4 text-amber-500" /> Active Analytics
           </button>
           {hasWriteAccess && (
             <button
               onClick={openCreate}
-              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" /> New Batch
             </button>
@@ -329,7 +329,7 @@ export default function BatchesPage() {
           <p className="text-neutral-600 text-sm mb-4">Try adjusting your search criteria</p>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
           {filteredBatches.map((batch: any, i: number) => {
             const isCompleted = batch.status === "Completed" || (batch.totalClassesCount > 0 && (batch.completedClassesCount || 0) >= batch.totalClassesCount);
             
@@ -529,10 +529,10 @@ export default function BatchesPage() {
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] overflow-y-auto"
             >
-              <div className="flex items-center justify-between p-6 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-10">
-                <h2 className="text-lg font-bold text-white">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-10">
+                <h2 className="text-base sm:text-lg font-bold text-white">
                   {editingId ? "Edit Batch" : "Create New Batch"}
                 </h2>
                 <button onClick={closeModal} className="text-neutral-500 hover:text-white transition-colors">
@@ -540,9 +540,9 @@ export default function BatchesPage() {
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-5">
+              <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-5">
                 {/* Batch Name + Subject */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-neutral-300 mb-1.5">Batch Name</label>
                     <input
@@ -588,7 +588,7 @@ export default function BatchesPage() {
                 </div>
 
                 {/* Students + Teacher */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-neutral-300 mb-1.5">Students Count</label>
                     <input
@@ -691,7 +691,7 @@ export default function BatchesPage() {
                 </div>
 
                 {/* Timing */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-sm font-medium text-neutral-300 mb-1.5">Class Start Time</label>
                     <input

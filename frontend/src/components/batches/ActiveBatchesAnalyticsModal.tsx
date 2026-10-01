@@ -164,40 +164,40 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
   const isLoading = batchesLoading || schedulesLoading;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 sm:p-6">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4 md:p-6">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
         transition={{ duration: 0.2 }}
-        className="bg-neutral-900 border border-neutral-800 rounded-3xl w-full max-w-5xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-800 bg-neutral-900/80 shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-black shadow-lg shadow-amber-500/20">
-              <BarChart3 className="w-6 h-6" />
+        <div className="flex items-start sm:items-center justify-between p-4 sm:p-6 border-b border-neutral-800 bg-neutral-900/80 shrink-0 gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-br from-amber-500 to-orange-500 flex items-center justify-center text-black shadow-lg shadow-amber-500/20 shrink-0">
+              <BarChart3 className="w-5 h-5 sm:w-6 sm:h-6" />
             </div>
-            <div>
-              <h2 className="text-xl font-bold text-white flex items-center gap-2">
-                Active Batches Analytics Overview
-                <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-xl font-bold text-white flex flex-wrap items-center gap-2">
+                <span>Active Batches Analytics</span>
+                <span className="text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
                   {analytics.totalActive} Active
                 </span>
               </h2>
-              <p className="text-xs text-neutral-400 mt-0.5">Comprehensive performance, attendance, and progress analytics across all active batches</p>
+              <p className="text-xs text-neutral-400 mt-0.5 truncate hidden sm:block">Comprehensive performance, attendance, and progress analytics across all active batches</p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors"
+            className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-8 custom-scrollbar">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 sm:space-y-8 custom-scrollbar">
           {isLoading ? (
             <div className="py-24 text-center">
               <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
@@ -206,55 +206,55 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
           ) : (
             <>
               {/* Top Summary KPIs */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-neutral-400 mb-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider">Active Batches</span>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-neutral-400 mb-1 sm:mb-2">
+                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Active Batches</span>
                     <BookOpen className="w-4 h-4 text-orange-400" />
                   </div>
-                  <p className="text-3xl font-bold text-white">{analytics.totalActive}</p>
-                  <p className="text-[10px] text-neutral-500 mt-1">Currently running</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-white">{analytics.totalActive}</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Currently running</p>
                 </div>
 
-                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-neutral-400 mb-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider">Enrolled Students</span>
+                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-neutral-400 mb-1 sm:mb-2">
+                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Students</span>
                     <Users className="w-4 h-4 text-amber-400" />
                   </div>
-                  <p className="text-3xl font-bold text-white">{analytics.totalStudents}</p>
-                  <p className="text-[10px] text-neutral-500 mt-1">Across active batches</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-white">{analytics.totalStudents}</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Across active batches</p>
                 </div>
 
-                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-neutral-400 mb-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider">Classes Held</span>
+                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-neutral-400 mb-1 sm:mb-2">
+                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Classes Held</span>
                     <CalendarCheck className="w-4 h-4 text-emerald-400" />
                   </div>
-                  <p className="text-3xl font-bold text-emerald-400">
-                    {analytics.totalClassesDone} <span className="text-sm font-normal text-neutral-400">/ {analytics.totalClassesScheduled}</span>
+                  <p className="text-2xl sm:text-3xl font-bold text-emerald-400">
+                    {analytics.totalClassesDone} <span className="text-xs sm:text-sm font-normal text-neutral-400">/ {analytics.totalClassesScheduled}</span>
                   </p>
-                  <p className="text-[10px] text-neutral-500 mt-1">Completed schedules</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Completed schedules</p>
                 </div>
 
-                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-4 flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-neutral-400 mb-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider">Attendance Rate</span>
+                <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
+                  <div className="flex items-center justify-between text-neutral-400 mb-1 sm:mb-2">
+                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Attendance Rate</span>
                     <TrendingUp className="w-4 h-4 text-blue-400" />
                   </div>
-                  <p className="text-3xl font-bold text-blue-400">{analytics.overallAttendanceRate}%</p>
-                  <p className="text-[10px] text-neutral-500 mt-1">Overall average</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-blue-400">{analytics.overallAttendanceRate}%</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Overall average</p>
                 </div>
               </div>
 
               {/* Charts Grid */}
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                 {/* Course Breakdown Pie Chart */}
-                <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-5">
+                <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-4 sm:p-5 min-w-0">
                   <h3 className="text-sm font-bold text-white mb-1">Active Course / Subject Distribution</h3>
                   <p className="text-xs text-neutral-500 mb-4">Breakdown of active batches by subject</p>
-                  <div className="h-52 flex items-center justify-center">
+                  <div className="h-52 flex items-center justify-center min-w-0 w-full">
                     {analytics.subjectDistribution.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <PieChart>
                           <Pie
                             data={analytics.subjectDistribution}
@@ -280,7 +280,7 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                       <p className="text-xs text-neutral-600">No active subject data</p>
                     )}
                   </div>
-                  <div className="flex flex-wrap items-center justify-center gap-3 mt-2">
+                  <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 mt-2">
                     {analytics.subjectDistribution.map((item: any) => (
                       <div key={item.name} className="flex items-center gap-1.5 text-xs text-neutral-300">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
@@ -291,12 +291,12 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                 </div>
 
                 {/* Batch Progress Bar Chart */}
-                <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-5">
+                <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-4 sm:p-5 min-w-0">
                   <h3 className="text-sm font-bold text-white mb-1">Completion Progress by Batch</h3>
                   <p className="text-xs text-neutral-500 mb-4">% completion rate for active batches</p>
-                  <div className="h-56">
+                  <div className="h-56 min-w-0 w-full">
                     {analytics.batchProgressData.length > 0 ? (
-                      <ResponsiveContainer width="100%" height="100%">
+                      <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <BarChart data={analytics.batchProgressData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
                           <XAxis dataKey="name" stroke="#525252" fontSize={10} tickLine={false} />
@@ -317,7 +317,7 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
 
               {/* Active Batches List & Analytics Table */}
               <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl overflow-hidden">
-                <div className="p-5 border-b border-neutral-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4">
+                <div className="p-4 sm:p-5 border-b border-neutral-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
                   <div>
                     <h3 className="text-sm font-bold text-white flex items-center gap-2">
                       <BookOpen className="w-4 h-4 text-amber-500" />
@@ -338,7 +338,7 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                 </div>
 
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left text-xs whitespace-nowrap">
+                  <table className="w-full text-left text-xs whitespace-nowrap min-w-[620px]">
                     <thead className="bg-neutral-950/60 text-neutral-400 border-b border-neutral-800">
                       <tr>
                         <th className="px-5 py-3 font-medium">Batch Name</th>

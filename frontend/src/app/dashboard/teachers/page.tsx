@@ -5,10 +5,21 @@ import { api } from "@/lib/axios";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List, Calendar } from "lucide-react";
-import { TeacherPerformanceModal } from "@/components/teachers/TeacherPerformanceModal";
+import dynamic from "next/dynamic";
 import { TeacherTimingTable } from "@/components/teachers/TeacherTimingTable";
-import { TeacherWeeklyAvailabilityModal } from "@/components/teachers/TeacherWeeklyAvailabilityModal";
-import { AllTeachersAvailabilityCalendar } from "@/components/teachers/AllTeachersAvailabilityCalendar";
+
+const TeacherPerformanceModal = dynamic(
+  () => import("@/components/teachers/TeacherPerformanceModal").then((mod) => mod.TeacherPerformanceModal),
+  { ssr: false }
+);
+const TeacherWeeklyAvailabilityModal = dynamic(
+  () => import("@/components/teachers/TeacherWeeklyAvailabilityModal").then((mod) => mod.TeacherWeeklyAvailabilityModal),
+  { ssr: false }
+);
+const AllTeachersAvailabilityCalendar = dynamic(
+  () => import("@/components/teachers/AllTeachersAvailabilityCalendar").then((mod) => mod.AllTeachersAvailabilityCalendar),
+  { ssr: false }
+);
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
@@ -203,64 +214,66 @@ export default function TeachersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Teachers Module</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">Real-time availability timings, schedule tracking & staff management</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Teachers Module</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">Real-time availability timings, schedule tracking & staff management</p>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full lg:w-auto">
           {/* Main View Tabs */}
-          <div className="flex items-center p-1 bg-neutral-900 border border-neutral-800 rounded-xl">
+          <div className="flex items-center p-1 bg-neutral-900 border border-neutral-800 rounded-xl overflow-x-auto max-w-full scrollbar-none">
             <button
               onClick={() => setActiveTab("timing")}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 activeTab === "timing"
                   ? "bg-amber-500 text-black shadow-md"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Timer className="w-4 h-4" /> Live Timings & Status
+              <Timer className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> <span className="hidden sm:inline">Live </span>Timings
             </button>
             <button
               onClick={() => setActiveTab("availability-calendar")}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 activeTab === "availability-calendar"
                   ? "bg-amber-500 text-black shadow-md"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <Calendar className="w-4 h-4" /> Availability Calendar
+              <Calendar className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> <span className="hidden sm:inline">Availability </span>Calendar
             </button>
             <button
               onClick={() => setActiveTab("directory")}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                 activeTab === "directory"
                   ? "bg-amber-500 text-black shadow-md"
                   : "text-neutral-400 hover:text-white"
               }`}
             >
-              <List className="w-4 h-4" /> Teacher Directory
+              <List className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" /> <span className="hidden sm:inline">Teacher </span>Directory
             </button>
           </div>
 
-          <button
-            onClick={() => refetch()}
-            disabled={isRefetching}
-            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors"
-            title="Refresh Directory"
-          >
-            <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-amber-400" : ""}`} />
-          </button>
-
-          {hasWriteAccess && (
+          <div className="flex items-center gap-2 ml-auto sm:ml-0">
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center gap-2 px-4 py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs shadow-lg shadow-amber-500/20 shrink-0"
+              onClick={() => refetch()}
+              disabled={isRefetching}
+              className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 text-neutral-400 hover:text-white transition-colors cursor-pointer"
+              title="Refresh Directory"
             >
-              <UserPlus className="w-4 h-4" /> Add Teacher
+              <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-amber-400" : ""}`} />
             </button>
-          )}
+
+            {hasWriteAccess && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs shadow-lg shadow-amber-500/20 shrink-0 cursor-pointer"
+              >
+                <UserPlus className="w-4 h-4" /> Add Teacher
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -338,7 +351,7 @@ export default function TeachersPage() {
             )}
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full min-w-[640px]">
             <thead>
               <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
                 <th className="py-3.5 px-5 font-medium text-left">Name</th>

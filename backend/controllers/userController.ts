@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import User from '../models/User';
 import Teacher from '../models/Teacher';
 
-import { isSupabaseConfigured, getSupabase } from '../config/supabase';
+import { getSupabase } from '../config/supabase';
 
 // @desc    Get all sub admins
 // @route   GET /api/users/sub-admins

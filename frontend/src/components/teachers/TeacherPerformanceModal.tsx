@@ -94,47 +94,47 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] flex flex-col"
+        className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-4xl shadow-2xl max-h-[92vh] flex flex-col"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-neutral-800 shrink-0">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full brand-gradient flex items-center justify-center text-lg font-bold text-black shrink-0">
+        <div className="flex items-start sm:items-center justify-between p-4 sm:p-6 border-b border-neutral-800 shrink-0 gap-3">
+          <div className="flex items-center gap-3 sm:gap-4 min-w-0">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full brand-gradient flex items-center justify-center text-base sm:text-lg font-bold text-black shrink-0">
               {teacher.name.charAt(0)}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-white leading-tight">{teacher.name} Performance</h2>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border ${statusColor(teacher.status)}`}>
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base sm:text-xl font-bold text-white leading-tight truncate">{teacher.name} Performance</h2>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] sm:text-xs font-medium border ${statusColor(teacher.status)}`}>
                   {teacher.status || "Available"}
                 </span>
               </div>
-              <p className="text-sm text-neutral-400 mt-1">
+              <p className="text-xs sm:text-sm text-neutral-400 mt-0.5 truncate">
                 {teacher.email} {teacher.phone ? `· ${teacher.phone}` : ""}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+            className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Filters */}
-        <div className="px-6 py-4 border-b border-neutral-800 bg-neutral-900/50 flex flex-col md:flex-row gap-4 justify-between items-center shrink-0">
-          <div className="flex flex-wrap items-center gap-3 w-full">
-            <Filter className="w-4 h-4 text-amber-500 shrink-0" />
+        <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-neutral-800 bg-neutral-900/50 flex flex-col md:flex-row gap-3 sm:gap-4 justify-between items-center shrink-0">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full">
+            <Filter className="w-4 h-4 text-amber-500 shrink-0 hidden sm:block" />
             <select
               value={timeRange}
               onChange={(e) => setTimeRange(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none"
             >
               <option value="all">All Time</option>
               <option value="day">Today</option>
@@ -146,7 +146,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             <select
               value={demoStatus}
               onChange={(e) => setDemoStatus(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none"
             >
               <option value="all">All Demos</option>
               <option value="Completed">Completed</option>
@@ -158,7 +158,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             <select
               value={batchStatus}
               onChange={(e) => setBatchStatus(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none"
             >
               <option value="all">All Batches</option>
               <option value="Upcoming">Upcoming</option>
@@ -170,7 +170,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             <select
               value={studentId}
               onChange={(e) => setStudentId(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto max-w-[200px]"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none max-w-[180px]"
             >
               <option value="all">All Students</option>
               {assignedStudents.map((s: any) => (
@@ -181,7 +181,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             <select
               value={selectedDay}
               onChange={(e) => setSelectedDay(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none"
             >
               <option value="all">All Days</option>
               <option value="Monday">Monday</option>
@@ -197,66 +197,66 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
               type="date"
               value={specificDate}
               onChange={(e) => setSpecificDate(e.target.value)}
-              className="bg-neutral-800 border border-neutral-700 text-white text-sm rounded-lg px-3 py-1.5 outline-none focus:border-amber-500 transition-colors w-full md:w-auto text-neutral-300 [&::-webkit-calendar-picker-indicator]:invert"
+              className="bg-neutral-800 border border-neutral-700 text-white text-xs sm:text-sm rounded-lg px-2.5 py-1.5 outline-none focus:border-amber-500 transition-colors flex-1 sm:flex-none text-neutral-300 [&::-webkit-calendar-picker-indicator]:invert"
               title="Filter by Exact Date"
             />
 
             <button
               onClick={clearFilters}
-              className="text-xs text-neutral-400 hover:text-white underline underline-offset-2 ml-2 shrink-0 transition-colors"
+              className="text-xs text-neutral-400 hover:text-white underline underline-offset-2 shrink-0 transition-colors"
             >
-              Clear Filters
+              Clear
             </button>
           </div>
         </div>
 
         {/* Content */}
-        <div className="p-6 overflow-y-auto flex-1 space-y-8">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 sm:space-y-8">
           {/* Key Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             <div 
               onClick={() => setActiveDetailView('batches')}
-              className={`bg-neutral-800/50 border rounded-xl p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'batches' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
+              className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'batches' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Batches</span>
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Batches</span>
                 <BookOpen className="w-4 h-4 text-amber-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{stats.totalBatches}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{stats.totalBatches}</p>
             </div>
 
             <div 
               onClick={() => setActiveDetailView('classes')}
-              className={`bg-neutral-800/50 border rounded-xl p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'classes' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
+              className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'classes' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Classes Completed</span>
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Classes Completed</span>
                 <Clock className="w-4 h-4 text-blue-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{stats.completedClasses}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{stats.completedClasses}</p>
               <span className="text-[10px] text-neutral-500 mt-1">{stats.totalHoursTaught} hrs taught</span>
             </div>
 
             <div 
               onClick={() => setActiveDetailView('students')}
-              className={`bg-neutral-800/50 border rounded-xl p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'students' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
+              className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'students' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Avg Attendance</span>
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Avg Attendance</span>
                 <Users className="w-4 h-4 text-emerald-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{stats.avgAttendanceRate}%</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{stats.avgAttendanceRate}%</p>
             </div>
 
             <div 
               onClick={() => setActiveDetailView('demos')}
-              className={`bg-neutral-800/50 border rounded-xl p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'demos' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
+              className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'demos' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Demo Conversion</span>
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Demo Conversion</span>
                 <TrendingUp className="w-4 h-4 text-orange-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{stats.demoConversionRate}%</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{stats.demoConversionRate}%</p>
               <span className="text-[10px] text-neutral-500 mt-1">
                 {stats.completedDemos} of {stats.totalDemos} completed
               </span>
@@ -264,14 +264,14 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
           </div>
 
           {/* Graphical Analytics & Timeline */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
             {/* Completion Gauge */}
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5 flex flex-col justify-between">
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 sm:p-5 flex flex-col justify-between min-w-0">
               <h3 className="font-semibold text-white mb-2 text-sm flex items-center gap-2">
                 <CalendarCheck className="w-4 h-4 text-amber-500" /> Completion Rate
               </h3>
-              <div className="h-[180px] w-full relative flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-[180px] w-full min-w-0 relative flex items-center justify-center">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <PieChart>
                     <Pie
                       data={pieChartData}
@@ -292,7 +292,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <p className="text-3xl font-bold text-white">{stats.completionRate}%</p>
+                  <p className="text-2xl sm:text-3xl font-bold text-white">{stats.completionRate}%</p>
                   <p className="text-[10px] text-neutral-500 mt-0.5">Classes Completed</p>
                 </div>
               </div>
@@ -303,7 +303,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
             </div>
 
             {/* Experience / Subject Expertise */}
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5 lg:col-span-2 flex flex-col justify-between">
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 sm:p-5 lg:col-span-2 flex flex-col justify-between min-w-0">
               <div>
                 <h3 className="font-semibold text-white mb-4 text-sm flex items-center gap-2">
                   <Award className="w-4 h-4 text-amber-500" /> Teaching Details
@@ -357,13 +357,13 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                     </div>
                   ) : (
                     filteredBatches.map((batch: any) => (
-                      <div key={batch._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-bold text-white mb-1">{batch.name}</h4>
-                          <p className="text-xs text-neutral-400">{batch.subject} · {batch.studentsCount || 0} Students</p>
+                      <div key={batch._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-white mb-1 truncate">{batch.name}</h4>
+                          <p className="text-xs text-neutral-400 truncate">{batch.subject} · {batch.studentsCount || 0} Students</p>
                         </div>
-                        <div className="text-right">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             batch.status === 'Active' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
                             batch.status === 'Upcoming' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
                             batch.status === 'Completed' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' :
@@ -371,7 +371,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                           }`}>
                             {batch.status}
                           </span>
-                          {batch.timing && <p className="text-xs text-neutral-500 mt-2">{batch.timing.startTime} - {batch.timing.endTime}</p>}
+                          {batch.timing && <p className="text-xs text-neutral-500 mt-1">{batch.timing.startTime} - {batch.timing.endTime}</p>}
                         </div>
                       </div>
                     ))
@@ -392,22 +392,22 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                     </div>
                   ) : (
                     filteredSchedules.map((schedule: any) => (
-                      <div key={schedule._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 flex items-center justify-between">
-                        <div>
-                          <h4 className="text-sm font-bold text-white mb-1">{schedule.batch?.name || "Unknown Batch"}</h4>
+                      <div key={schedule._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-bold text-white mb-1 truncate">{schedule.batch?.name || "Unknown Batch"}</h4>
                           <p className="text-xs text-neutral-400 flex items-center gap-2">
-                            <Calendar className="w-3 h-3" /> {schedule.date ? format(parseISO(schedule.date), "MMM d, yyyy") : ""}
+                            <Calendar className="w-3 h-3 shrink-0" /> {schedule.date ? format(parseISO(schedule.date), "MMM d, yyyy") : ""}
                           </p>
                         </div>
-                        <div className="text-right">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                        <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
                             schedule.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
                             schedule.status === 'Scheduled' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
                             'bg-red-500/10 text-red-400 border border-red-500/20'
                           }`}>
                             {schedule.status}
                           </span>
-                          <p className="text-xs text-neutral-500 mt-2">{schedule.startTime} - {schedule.endTime}</p>
+                          <p className="text-xs text-neutral-500 mt-1">{schedule.startTime} - {schedule.endTime}</p>
                         </div>
                       </div>
                     ))
@@ -428,11 +428,11 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                     </div>
                   ) : (
                     assignedStudents.map((student: any) => (
-                      <div key={student._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3 flex items-center gap-3">
+                      <div key={student._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3 flex items-center gap-3 min-w-0">
                          <div className="w-8 h-8 rounded-full brand-gradient flex items-center justify-center text-xs font-bold text-black shrink-0">
                           {student.name.charAt(0)}
                         </div>
-                        <span className="text-sm font-medium text-white">{student.name}</span>
+                        <span className="text-sm font-medium text-white truncate">{student.name}</span>
                       </div>
                     ))
                   )}
@@ -452,11 +452,11 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                     </div>
                   ) : (
                     filteredDemoSessions.map((demo: any) => (
-                      <div key={demo._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 hover:bg-neutral-800/60 transition-colors">
-                        <div className="flex items-start justify-between mb-3">
-                          <div>
-                            <div className="flex items-center gap-2">
-                              <h4 className="text-sm font-bold text-white">{demo.studentName}</h4>
+                      <div key={demo._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 sm:p-4 hover:bg-neutral-800/60 transition-colors">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 mb-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <h4 className="text-sm font-bold text-white truncate">{demo.studentName}</h4>
                               <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
                                 demo.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" :
                                 demo.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border border-purple-500/20" :
@@ -466,10 +466,10 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                                 {demo.status || "Pending"}
                               </span>
                             </div>
-                            <p className="text-xs text-neutral-400 mt-1">{demo.subject}</p>
+                            <p className="text-xs text-neutral-400 mt-1 truncate">{demo.subject}</p>
                           </div>
-                          <div className="text-right">
-                            <span className="text-[10px] text-neutral-500 flex items-center justify-end gap-1 font-medium mb-1">
+                          <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1">
+                            <span className="text-[10px] text-neutral-500 flex items-center justify-end gap-1 font-medium">
                               <Calendar className="w-3 h-3" />
                               {demo.date ? format(parseISO(demo.date), "MMM d, yyyy") : ""}
                             </span>
@@ -478,7 +478,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                         </div>
                         
                         {(demo.studentEmail || demo.phoneNumber) && (
-                          <div className="flex items-center gap-4 mt-2 mb-3">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 mt-2 mb-3">
                             {demo.phoneNumber && (
                               <span className="text-xs text-neutral-400 flex items-center gap-1 bg-neutral-900/50 px-2 py-1 rounded-md">
                                 <Phone className="w-3 h-3 text-neutral-500" /> {demo.phoneNumber}

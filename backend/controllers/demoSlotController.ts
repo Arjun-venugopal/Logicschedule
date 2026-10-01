@@ -23,38 +23,73 @@ export const getDemoSlots = async (req: any, res: Response): Promise<void> => {
 
     const demoSlots = await DemoSlot.find(query).populate('teacher', 'name email status').lean();
     
-    // Check booking status for each slot
-    const slotsWithBookingStatus = await Promise.all(
-      demoSlots.map(async (slot: any) => {
-        // Find if there is any demo session overlapping with this slot
-        const dateObj = new Date(slot.date);
-        
-        // Match day exactly. Since dates might have time components, we match just the date string if we can,
-        // or ensure they fall on the same day.
-        
-        // Start of day and end of day for the slot's date
-        const startOfDay = new Date(dateObj);
-        startOfDay.setHours(0, 0, 0, 0);
-        
-        const endOfDay = new Date(dateObj);
-        endOfDay.setHours(23, 59, 59, 999);
+    if (demoSlots.length === 0) {
+      res.json([]);
+      return;
+    }
 
-        const teacherId = slot.teacher?._id || slot.teacher;
-        const overlappingSession = teacherId ? await DemoSession.findOne({
-          teacher: teacherId,
-          date: { $gte: startOfDay, $lte: endOfDay },
-          status: { $ne: 'Cancelled' },
-          $or: [
-            { startTime: { $lt: slot.endTime }, endTime: { $gt: slot.startTime } },
-          ],
-        }) : null;
+    // Eliminate N+1 queries: compute date bounds and teacher IDs for a single batched query
+    let minTime = Infinity;
+    let maxTime = -Infinity;
+    const teacherIdSet = new Set<string>();
 
-        return {
-          ...slot,
-          isBooked: !!overlappingSession,
-        };
-      })
-    );
+    for (const slot of demoSlots) {
+      if (slot.date) {
+        const d = new Date(slot.date).getTime();
+        if (!isNaN(d)) {
+          if (d < minTime) minTime = d;
+          if (d > maxTime) maxTime = d;
+        }
+      }
+      const tId = (slot.teacher?._id || slot.teacher)?.toString();
+      if (tId) teacherIdSet.add(tId);
+    }
+
+    const minDate = new Date(minTime);
+    minDate.setHours(0, 0, 0, 0);
+    const maxDate = new Date(maxTime);
+    maxDate.setHours(23, 59, 59, 999);
+
+    const demoSessions = await DemoSession.find({
+      teacher: { $in: Array.from(teacherIdSet) },
+      date: { $gte: minDate, $lte: maxDate },
+      status: { $ne: 'Cancelled' },
+    }).select('teacher date startTime endTime status');
+
+    // Index demo sessions by teacherId + dateStr (YYYY-MM-DD) for O(1) overlap checks
+    const sessionsByTeacherAndDate = new Map<string, any[]>();
+    for (const s of demoSessions) {
+      const tId = (s.teacher?._id || s.teacher)?.toString();
+      if (!tId || !s.date) continue;
+      const dateStr = s.date instanceof Date ? s.date.toISOString().split('T')[0] : String(s.date).split('T')[0];
+      const key = `${tId}:${dateStr}`;
+      let list = sessionsByTeacherAndDate.get(key);
+      if (!list) {
+        list = [];
+        sessionsByTeacherAndDate.set(key, list);
+      }
+      list.push(s);
+    }
+
+    // Check booking status in memory
+    const slotsWithBookingStatus = demoSlots.map((slot: any) => {
+      const teacherId = (slot.teacher?._id || slot.teacher)?.toString();
+      if (!teacherId || !slot.date || !slot.startTime || !slot.endTime) {
+        return { ...slot, isBooked: false };
+      }
+      const dateStr = slot.date instanceof Date ? slot.date.toISOString().split('T')[0] : String(slot.date).split('T')[0];
+      const key = `${teacherId}:${dateStr}`;
+      const candidateSessions = sessionsByTeacherAndDate.get(key) || [];
+
+      const isBooked = candidateSessions.some((session: any) => {
+        return session.startTime < slot.endTime && session.endTime > slot.startTime;
+      });
+
+      return {
+        ...slot,
+        isBooked,
+      };
+    });
 
     res.json(slotsWithBookingStatus);
   } catch (error: any) {

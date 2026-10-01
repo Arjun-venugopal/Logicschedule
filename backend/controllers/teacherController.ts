@@ -87,8 +87,6 @@ export const getTeachers = async (_req: Request, res: Response) => {
       return;
     }
 
-    const teachers = await Teacher.find({}).populate('user', 'name email role mustChangePassword').lean();
-    
     // Calculate current dynamic availability in business timezone (Asia/Kolkata)
     const kolkata = getKolkataNow();
     const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
@@ -96,15 +94,18 @@ export const getTeachers = async (_req: Request, res: Response) => {
     const todayStr = kolkata.todayStr;
     const currentTotalMinutes = kolkata.currentTotalMinutes;
 
-    const todaySchedules = await Schedule.find({
-      date: { $gte: todayStart, $lte: todayEnd },
-      status: { $ne: 'Cancelled' }
-    });
-
-    const todayDemos = await DemoSession.find({
-      date: { $gte: todayStart, $lte: todayEnd },
-      status: { $ne: 'Cancelled' }
-    });
+    // Run independent database queries concurrently
+    const [teachers, todaySchedules, todayDemos] = await Promise.all([
+      Teacher.find({}).populate('user', 'name email role mustChangePassword').lean(),
+      Schedule.find({
+        date: { $gte: todayStart, $lte: todayEnd },
+        status: { $ne: 'Cancelled' }
+      }),
+      DemoSession.find({
+        date: { $gte: todayStart, $lte: todayEnd },
+        status: { $ne: 'Cancelled' }
+      })
+    ]);
 
     // Hash Maps for O(1) per-teacher schedules and demos lookups
     const schedulesByTeacher = new Map<string, any[]>();
@@ -530,14 +531,14 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
       }
     }
     
-    const totalDemos = await DemoSession.countDocuments(demoQuery);
-    const completedDemos = await DemoSession.countDocuments({ ...demoQuery, status: 'Completed' });
+    // Concurrently fetch demo stats, demo sessions, and teacher batches
+    const [totalDemos, completedDemos, demoSessions, allTeacherBatches] = await Promise.all([
+      DemoSession.countDocuments(demoQuery),
+      DemoSession.countDocuments({ ...demoQuery, status: 'Completed' }),
+      DemoSession.find(demoQuery).sort({ date: -1 }).limit(20),
+      Batch.find({ assignedTeacher: teacher._id }).select('_id')
+    ]);
     const demoConversionRate = totalDemos > 0 ? Math.round((completedDemos / totalDemos) * 100) : 0;
-
-    const demoSessions = await DemoSession.find(demoQuery).sort({ date: -1 }).limit(20);
-
-    // Fetch students assigned to this teacher (current or past)
-    const allTeacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
     const allTeacherBatchIds = allTeacherBatches.map((b: any) => b._id);
     const assignedStudents = await Student.find({
       $or: [
@@ -616,17 +617,45 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
     const isToday = targetDateStr === kolkata.todayStr;
     const currentTotalMinutes = isToday ? kolkata.currentTotalMinutes : -1;
 
-    const teachers = await Teacher.find({}).populate('user', 'name email role').lean();
+    // Concurrently fetch teachers, schedules, and demos
+    const [teachers, schedules, demos] = await Promise.all([
+      Teacher.find({}).populate('user', 'name email role').lean(),
+      Schedule.find({
+        date: { $gte: dayStart, $lte: dayEnd },
+        status: { $ne: 'Cancelled' }
+      }).populate('batch', 'name subject').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean(),
+      DemoSession.find({
+        date: { $gte: dayStart, $lte: dayEnd },
+        status: { $ne: 'Cancelled' }
+      }).populate('teacher', 'name email').lean()
+    ]);
 
-    const schedules = await Schedule.find({
-      date: { $gte: dayStart, $lte: dayEnd },
-      status: { $ne: 'Cancelled' }
-    }).populate('batch', 'name subject').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean();
+    // Pre-index schedules and demos by teacher ID for O(1) lookups
+    const schedulesByTeacher = new Map<string, any[]>();
+    for (const s of schedules) {
+      const primaryTId = (s.teacher?._id || s.teacher)?.toString();
+      if (primaryTId) {
+        let list = schedulesByTeacher.get(primaryTId);
+        if (!list) { list = []; schedulesByTeacher.set(primaryTId, list); }
+        list.push(s);
+      }
+      const replTId = (s.replacementTeacher?._id || s.replacementTeacher)?.toString();
+      if (replTId && replTId !== primaryTId) {
+        let list = schedulesByTeacher.get(replTId);
+        if (!list) { list = []; schedulesByTeacher.set(replTId, list); }
+        list.push(s);
+      }
+    }
 
-    const demos = await DemoSession.find({
-      date: { $gte: dayStart, $lte: dayEnd },
-      status: { $ne: 'Cancelled' }
-    }).populate('teacher', 'name email').lean();
+    const demosByTeacher = new Map<string, any[]>();
+    for (const d of demos) {
+      const tId = (d.teacher?._id || d.teacher)?.toString();
+      if (tId) {
+        let list = demosByTeacher.get(tId);
+        if (!list) { list = []; demosByTeacher.set(tId, list); }
+        list.push(d);
+      }
+    }
 
     let freeCount = 0;
     let inClassCount = 0;
@@ -636,15 +665,9 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
     const resultTeachers = teachers.map((teacher: any) => {
       const teacherIdStr = teacher._id.toString();
 
-      // Gather today's schedules & demos for this teacher
-      const teacherSchedules = schedules.filter((s: any) => 
-        (s.teacher && (s.teacher._id || s.teacher).toString() === teacherIdStr) ||
-        (s.replacementTeacher && (s.replacementTeacher._id || s.replacementTeacher).toString() === teacherIdStr)
-      );
-
-      const teacherDemos = demos.filter((d: any) => 
-        d.teacher && (d.teacher._id || d.teacher).toString() === teacherIdStr
-      );
+      // Gather today's schedules & demos for this teacher via O(1) indexed Map
+      const teacherSchedules = schedulesByTeacher.get(teacherIdStr) || [];
+      const teacherDemos = demosByTeacher.get(teacherIdStr) || [];
 
       // Map to standardized item format
       const items: any[] = [];

@@ -346,23 +346,23 @@ export default function SchedulePage() {
   const apiError = (createSchedule.error || updateSchedule.error) as any;
 
   return (
-    <div className="flex flex-col gap-4" style={{ height: "calc(100vh - 112px)" }}>
+    <div className="flex flex-col gap-3 sm:gap-4 flex-1 h-[calc(100vh-130px)] md:h-[calc(100vh-112px)] min-h-[520px] w-full min-w-0">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
+      <div className="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">{isTeacher ? "My Schedule" : "Schedule"}</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">{isTeacher ? "My Schedule" : "Schedule"}</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             {isTeacher ? "View your classes · Click an event to add completed subject & notes" : "Click a cell to add · Click an event to edit"}
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 md:gap-3">
-          {/* View Mode Toggles */}
-          <div className="hidden md:flex items-center bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden p-1 mr-2">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-3">
+          {/* View Mode Toggles - Available on all screens */}
+          <div className="flex items-center bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden p-0.5 sm:p-1 mr-1 sm:mr-2">
             {(["day", "week", "month"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-4 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${
+                className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg capitalize transition-all cursor-pointer ${
                   viewMode === mode 
                     ? "bg-neutral-800 text-white shadow-sm" 
                     : "text-neutral-500 hover:text-white hover:bg-neutral-800/50"
@@ -380,15 +380,15 @@ export default function SchedulePage() {
                 else if (viewMode === "week") setCurrentDate(addDays(currentDate, -7));
                 else setCurrentDate(addMonths(currentDate, -1));
               }}
-              className="px-3 py-2 hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white"
+              className="p-1.5 sm:px-3 sm:py-2 hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-4 py-2 text-sm font-medium text-white border-x border-neutral-800 min-w-[130px] text-center">
+            <span className="px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white border-x border-neutral-800 min-w-[105px] sm:min-w-[130px] text-center truncate">
               {viewMode === "day" 
                 ? format(currentDate, "MMM d, yyyy") 
                 : viewMode === "week"
-                ? `${format(startDate, "MMM d")} – ${format(addDays(startDate, 6), "MMM d, yyyy")}`
+                ? `${format(startDate, "MMM d")} – ${format(addDays(startDate, 6), "MMM d")}`
                 : format(currentDate, "MMMM yyyy")}
             </span>
             <button
@@ -397,23 +397,23 @@ export default function SchedulePage() {
                 else if (viewMode === "week") setCurrentDate(addDays(currentDate, 7));
                 else setCurrentDate(addMonths(currentDate, 1));
               }}
-              className="px-3 py-2 hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white"
+              className="p-1.5 sm:px-3 sm:py-2 hover:bg-neutral-800 transition-colors text-neutral-400 hover:text-white cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
           <button
             onClick={() => setCurrentDate(new Date())}
-            className="px-3 py-2 bg-neutral-900 border border-neutral-800 rounded-xl text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+            className="px-2.5 sm:px-3 py-1.5 sm:py-2 bg-neutral-900 border border-neutral-800 rounded-xl text-xs sm:text-sm text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             Today
           </button>
           {!isTeacher && hasWriteAccess && (
             <button
               onClick={() => openCreate()}
-              className="flex items-center gap-2 px-4 py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 text-sm shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 text-xs sm:text-sm shadow-lg shadow-amber-500/20 cursor-pointer"
             >
-              <Plus className="w-4 h-4" /> New Class
+              <Plus className="w-4 h-4" /> <span className="hidden xs:inline">New</span> Class
             </button>
           )}
         </div>
@@ -697,28 +697,28 @@ export default function SchedulePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
             >
-              <div className="flex items-center justify-between p-6 border-b border-neutral-800 bg-neutral-900/50">
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 bg-neutral-900/50 shrink-0">
                 <div>
-                  <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                  <h2 className="text-lg sm:text-xl font-bold text-white flex items-center gap-2">
                     {modal.mode === "edit" ? <><Edit2 className="w-5 h-5 text-amber-500" /> Edit Class Details</> : <><Plus className="w-5 h-5 text-amber-500" /> Schedule New Class</>}
                   </h2>
                   <p className="text-xs text-neutral-500 mt-1">Configure class details, timings, and meeting link.</p>
                 </div>
-                <button onClick={closeModal} className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-xl transition-colors">
+                <button onClick={closeModal} className="p-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-xl transition-colors cursor-pointer">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
+              <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 sm:space-y-6 flex-1 overflow-y-auto custom-scrollbar">
                 {isTeacher ? (
                   <div className="p-4 bg-neutral-800/40 rounded-xl border border-neutral-800 space-y-3">
                     <div className="grid grid-cols-2 gap-4">
@@ -758,7 +758,7 @@ export default function SchedulePage() {
                         <Info className="w-4 h-4" /> Assignment Details
                       </h3>
                       
-                      <div className="grid md:grid-cols-2 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         {/* Teacher */}
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">
@@ -815,7 +815,7 @@ export default function SchedulePage() {
                         <Clock className="w-4 h-4" /> Schedule Timing
                       </h3>
 
-                      <div className="grid md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         {/* Date */}
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-neutral-400 flex items-center gap-1.5">
@@ -931,7 +931,7 @@ export default function SchedulePage() {
                         />
                       </div>
 
-                      <div className="grid md:grid-cols-3 gap-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                         <div className="space-y-1.5">
                           <label className="text-xs font-semibold text-neutral-400">Reschedule Date</label>
                           <input

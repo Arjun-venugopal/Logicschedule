@@ -238,7 +238,7 @@ export function TeacherTimingTable() {
       </div>
 
       {/* KPI Cards Summary */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         {/* 🟢 Free (Available) Teachers */}
         <motion.div
           whileHover={{ scale: 1.01 }}
@@ -419,8 +419,9 @@ export function TeacherTimingTable() {
             <p className="text-xs text-neutral-500 mt-1">Try clearing filters or search terms</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <>
+            <div className="hidden lg:block overflow-x-auto">
+            <table className="w-full text-left border-collapse min-w-[850px]">
               <thead>
                 <tr className="border-b border-neutral-800 text-[11px] text-neutral-400 uppercase tracking-wider bg-neutral-950/50">
                   <th className="py-4 px-5 font-semibold">Teacher Name</th>
@@ -635,7 +636,157 @@ export function TeacherTimingTable() {
               </tbody>
             </table>
           </div>
-        )}
+
+          {/* Mobile / Tablet Cards View */}
+          <div className="block lg:hidden divide-y divide-neutral-800/60 p-3 sm:p-4 space-y-4">
+            {filteredTeachers.map((t) => {
+              const isFree = t.liveStatus === "Free";
+              const isInClass = t.liveStatus === "In Class";
+              const isStartingSoon = t.liveStatus === "Class Starting Soon";
+              const isOnLeave = t.liveStatus === "On Leave";
+
+              return (
+                <div key={t._id} className="pt-4 first:pt-0 space-y-3 bg-neutral-850/40 rounded-xl p-3.5 border border-neutral-800/50">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="relative">
+                        <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center font-bold text-black text-sm shrink-0 shadow-md">
+                          {t.name.charAt(0)}
+                        </div>
+                        <span
+                          className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-neutral-900 ${
+                            isInClass
+                              ? "bg-red-500 animate-pulse"
+                              : isStartingSoon
+                              ? "bg-amber-500"
+                              : isFree
+                              ? "bg-emerald-500"
+                              : "bg-neutral-600"
+                          }`}
+                        />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-white text-sm truncate">{t.name}</p>
+                        <p className="text-[11px] text-neutral-400 font-mono truncate">{t.email}</p>
+                      </div>
+                    </div>
+
+                    {/* Status Pill */}
+                    <div className="shrink-0">
+                      {isInClass && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/30 text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                          In Class
+                        </span>
+                      )}
+                      {isStartingSoon && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/30 text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                          Starts Soon
+                        </span>
+                      )}
+                      {isFree && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 text-[11px] font-semibold">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                          Free
+                        </span>
+                      )}
+                      {isOnLeave && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-neutral-800 text-neutral-400 border border-neutral-700 text-[11px] font-medium">
+                          <UserX className="w-3 h-3 text-neutral-500" />
+                          Leave
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Expertise */}
+                  {t.subjectExpertise && t.subjectExpertise.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {t.subjectExpertise.slice(0, 3).map((sub, i) => (
+                        <span key={i} className="text-[10px] px-2 py-0.5 bg-neutral-800 border border-neutral-700 text-neutral-300 rounded">
+                          {sub}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Class Info */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs bg-neutral-900/60 p-2.5 rounded-xl border border-neutral-800">
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block mb-0.5">Current Activity</span>
+                      {t.currentClass ? (
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-white truncate">{t.currentClass.title}</p>
+                          <p className="text-[11px] text-neutral-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatTime(t.currentClass.startTime)} - {formatTime(t.currentClass.endTime)}
+                            {t.currentClass.minutesLeft !== null && (
+                              <span className="text-red-400 font-semibold bg-red-500/10 px-1 rounded text-[10px]">
+                                {t.currentClass.minutesLeft}m left
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      ) : (t as any).lastCompletedClass ? (
+                        <p className="text-neutral-400 text-[11px] truncate">
+                          Ended at {formatTime((t as any).lastCompletedClass.endTime)}
+                        </p>
+                      ) : (
+                        <p className="text-neutral-500 text-[11px] italic">No active class</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block mb-0.5">Next Class & Countdown</span>
+                      {t.nextClass ? (
+                        <div className="space-y-0.5">
+                          <p className="font-semibold text-neutral-200 truncate">{t.nextClass.title}</p>
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className="text-amber-400 font-medium">{formatTime(t.nextClass.startTime)}</span>
+                            {t.nextClass.startsInMinutes !== null && t.nextClass.startsInMinutes !== undefined && (
+                              <span className="text-neutral-400 font-mono text-[10px]">
+                                In {formatMinutes(t.nextClass.startsInMinutes)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-neutral-500 text-[11px] italic">No more classes today</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  {hasWriteAccess && (
+                    <div className="flex justify-end pt-1">
+                      {isOnLeave ? (
+                        <button
+                          onClick={() => handleSetAvailable(t)}
+                          disabled={updateStatusMutation.isPending}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Set Available</span>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleOpenLeaveModal(t)}
+                          disabled={updateStatusMutation.isPending}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-neutral-800 hover:bg-red-500/20 text-neutral-300 hover:text-red-400 border border-neutral-700 hover:border-red-500/30 transition-all cursor-pointer"
+                        >
+                          <UserX className="w-3.5 h-3.5 text-neutral-400" />
+                          <span>Mark Leave</span>
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
       </div>
 
       {/* Mark Leave Modal */}

@@ -52,39 +52,39 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden"
+          className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
         >
           {/* Modal Header */}
-          <div className="p-6 border-b border-neutral-800 flex items-center justify-between bg-neutral-900/50">
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-xl font-bold text-white">{teacher.name}&apos;s Timeline</h2>
+          <div className="p-4 sm:p-6 border-b border-neutral-800 flex items-start sm:items-center justify-between bg-neutral-900/50 gap-3">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-base sm:text-xl font-bold text-white truncate">{teacher.name}&apos;s Timeline</h2>
                 {teacher.subjectExpertise?.[0] && (
-                  <span className="text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                  <span className="text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
                     {teacher.subjectExpertise[0]}
                   </span>
                 )}
               </div>
               <p className="text-xs text-neutral-400 flex items-center gap-1.5 mt-1">
-                <Calendar className="w-3.5 h-3.5 text-amber-400" />
-                {formattedDate}
+                <Calendar className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>{formattedDate}</span>
               </p>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+              className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center"
             >
               <X className="w-5 h-5" />
             </button>
           </div>
 
           {/* Modal Body */}
-          <div className="p-6 overflow-y-auto space-y-4 flex-1">
+          <div className="p-4 sm:p-6 overflow-y-auto space-y-4 flex-1">
             {items.length === 0 ? (
               <div className="py-12 text-center text-neutral-500">
                 <Clock className="w-10 h-10 mx-auto mb-3 text-neutral-600 opacity-60" />
@@ -113,27 +113,27 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
                     </div>
 
                     {/* Timeline Card */}
-                    <div className="p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 hover:border-neutral-700 transition-all space-y-2">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
+                    <div className="p-3.5 sm:p-4 rounded-xl bg-neutral-900/90 border border-neutral-800 hover:border-neutral-700 transition-all space-y-2">
+                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2.5">
+                        <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
-                            <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded ${
+                            <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded shrink-0 ${
                               item.type === "Demo" ? "bg-purple-500/20 text-purple-300" : "bg-amber-500/20 text-amber-300"
                             }`}>
                               {item.type}
                             </span>
-                            <h4 className="font-semibold text-white text-sm">{item.batchName}</h4>
+                            <h4 className="font-semibold text-white text-sm truncate">{item.batchName}</h4>
                           </div>
-                          <p className="text-xs text-neutral-400 mt-1 flex items-center gap-2">
-                            <BookOpen className="w-3.5 h-3.5 text-neutral-500" />
-                            Subject: <span className="text-neutral-200">{item.subject}</span>
+                          <p className="text-xs text-neutral-400 mt-1 flex items-center gap-2 truncate">
+                            <BookOpen className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                            <span>Subject: <strong className="text-neutral-200 font-medium">{item.subject}</strong></span>
                           </p>
                         </div>
-                        <div className="text-right shrink-0">
-                          <span className="text-xs font-mono font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 block">
+                        <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1.5">
+                          <span className="text-xs font-mono font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
                             {formatTime(item.startTime)} - {formatTime(item.endTime)}
                           </span>
-                          <span className={`text-[10px] font-bold mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                          <span className={`text-[10px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded ${
                             item.status === "Completed"
                               ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
                               : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
@@ -145,15 +145,15 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
 
                       {item.isReplacement && (
                         <div className="flex items-center gap-1.5 text-xs text-orange-400 bg-orange-500/10 p-2 rounded-lg border border-orange-500/20">
-                          <UserCheck className="w-3.5 h-3.5" />
+                          <UserCheck className="w-3.5 h-3.5 shrink-0" />
                           <span>Taking as Substitute Teacher</span>
                         </div>
                       )}
 
                       {item.meetingLink && (
-                        <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between">
+                        <div className="pt-2 border-t border-neutral-800/80 flex flex-wrap items-center justify-between gap-2">
                           <span className="text-xs text-neutral-500 flex items-center gap-1">
-                            <Video className="w-3.5 h-3.5 text-neutral-400" /> Class Meeting Link
+                            <Video className="w-3.5 h-3.5 text-neutral-400 shrink-0" /> Class Meeting Link
                           </span>
                           <a
                             href={item.meetingLink}
@@ -173,10 +173,10 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
           </div>
 
           {/* Modal Footer */}
-          <div className="p-4 border-t border-neutral-800 bg-neutral-900/50 text-right">
+          <div className="p-3.5 sm:p-4 border-t border-neutral-800 bg-neutral-900/50 flex justify-end">
             <button
               onClick={onClose}
-              className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-xl text-sm font-medium transition-colors"
+              className="w-full sm:w-auto px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white rounded-xl text-xs sm:text-sm font-medium transition-colors min-h-[44px] flex items-center justify-center"
             >
               Close
             </button>

@@ -59,66 +59,66 @@ export default function TeacherPerformancePage() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-white">My Performance</h1>
-        <p className="text-neutral-400 text-sm mt-0.5">Track your classes, student attendance, and class remarks</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">My Performance</h1>
+        <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">Track your classes, student attendance, and class remarks</p>
       </div>
 
       {/* Key Stats Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex flex-col justify-between">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase font-semibold text-neutral-500">My Batches</span>
             <BookOpen className="w-5 h-5 text-amber-500" />
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">{stats.totalBatches}</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white">{stats.totalBatches}</p>
             <p className="text-[10px] text-neutral-500 mt-1">Assigned active batches</p>
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex flex-col justify-between">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase font-semibold text-neutral-500">Teaching Hours</span>
             <Clock className="w-5 h-5 text-blue-500" />
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">{stats.totalHoursTaught} hrs</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white">{stats.totalHoursTaught} hrs</p>
             <p className="text-[10px] text-neutral-500 mt-1">Across all completed classes</p>
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex flex-col justify-between">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase font-semibold text-neutral-500">Avg Attendance</span>
             <Users className="w-5 h-5 text-emerald-500" />
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">{stats.avgAttendanceRate}%</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white">{stats.avgAttendanceRate}%</p>
             <p className="text-[10px] text-neutral-500 mt-1">Student attendance rate</p>
           </div>
         </div>
 
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 flex flex-col justify-between">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase font-semibold text-neutral-500">Demo Conversion</span>
             <TrendingUp className="w-5 h-5 text-orange-500" />
           </div>
           <div>
-            <p className="text-3xl font-bold text-white">{stats.demoConversionRate}%</p>
+            <p className="text-2xl sm:text-3xl font-bold text-white">{stats.demoConversionRate}%</p>
             <p className="text-[10px] text-neutral-500 mt-1">{stats.completedDemos} of {stats.totalDemos} demos completed</p>
           </div>
         </div>
       </div>
 
       {/* Middle Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Completion Gauge Card */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col justify-between">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 flex flex-col justify-between">
           <h3 className="font-semibold text-white mb-2 text-sm flex items-center gap-2">
             <CalendarCheck className="w-4 h-4 text-amber-500" /> Class Completion Rate
           </h3>
-          <div className="h-[200px] w-full relative flex items-center justify-center">
-            <ResponsiveContainer width="100%" height="100%">
+          <div className="h-[200px] w-full min-w-0 relative flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0}>
               <PieChart>
                 <Pie
                   data={pieChartData}

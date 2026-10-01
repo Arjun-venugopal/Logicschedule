@@ -138,17 +138,17 @@ export default function AttendancePage() {
     : filteredStudentsWithSchedules;
 
   return (
-    <div className="flex flex-col gap-6 h-full max-w-6xl mx-auto pb-10 overflow-y-auto">
+    <div className="flex flex-col gap-6 h-full max-w-6xl 2xl:max-w-full w-full min-w-0 mx-auto pb-10 overflow-y-auto">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 shrink-0 px-2">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 px-1 sm:px-2">
         <div>
-          <h1 className="text-3xl font-bold text-white">Attendance Unified View</h1>
-          <p className="text-neutral-400 text-sm mt-1">
+          <h1 className="text-xl sm:text-3xl font-bold text-white">Attendance Unified View</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5 sm:mt-1">
             Everything in one place. Mark and view attendance history per student seamlessly.
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 cursor-pointer bg-neutral-900 border border-neutral-800 px-4 py-2.5 rounded-xl hover:bg-neutral-800 transition-colors">
+          <label className="flex items-center gap-2 text-xs sm:text-sm font-medium text-neutral-300 cursor-pointer bg-neutral-900 border border-neutral-800 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl hover:bg-neutral-800 transition-colors">
             <input 
               type="checkbox" 
               checked={isEditMode}
@@ -162,23 +162,23 @@ export default function AttendancePage() {
       </div>
 
       {/* Global Analytics & Filter */}
-      <div className="bg-neutral-900 border border-neutral-800 p-5 rounded-3xl flex flex-col lg:flex-row gap-6 shrink-0 relative z-10">
+      <div className="bg-neutral-900 border border-neutral-800 p-4 sm:p-5 rounded-2xl sm:rounded-3xl flex flex-col lg:flex-row gap-4 sm:gap-6 shrink-0 relative z-10">
         
         {/* Global Analytics */}
-        <div className="flex-1 flex items-center justify-between bg-neutral-950/50 px-6 py-4 rounded-2xl border border-neutral-800/50">
+        <div className="flex-1 flex items-center justify-between bg-neutral-950/50 px-3 sm:px-6 py-3 sm:py-4 rounded-2xl border border-neutral-800/50">
           <div className="text-center flex-1">
             <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Total Classes</p>
-            <p className="text-2xl font-bold text-white">{globalTotal}</p>
+            <p className="text-xl sm:text-2xl font-bold text-white">{globalTotal}</p>
           </div>
-          <div className="w-px h-10 bg-neutral-800"></div>
+          <div className="w-px h-8 sm:h-10 bg-neutral-800"></div>
           <div className="text-center flex-1">
             <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Total Present</p>
-            <p className="text-2xl font-bold text-emerald-400">{globalPresent}</p>
+            <p className="text-xl sm:text-2xl font-bold text-emerald-400">{globalPresent}</p>
           </div>
-          <div className="w-px h-10 bg-neutral-800"></div>
+          <div className="w-px h-8 sm:h-10 bg-neutral-800"></div>
           <div className="text-center flex-1">
             <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Overall Rate</p>
-            <p className={`text-2xl font-bold ${globalRate >= 75 ? 'text-emerald-400' : globalRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+            <p className={`text-xl sm:text-2xl font-bold ${globalRate >= 75 ? 'text-emerald-400' : globalRate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
               {globalRate}%
             </p>
           </div>
@@ -186,8 +186,8 @@ export default function AttendancePage() {
 
         {/* Filter by Teacher (Admin Only) */}
         {!isTeacher && (
-          <div className="lg:w-1/4 flex flex-col justify-center">
-            <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
+          <div className="w-full lg:w-1/4 flex flex-col justify-center">
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-medium text-neutral-300 mb-1.5 sm:mb-2">
               <Users className="w-4 h-4 text-amber-500" /> Filter by Teacher
             </label>
             <select
@@ -196,7 +196,7 @@ export default function AttendancePage() {
                 setSelectedTeacherId(e.target.value);
                 setSelectedStudentId(""); // reset student when teacher changes
               }}
-              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
             >
               <option value="">All Teachers</option>
               {teachers.map((t: any) => (
@@ -207,14 +207,14 @@ export default function AttendancePage() {
         )}
 
         {/* Filter by Student */}
-        <div className="lg:w-1/3 flex flex-col justify-center">
-          <label className="flex items-center gap-2 text-sm font-medium text-neutral-300 mb-2">
+        <div className="w-full lg:w-1/3 flex flex-col justify-center">
+          <label className="flex items-center gap-2 text-xs sm:text-sm font-medium text-neutral-300 mb-1.5 sm:mb-2">
             <Users className="w-4 h-4 text-amber-500" /> Filter by Student
           </label>
           <select
             value={selectedStudentId}
             onChange={(e) => setSelectedStudentId(e.target.value)}
-            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm text-white outline-none focus:border-amber-500 transition-all"
           >
             <option value="">All Students</option>
             {filteredStudentsWithSchedules.map((s: any) => (
@@ -225,12 +225,12 @@ export default function AttendancePage() {
       </div>
 
       {displayedStudents.length === 0 ? (
-        <div className="flex-1 bg-neutral-900 border border-neutral-800 rounded-3xl flex flex-col items-center justify-center text-center p-12">
-          <div className="w-20 h-20 bg-neutral-800/50 rounded-full flex items-center justify-center mb-6">
-            <Users className="w-10 h-10 text-neutral-600" />
+        <div className="flex-1 bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl flex flex-col items-center justify-center text-center p-8 sm:p-12">
+          <div className="w-16 sm:w-20 h-16 sm:h-20 bg-neutral-800/50 rounded-full flex items-center justify-center mb-4 sm:mb-6">
+            <Users className="w-8 sm:w-10 h-8 sm:h-10 text-neutral-600" />
           </div>
-          <h3 className="text-2xl font-bold text-white mb-2">No Classes Found</h3>
-          <p className="text-neutral-400 text-sm max-w-md mx-auto">
+          <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">No Classes Found</h3>
+          <p className="text-neutral-400 text-xs sm:text-sm max-w-md mx-auto">
             There are currently no completed classes in the system that require attendance marking for the selected filters.
           </p>
         </div>
@@ -238,38 +238,38 @@ export default function AttendancePage() {
         <div className="space-y-6">
           {displayedStudents.map((student: any) => (
             <motion.div 
-              key={student._id}
+              key={student._id} 
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-3xl overflow-hidden shadow-xl"
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-3xl overflow-hidden shadow-xl"
             >
               {/* Student Header */}
-              <div className="bg-neutral-800/40 p-6 border-b border-neutral-800 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className="w-16 h-16 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 text-2xl font-bold shrink-0 border border-amber-500/20">
+              <div className="bg-neutral-800/40 p-4 sm:p-6 border-b border-neutral-800 flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-12 sm:w-16 h-12 sm:h-16 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 text-xl sm:text-2xl font-bold shrink-0 border border-amber-500/20">
                     {student.name.charAt(0)}
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold text-white">{student.name}</h2>
-                    <p className="text-neutral-400 text-sm font-medium mt-1">Batch: {student.batch?.name || 'Unassigned Batch'}</p>
+                    <h2 className="text-lg sm:text-2xl font-bold text-white">{student.name}</h2>
+                    <p className="text-neutral-400 text-xs sm:text-sm font-medium mt-0.5 sm:mt-1">Batch: {student.batch?.name || 'Unassigned Batch'}</p>
                   </div>
                 </div>
 
                 {/* Analytics Block */}
-                <div className="flex items-center gap-6 bg-neutral-950/50 px-6 py-4 rounded-2xl border border-neutral-800/50">
+                <div className="flex items-center justify-around sm:justify-start gap-4 sm:gap-6 bg-neutral-950/50 px-4 sm:px-6 py-3 sm:py-4 rounded-2xl border border-neutral-800/50">
                   <div className="text-center">
                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Classes</p>
-                    <p className="text-xl font-bold text-white">{student.stats.total}</p>
+                    <p className="text-lg sm:text-xl font-bold text-white">{student.stats.total}</p>
                   </div>
                   <div className="w-px h-8 bg-neutral-800"></div>
                   <div className="text-center">
                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Present</p>
-                    <p className="text-xl font-bold text-emerald-400">{student.stats.present}</p>
+                    <p className="text-lg sm:text-xl font-bold text-emerald-400">{student.stats.present}</p>
                   </div>
                   <div className="w-px h-8 bg-neutral-800"></div>
                   <div className="text-center">
                     <p className="text-[10px] text-neutral-500 uppercase font-bold tracking-wider mb-1">Attendance</p>
-                    <p className={`text-xl font-bold ${student.stats.rate >= 75 ? 'text-emerald-400' : student.stats.rate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
+                    <p className={`text-lg sm:text-xl font-bold ${student.stats.rate >= 75 ? 'text-emerald-400' : student.stats.rate >= 50 ? 'text-amber-400' : 'text-red-400'}`}>
                       {student.stats.rate}%
                     </p>
                   </div>
@@ -277,8 +277,8 @@ export default function AttendancePage() {
               </div>
 
               {/* Schedules Grid */}
-              <div className="p-6">
-                <div className="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              <div className="p-4 sm:p-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                   {student.schedules.map((schedule: any) => {
                     const record = schedule.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
                     const isMarked = !!record;

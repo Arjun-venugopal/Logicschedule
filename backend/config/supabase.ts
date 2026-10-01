@@ -61,7 +61,5 @@ export const connectSupabase = async (): Promise<boolean> => {
 };
 
 export const supabase = isSupabaseConfigured()
-  ? createClient(supabaseUrl!, supabaseServiceRoleKey!, {
-      auth: { persistSession: false, autoRefreshToken: false },
-    })
+  ? getSupabase()
   : (null as unknown as SupabaseClient);

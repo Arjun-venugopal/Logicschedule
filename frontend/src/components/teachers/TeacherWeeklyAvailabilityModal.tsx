@@ -221,47 +221,47 @@ export function TeacherWeeklyAvailabilityModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-md">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden"
+          className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden"
         >
           {/* Modal Header */}
-          <div className="p-6 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/80">
-            <div className="flex items-center gap-3">
-              <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                <Calendar className="w-6 h-6 text-amber-400" />
+          <div className="p-4 sm:p-6 border-b border-neutral-800 flex items-start sm:items-center justify-between bg-neutral-950/80 gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="p-2.5 sm:p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl shrink-0">
+                <Calendar className="w-5 h-5 sm:w-6 sm:h-6 text-amber-400" />
               </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <h2 className="text-xl font-bold text-white">{teacher.name}&apos;s Weekly Availability</h2>
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="text-base sm:text-xl font-bold text-white truncate">{teacher.name}&apos;s Availability</h2>
                   {teacher.employmentType && (
-                    <span className="text-xs px-2.5 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700">
+                    <span className="text-[10px] sm:text-xs px-2.5 py-0.5 rounded-full bg-neutral-800 text-neutral-300 border border-neutral-700">
                       {teacher.employmentType}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-neutral-400 flex items-center gap-2 mt-1">
-                  <span>{teacher.email}</span>
+                <p className="text-xs text-neutral-400 flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1">
+                  <span className="truncate">{teacher.email}</span>
                   {teacher.phone && <span>• {teacher.phone}</span>}
                 </p>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               {canEdit && !isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold transition-colors min-h-[38px]"
                 >
-                  <Edit3 className="w-3.5 h-3.5" /> Edit Schedule
+                  <Edit3 className="w-3.5 h-3.5" /> <span className="hidden sm:inline">Edit Schedule</span><span className="sm:hidden">Edit</span>
                 </button>
               )}
               <button
                 onClick={onClose}
-                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors"
+                className="p-2 rounded-xl text-neutral-400 hover:text-white hover:bg-neutral-800 transition-colors min-h-[38px] min-w-[38px] flex items-center justify-center"
               >
                 <X className="w-5 h-5" />
               </button>
@@ -269,7 +269,7 @@ export function TeacherWeeklyAvailabilityModal({
           </div>
 
           {/* Quick Metrics Bar */}
-          <div className="bg-neutral-950/40 border-b border-neutral-800/80 px-6 py-3 flex items-center justify-between flex-wrap gap-4 text-xs">
+          <div className="bg-neutral-950/40 border-b border-neutral-800/80 px-4 sm:px-6 py-2.5 sm:py-3 flex items-center justify-between flex-wrap gap-2.5 sm:gap-4 text-xs">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1.5">
                 <span className="text-neutral-500">Active Days:</span>

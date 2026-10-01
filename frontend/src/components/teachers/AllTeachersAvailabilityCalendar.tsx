@@ -212,26 +212,26 @@ export function AllTeachersAvailabilityCalendar() {
   return (
     <div className="space-y-6">
       {/* Top Header Card & Controls */}
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-6 border-b border-neutral-800">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 shadow-xl">
+        <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4 pb-4 sm:pb-6 border-b border-neutral-800">
           <div>
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 shrink-0">
                 <CalendarIcon className="w-5 h-5" />
               </div>
-              <h2 className="text-xl font-bold text-white tracking-tight">All Teachers Availability Calendar</h2>
+              <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">All Teachers Availability Calendar</h2>
             </div>
             <p className="text-xs text-neutral-400 mt-1">
               Master schedule matrix showing weekly recurring slots, booked classes, and live availability across all faculty members.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 w-full md:w-auto">
             {/* View Mode Toggle */}
-            <div className="bg-neutral-950 p-1 rounded-xl border border-neutral-800 flex items-center gap-1">
+            <div className="bg-neutral-950 p-1 rounded-xl border border-neutral-800 flex items-center gap-1 w-full sm:w-auto">
               <button
                 onClick={() => setViewMode("weekly-matrix")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === "weekly-matrix"
+                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${viewMode === "weekly-matrix"
                   ? "bg-amber-500 text-black shadow-md"
                   : "text-neutral-400 hover:text-white"
                   }`}
@@ -241,7 +241,7 @@ export function AllTeachersAvailabilityCalendar() {
               </button>
               <button
                 onClick={() => setViewMode("daily-timeline")}
-                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 ${viewMode === "daily-timeline"
+                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-lg transition-all flex items-center justify-center gap-1.5 ${viewMode === "daily-timeline"
                   ? "bg-amber-500 text-black shadow-md"
                   : "text-neutral-400 hover:text-white"
                   }`}
@@ -255,7 +255,7 @@ export function AllTeachersAvailabilityCalendar() {
             <button
               onClick={() => refetch()}
               disabled={isRefetching}
-              className="p-2 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors border border-neutral-700 disabled:opacity-50"
+              className="p-2 rounded-xl bg-neutral-800 text-neutral-300 hover:bg-neutral-700 transition-colors border border-neutral-700 disabled:opacity-50 min-h-[38px] min-w-[38px] flex items-center justify-center"
               title="Refresh Calendar"
             >
               <RefreshCw className={`w-4 h-4 ${isRefetching ? "animate-spin text-amber-400" : ""}`} />
@@ -264,28 +264,28 @@ export function AllTeachersAvailabilityCalendar() {
         </div>
 
         {/* Date Navigator & Filters Bar */}
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 pt-6">
+        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 sm:gap-4 pt-4 sm:pt-6">
           {/* Date Navigator */}
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleToday}
-              className="px-3 py-1.5 text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl border border-neutral-700 transition-colors"
+              className="px-3 py-1.5 text-xs font-semibold bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl border border-neutral-700 transition-colors min-h-[36px]"
             >
               Today
             </button>
-            <div className="flex items-center bg-neutral-950 rounded-xl border border-neutral-800">
+            <div className="flex items-center bg-neutral-950 rounded-xl border border-neutral-800 flex-1 sm:flex-none">
               <button
                 onClick={handlePrev}
-                className="p-2 text-neutral-400 hover:text-white transition-colors border-r border-neutral-800"
+                className="p-2 text-neutral-400 hover:text-white transition-colors border-r border-neutral-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
-              <span className="px-4 py-1.5 text-xs font-semibold text-white whitespace-nowrap min-w-[180px] text-center">
+              <span className="px-2 sm:px-4 py-1.5 text-xs font-semibold text-white whitespace-nowrap min-w-[140px] sm:min-w-[180px] text-center flex-1">
                 {rangeLabel}
               </span>
               <button
                 onClick={handleNext}
-                className="p-2 text-neutral-400 hover:text-white transition-colors border-l border-neutral-800"
+                className="p-2 text-neutral-400 hover:text-white transition-colors border-l border-neutral-800 min-h-[36px] min-w-[36px] flex items-center justify-center"
               >
                 <ChevronRight className="w-4 h-4" />
               </button>
@@ -293,9 +293,9 @@ export function AllTeachersAvailabilityCalendar() {
           </div>
 
           {/* Filters & Search */}
-          <div className="flex flex-wrap items-center gap-3 flex-1 lg:justify-end">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 flex-1 lg:justify-end">
             {/* Search Input */}
-            <div className="relative min-w-[200px] flex-1 sm:flex-none">
+            <div className="relative min-w-[180px] flex-1 sm:flex-none">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
               <input
                 type="text"

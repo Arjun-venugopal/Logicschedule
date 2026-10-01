@@ -39,57 +39,59 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
   const PIE_COLORS = ['#10b981', '#3f3f46'];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
       <motion.div
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-4xl shadow-2xl max-h-[90vh] flex flex-col"
+        className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-4xl shadow-2xl max-h-[92vh] flex flex-col"
       >
-        <div className="flex items-center justify-between p-6 border-b border-neutral-800 shrink-0">
-          <div>
-            <h2 className="text-xl font-bold text-white leading-tight">{batch.name} Analytics</h2>
-            <p className="text-sm text-neutral-400 mt-0.5">
-              {batch.subject} · {batch.assignedTeacher?.name || "No Teacher"}
-              <span className="mx-2">•</span>
-              Duration: {batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : (batch.durationType || "Not specified")}
+        <div className="flex items-start sm:items-center justify-between p-4 sm:p-6 border-b border-neutral-800 shrink-0 gap-3">
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg sm:text-xl font-bold text-white leading-tight truncate">{batch.name} Analytics</h2>
+            <p className="text-xs sm:text-sm text-neutral-400 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span>{batch.subject}</span>
+              <span>·</span>
+              <span>{batch.assignedTeacher?.name || "No Teacher"}</span>
+              <span className="hidden sm:inline">•</span>
+              <span>Duration: {batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : (batch.durationType || "Not specified")}</span>
             </p>
           </div>
-          <button onClick={onClose} className="p-2 text-neutral-500 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors">
+          <button onClick={onClose} className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="p-6 overflow-y-auto flex-1 space-y-8">
+        <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 sm:space-y-8">
           {/* Top Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Students</span>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Students</span>
                 <Users className="w-4 h-4 text-amber-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{studentsCount}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{studentsCount}</p>
             </div>
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Total Classes</span>
+            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Total Classes</span>
                 <Calendar className="w-4 h-4 text-blue-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{totalSchedules}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{totalSchedules}</p>
             </div>
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Completed</span>
+            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Completed</span>
                 <CalendarCheck className="w-4 h-4 text-emerald-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{completedSchedules}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{completedSchedules}</p>
             </div>
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-4">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-xs uppercase font-semibold text-neutral-500">Progress</span>
+            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Progress</span>
                 <Clock className="w-4 h-4 text-orange-500" />
               </div>
-              <p className="text-2xl font-bold text-white">{progress}%</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{progress}%</p>
               <div className="w-full h-1.5 bg-neutral-700 rounded-full mt-2 overflow-hidden">
                 <div className="h-full brand-gradient" style={{ width: `${progress}%` }} />
               </div>
@@ -97,13 +99,13 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
           </div>
 
           {/* Visual Analytics */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 sm:p-5 min-w-0">
               <h3 className="font-semibold text-white mb-4 text-sm flex items-center gap-2">
                 <BookOpen className="w-4 h-4 text-emerald-500" /> Syllabus Progress
               </h3>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
+              <div className="h-[200px] w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                   <PieChart>
                     <Pie
                       data={pieChartData}
@@ -128,13 +130,13 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
               </div>
             </div>
 
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-5">
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 sm:p-5 min-w-0">
               <h3 className="font-semibold text-white mb-4 text-sm flex items-center gap-2">
                 <Users className="w-4 h-4 text-blue-500" /> Student Attendance %
               </h3>
-              <div className="h-[200px] w-full">
+              <div className="h-[200px] w-full min-w-0">
                 {barChartData.length > 0 ? (
-                  <ResponsiveContainer width="100%" height="100%">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
                       <XAxis dataKey="name" stroke="#737373" fontSize={10} tickLine={false} axisLine={false} />
@@ -166,7 +168,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                 ) : schedules.filter((s: any) => s.status === 'Completed').length === 0 ? (
                   <p className="text-sm text-neutral-500 p-4">No completed classes yet.</p>
                 ) : (
-                  <table className="w-full text-left text-sm whitespace-nowrap">
+                  <table className="w-full text-left text-sm whitespace-nowrap min-w-[450px]">
                     <thead className="bg-neutral-900/50 border-b border-neutral-800">
                       <tr>
                         <th className="px-4 py-3 font-medium text-neutral-400 sticky left-0 bg-neutral-900 z-10 shadow-[1px_0_0_0_#262626]">Student Name</th>

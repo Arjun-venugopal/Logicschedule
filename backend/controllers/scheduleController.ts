@@ -27,7 +27,7 @@ export const getSchedules = async (req: any, res: Response) => {
     if (isTeacher) {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (teacher) {
-        // Query teacher and replacementTeacher using native Firestore indexed queries instead of scanning all documents
+        // Query teacher and replacementTeacher using indexed database queries instead of scanning all documents
         const [primarySchedules, replacementSchedules] = await Promise.all([
           Schedule.find({ teacher: teacher._id })
             .sort({ date: -1 })
@@ -70,7 +70,7 @@ export const getSchedules = async (req: any, res: Response) => {
     res.json(schedules);
   } catch (error: any) {
     console.error('Get schedules error:', error.message);
-    // Graceful fallback to stale cache or disk cache if quota is exhausted or temporary connection error
+    // Graceful fallback to stale cache or disk cache if temporary connection error
     let fallback = serverCache.getStale ? serverCache.getStale(cacheKey) : serverCache.get(cacheKey);
     if (!fallback) {
       fallback = readDiskCache(cacheKey);
@@ -86,11 +86,11 @@ export const getSchedules = async (req: any, res: Response) => {
     }
 
     if (fallback) {
-      console.warn('Returning cached fallback schedules due to error/quota:', error.message);
+      console.warn('Returning cached fallback schedules due to error:', error.message);
       res.json(fallback);
       return;
     }
-    res.status(500).json({ message: 'Server error: database quota temporarily reached. Please try again shortly.' });
+    res.status(500).json({ message: 'Server error: unable to load schedules. Please try again shortly.' });
   }
 };
 

@@ -122,41 +122,41 @@ export default function StudentsPage() {
   }, [editStudent?.name, editStudent?._id, students]);
 
   return (
-    <div className="flex flex-col gap-6 max-w-7xl mx-auto h-full">
+    <div className="flex flex-col gap-6 max-w-7xl 2xl:max-w-full w-full min-w-0 h-full">
       {/* Header */}
       {showRoster ? (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
           <div>
-            <div className="flex items-center gap-2 text-sm text-neutral-400 mb-2">
+            <div className="flex items-center gap-2 text-xs sm:text-sm text-neutral-400 mb-1.5 sm:mb-2">
               <button onClick={() => setShowRoster(false)} className="hover:text-amber-500 transition-colors">
                 Student Directory
               </button>
               <span className="text-neutral-600">/</span>
               <span className="text-white font-medium">Student Roster</span>
             </div>
-            <h1 className="text-2xl font-bold text-white">Student Roster</h1>
+            <h1 className="text-xl sm:text-2xl font-bold text-white">Student Roster</h1>
           </div>
           {hasWriteAccess && (
             <button
               onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
-              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" /> New Student
             </button>
           )}
         </div>
       ) : (
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
           <div>
-            <h1 className="text-2xl font-bold text-white">Student Directory</h1>
-            <p className="text-neutral-400 text-sm mt-0.5">
+            <h1 className="text-xl sm:text-2xl font-bold text-white">Student Directory</h1>
+            <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
               Manage your entire student roster, view assignments, and import data in bulk.
             </p>
           </div>
           {hasWriteAccess && (
             <button
               onClick={() => setEditStudent({ name: "", batch: "", parentName: "", mobileNumber: "" })}
-              className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+              className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
             >
               <Plus className="w-4 h-4" /> New Student
             </button>
@@ -168,12 +168,12 @@ export default function StudentsPage() {
         <>
 
           {/* Stats Row */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 shrink-0">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 relative overflow-hidden group hover:border-amber-500/30 transition-colors">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4 shrink-0">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 relative overflow-hidden group hover:border-amber-500/30 transition-colors">
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Total Students</p>
-                  <h3 className="text-3xl font-bold text-white">{students.length}</h3>
+                  <h3 className="text-2xl sm:text-3xl font-bold text-white">{students.length}</h3>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center">
                   <Users className="w-5 h-5 text-amber-500" />
@@ -184,11 +184,11 @@ export default function StudentsPage() {
               </div>
             </div>
 
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
+            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 relative overflow-hidden group hover:border-emerald-500/30 transition-colors">
               <div className="flex justify-between items-start">
                 <div>
                   <p className="text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Active Batches</p>
-                  <h3 className="text-3xl font-bold text-white">{uniqueBatches}</h3>
+                  <h3 className="text-2xl sm:text-3xl font-bold text-white">{uniqueBatches}</h3>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
                   <BookOpen className="w-5 h-5 text-emerald-500" />
@@ -200,7 +200,7 @@ export default function StudentsPage() {
             </div>
 
             {hasWriteAccess && (
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hidden md:flex flex-col justify-center items-center text-center border-dashed border-2 hover:border-amber-500/50 transition-colors cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex sm:col-span-2 lg:col-span-1 flex-col justify-center items-center text-center border-dashed border-2 hover:border-amber-500/50 transition-colors cursor-pointer group" onClick={() => fileInputRef.current?.click()}>
                 <div className="w-10 h-10 rounded-full bg-neutral-800 group-hover:bg-amber-500/20 flex items-center justify-center mb-2 transition-colors">
                   <Upload className="w-4 h-4 text-neutral-400 group-hover:text-amber-500 transition-colors" />
                 </div>
@@ -332,99 +332,192 @@ export default function StudentsPage() {
                 <p>No students match your search query.</p>
               </div>
             ) : (
-              <table className="w-full text-left text-sm whitespace-nowrap">
-                <thead className="bg-neutral-950/50 border-b border-neutral-800 text-neutral-400 sticky top-0 backdrop-blur-md z-10">
-                  <tr>
-                    <th className="px-6 py-4 font-medium">Student Profile</th>
-                    <th className="px-6 py-4 font-medium">Enrolled Batch</th>
-                    <th className="px-6 py-4 font-medium">Parent / Guardian</th>
-                    <th className="px-6 py-4 font-medium text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-800/50">
+              <>
+                {/* Mobile Cards View (< md) */}
+                <div className="block md:hidden divide-y divide-neutral-800/60 p-3 space-y-3">
                   {filteredStudents.map((student: any) => (
-                    <tr key={student._id} className="hover:bg-neutral-800/30 transition-colors group">
-                      <td className="px-6 py-4">
-                        <div className="flex items-center gap-3">
-                          <div className="relative">
-                            <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
-                              {student.name.charAt(0)}
-                            </div>
-                            <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-neutral-900 rounded-full"></div>
+                    <div key={student._id} className="pt-3 first:pt-0 bg-neutral-900/60 p-3 rounded-xl border border-neutral-800 flex flex-col gap-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
+                            {student.name.charAt(0)}
                           </div>
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-white">{student.name}</span>
-                            <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
+                          <div className="min-w-0">
+                            <h4 className="font-semibold text-white text-sm truncate">{student.name}</h4>
+                            <span className="text-xs text-neutral-500 flex items-center gap-1">
                               <User className="w-3 h-3" /> Student
                             </span>
                           </div>
                         </div>
-                      </td>
-                      <td className="px-6 py-4">
+                        {hasWriteAccess && (
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => setEditStudent({ ...student, batch: student.batch?._id || "" })}
+                              className="p-2 hover:bg-amber-500/10 rounded-lg text-neutral-400 hover:text-amber-400 transition-colors"
+                              title="Edit"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => setDeleteConfirm(student._id)}
+                              className="p-2 hover:bg-red-500/10 rounded-lg text-neutral-400 hover:text-red-400 transition-colors"
+                              title="Delete"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Enrolled Batch */}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="text-neutral-500">Batch:</span>
                         {student.batch?.status === "Completed" ? (
                           <button
                             onClick={() => setSelectedStudentId(student._id)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all shadow-sm shadow-emerald-500/20"
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold"
                           >
-                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance to Next Level
+                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance Level
                           </button>
                         ) : (
-                          <div className="flex items-center gap-2">
-                            <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
+                          <div className="flex items-center gap-1.5">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold text-xs">
                               {student.batch?.name || "Unassigned"}
                             </span>
                             {hasWriteAccess && (
                               <button
                                 onClick={() => setSelectedStudentId(student._id)}
-                                className="text-[11px] px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 font-medium transition-colors"
-                                title="Promote to next course level"
+                                className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700"
                               >
-                                Advance Level
+                                Advance
                               </button>
                             )}
                           </div>
                         )}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col">
-                          <span className="text-neutral-300 font-medium">{student.parentName || "—"}</span>
-                          <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
-                            <Phone className="w-3 h-3" /> {student.mobileNumber || "—"}
-                          </span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setSelectedStudentId(student._id)}
-                            className="px-3 py-1.5 hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-white transition-colors text-xs font-medium"
-                          >
-                            View Details
-                          </button>
-                          {hasWriteAccess && (
-                            <>
-                              <button
-                                onClick={() => setEditStudent({ ...student, batch: student.batch?._id || "" })}
-                                className="p-1.5 hover:bg-amber-500/10 rounded-lg text-neutral-500 hover:text-amber-400 transition-colors"
-                                title="Edit / Reassign Batch"
-                              >
-                                <Edit2 className="w-4 h-4" />
-                              </button>
-                              <button
-                                onClick={() => setDeleteConfirm(student._id)}
-                                className="p-1.5 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-400 transition-colors"
-                                title="Remove Student"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </>
+                      </div>
+
+                      {/* Parent / Phone */}
+                      {(student.parentName || student.mobileNumber) && (
+                        <div className="flex items-center justify-between gap-2 text-xs pt-2 border-t border-neutral-800/60">
+                          <span className="text-neutral-400 truncate">{student.parentName || "—"}</span>
+                          {student.mobileNumber && (
+                            <a
+                              href={`tel:${student.mobileNumber}`}
+                              className="text-amber-400 hover:underline flex items-center gap-1 shrink-0"
+                            >
+                              <Phone className="w-3 h-3" /> {student.mobileNumber}
+                            </a>
                           )}
                         </div>
-                      </td>
-                    </tr>
+                      )}
+
+                      <button
+                        onClick={() => setSelectedStudentId(student._id)}
+                        className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl text-xs font-semibold transition-colors text-center"
+                      >
+                        View Full Details
+                      </button>
+                    </div>
                   ))}
-                </tbody>
-              </table>
+                </div>
+
+                {/* Desktop Table View (>= md) */}
+                <div className="hidden md:block overflow-x-auto w-full">
+                  <table className="w-full text-left text-sm whitespace-nowrap min-w-[650px]">
+                    <thead className="bg-neutral-950/50 border-b border-neutral-800 text-neutral-400 sticky top-0 backdrop-blur-md z-10">
+                      <tr>
+                        <th className="px-6 py-4 font-medium">Student Profile</th>
+                        <th className="px-6 py-4 font-medium">Enrolled Batch</th>
+                        <th className="px-6 py-4 font-medium">Parent / Guardian</th>
+                        <th className="px-6 py-4 font-medium text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-800/50">
+                      {filteredStudents.map((student: any) => (
+                        <tr key={student._id} className="hover:bg-neutral-800/30 transition-colors group">
+                          <td className="px-6 py-4">
+                            <div className="flex items-center gap-3">
+                              <div className="relative">
+                                <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
+                                  {student.name.charAt(0)}
+                                </div>
+                                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-neutral-900 rounded-full"></div>
+                              </div>
+                              <div className="flex flex-col">
+                                <span className="font-semibold text-white">{student.name}</span>
+                                <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
+                                  <User className="w-3 h-3" /> Student
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            {student.batch?.status === "Completed" ? (
+                              <button
+                                onClick={() => setSelectedStudentId(student._id)}
+                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all shadow-sm shadow-emerald-500/20"
+                              >
+                                <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance to Next Level
+                              </button>
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                <span className="inline-flex items-center px-3 py-1.5 rounded-lg bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-semibold shadow-[0_0_10px_rgba(245,158,11,0.05)]">
+                                  {student.batch?.name || "Unassigned"}
+                                </span>
+                                {hasWriteAccess && (
+                                  <button
+                                    onClick={() => setSelectedStudentId(student._id)}
+                                    className="text-[11px] px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 font-medium transition-colors"
+                                    title="Promote to next course level"
+                                  >
+                                    Advance Level
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="flex flex-col">
+                              <span className="text-neutral-300 font-medium">{student.parentName || "—"}</span>
+                              <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
+                                <Phone className="w-3 h-3" /> {student.mobileNumber || "—"}
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => setSelectedStudentId(student._id)}
+                                className="px-3 py-1.5 hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-white transition-colors text-xs font-medium"
+                              >
+                                View Details
+                              </button>
+                              {hasWriteAccess && (
+                                <>
+                                  <button
+                                    onClick={() => setEditStudent({ ...student, batch: student.batch?._id || "" })}
+                                    className="p-1.5 hover:bg-amber-500/10 rounded-lg text-neutral-500 hover:text-amber-400 transition-colors"
+                                    title="Edit / Reassign Batch"
+                                  >
+                                    <Edit2 className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => setDeleteConfirm(student._id)}
+                                    className="p-1.5 hover:bg-red-500/10 rounded-lg text-neutral-500 hover:text-red-400 transition-colors"
+                                    title="Remove Student"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -439,22 +532,22 @@ export default function StudentsPage() {
         )}
 
         {editStudent && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl overflow-y-auto max-h-[92vh] flex flex-col"
             >
-              <div className="p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-800/30">
-                <h3 className="font-semibold text-white">
+              <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900 sticky top-0 z-10">
+                <h3 className="font-semibold text-white text-base">
                   {editStudent._id ? "Edit Student Profile" : "Add New Student"}
                 </h3>
                 <button onClick={() => setEditStudent(null)} className="p-2 text-neutral-500 hover:text-white rounded-lg transition-colors">
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="p-5 space-y-4">
+              <div className="p-4 sm:p-5 space-y-4">
                 <div>
                   <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Student Name</label>
                   <input
@@ -613,7 +706,7 @@ export default function StudentsPage() {
                   />
                 </div>
               </div>
-              <div className="p-5 border-t border-neutral-800 flex justify-end gap-3 bg-neutral-800/30">
+              <div className="p-4 sm:p-5 border-t border-neutral-800 flex justify-end gap-3 bg-neutral-900 sticky bottom-0 z-10">
                 <button onClick={() => setEditStudent(null)} className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors">Cancel</button>
                 <button
                   onClick={() => {

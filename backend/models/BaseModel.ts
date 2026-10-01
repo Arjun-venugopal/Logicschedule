@@ -675,8 +675,38 @@ export class BaseModel {
     return chain;
   }
 
-  // Execute count
+  // Execute count with native PostgREST head request when possible, falling back to in-memory filter
   private async _executeCount(query: any = {}): Promise<number> {
+    try {
+      const keys = Object.keys(query || {});
+      const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+
+      const canUseNativeCount = keys.every(k => {
+        if (!validCols.has(k)) return false;
+        const val = query[k];
+        return typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean' ||
+          (val && typeof val === 'object' && val.$in && Array.isArray(val.$in) && val.$in.length <= 50);
+      });
+
+      if (canUseNativeCount) {
+        let q = getSupabase().from(this.collectionName).select('*', { count: 'exact', head: true });
+        for (const k of keys) {
+          const val = query[k];
+          if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+            q = q.eq(k, val);
+          } else if (val?.$in && Array.isArray(val.$in)) {
+            q = q.in(k, val.$in);
+          }
+        }
+        const { count, error } = await q;
+        if (!error && count !== null && count !== undefined) {
+          return count;
+        }
+      }
+    } catch {
+      // In case of any network or postgrest issue, fall through to in-memory filter
+    }
+
     const docs = await this._fetchAndFilter(query, null, null);
     return docs.length;
   }

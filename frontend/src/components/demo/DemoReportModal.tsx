@@ -191,23 +191,23 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
           transition={{ duration: 0.2 }}
-          className="w-full max-w-3xl max-h-[90vh] bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col"
+          className="w-full max-w-3xl max-h-[92vh] bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden flex flex-col"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="bg-gradient-to-r from-amber-600 to-orange-500 px-6 py-4 flex items-center justify-between shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center">
+          <div className="bg-gradient-to-r from-amber-600 to-orange-500 px-4 sm:px-6 py-3.5 sm:py-4 flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 sm:w-10 sm:h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
                 <FileText className="w-5 h-5 text-white" />
               </div>
-              <div>
-                <h2 className="text-lg font-bold text-white">
+              <div className="min-w-0">
+                <h2 className="text-base sm:text-lg font-bold text-white truncate">
                   {readOnly ? "View" : isEditing ? "Edit" : "Create"} Performance Report
                 </h2>
-                <p className="text-white/70 text-xs">Student 1:1 Demo Assessment</p>
+                <p className="text-white/80 text-xs">Student 1:1 Demo Assessment</p>
               </div>
             </div>
-            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors">
+            <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg transition-colors shrink-0 min-h-[38px] min-w-[38px] flex items-center justify-center">
               <X className="w-5 h-5 text-white" />
             </button>
           </div>
@@ -217,14 +217,14 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
               <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
             </div>
           ) : (
-            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-5 sm:space-y-6">
               {/* Student Info */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h3 className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
                   <Star className="w-4 h-4 text-amber-400" />
                   Student Information
                 </h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400">Student Name *</label>
                     <input
@@ -264,7 +264,7 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50"
                     />
                   </div>
-                  <div className="space-y-1.5 md:col-span-2">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <label className="text-xs font-semibold text-neutral-400">Course Selected</label>
                     <input
                       value={form.courseSelected}
@@ -274,7 +274,7 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50 placeholder-neutral-600"
                     />
                   </div>
-                  <div className="space-y-1.5">
+                  <div className="space-y-1.5 sm:col-span-2">
                     <label className="text-xs font-semibold text-neutral-400">Report Date</label>
                     <input
                       type="date"
@@ -288,70 +288,72 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
               </div>
 
               {/* Scoring Table */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h3 className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
                   <Star className="w-4 h-4 text-amber-400" />
                   Task Scores
                 </h3>
-                <div className="bg-neutral-800/50 rounded-2xl border border-neutral-700 overflow-hidden">
-                  {/* Table Header */}
-                  <div className="grid grid-cols-[1fr_100px_1fr] gap-0 bg-gradient-to-r from-amber-600 to-orange-500 text-white text-xs font-bold uppercase">
-                    <div className="px-4 py-3">Task</div>
-                    <div className="px-4 py-3 text-center">Score (/10)</div>
-                    <div className="px-4 py-3">Remarks</div>
-                  </div>
-
-                  {/* Task Rows */}
-                  {TASK_LABELS.map(({ key, label, icon }, i) => (
-                    <div
-                      key={key}
-                      className={`grid grid-cols-[1fr_100px_1fr] gap-0 items-center ${i % 2 === 0 ? "bg-neutral-800/30" : "bg-neutral-800/10"} border-b border-neutral-800 last:border-b-0`}
-                    >
-                      <div className="px-4 py-3 flex items-center gap-2 text-sm text-neutral-200">
-                        <span className="text-base">{icon}</span>
-                        {label}
-                      </div>
-                      <div className="px-4 py-3 text-center">
-                        <input
-                          type="number"
-                          min={0}
-                          max={10}
-                          value={form.scores[key]}
-                          onChange={(e) => setScore(key, e.target.value)}
-                          disabled={readOnly}
-                          className="w-16 mx-auto bg-neutral-900 border border-neutral-600 rounded-lg px-2 py-1.5 text-sm text-white text-center outline-none focus:border-amber-500 transition-all disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="px-4 py-3">
-                        <input
-                          type="text"
-                          value={form.taskRemarks[key]}
-                          onChange={(e) => setTaskRemark(key, e.target.value)}
-                          disabled={readOnly}
-                          placeholder="Add remarks..."
-                          className="w-full bg-neutral-900 border border-neutral-600 rounded-lg px-3 py-1.5 text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50 placeholder-neutral-600"
-                        />
-                      </div>
+                <div className="overflow-x-auto rounded-2xl border border-neutral-700">
+                  <div className="bg-neutral-800/50 min-w-[500px]">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-[1.2fr_90px_1fr] gap-0 bg-gradient-to-r from-amber-600 to-orange-500 text-white text-xs font-bold uppercase">
+                      <div className="px-3.5 py-3">Task</div>
+                      <div className="px-2 py-3 text-center">Score (/10)</div>
+                      <div className="px-3.5 py-3">Remarks</div>
                     </div>
-                  ))}
 
-                  {/* Total Row */}
-                  <div className="grid grid-cols-[1fr_100px_1fr] gap-0 items-center bg-amber-500/10 border-t-2 border-amber-500/30">
-                    <div className="px-4 py-3 text-sm font-bold text-amber-400">TOTAL SCORE</div>
-                    <div className="px-4 py-3 text-center">
-                      <span className="text-lg font-bold text-amber-400">{totalScore}</span>
-                      <span className="text-neutral-500 text-sm">/60</span>
-                    </div>
-                    <div className="px-4 py-3 text-xs text-neutral-500">
-                      {totalScore >= 50 ? "🌟 Excellent!" : totalScore >= 40 ? "👍 Good" : totalScore >= 30 ? "📈 Average" : "📝 Needs Improvement"}
+                    {/* Task Rows */}
+                    {TASK_LABELS.map(({ key, label, icon }, i) => (
+                      <div
+                        key={key}
+                        className={`grid grid-cols-[1.2fr_90px_1fr] gap-0 items-center ${i % 2 === 0 ? "bg-neutral-800/30" : "bg-neutral-800/10"} border-b border-neutral-800 last:border-b-0`}
+                      >
+                        <div className="px-3.5 py-2.5 flex items-center gap-2 text-xs sm:text-sm text-neutral-200">
+                          <span className="text-base shrink-0">{icon}</span>
+                          <span className="truncate">{label}</span>
+                        </div>
+                        <div className="px-2 py-2.5 text-center">
+                          <input
+                            type="number"
+                            min={0}
+                            max={10}
+                            value={form.scores[key]}
+                            onChange={(e) => setScore(key, e.target.value)}
+                            disabled={readOnly}
+                            className="w-14 mx-auto bg-neutral-900 border border-neutral-600 rounded-lg px-1.5 py-1.5 text-xs sm:text-sm text-white text-center outline-none focus:border-amber-500 transition-all disabled:opacity-50"
+                          />
+                        </div>
+                        <div className="px-3.5 py-2.5">
+                          <input
+                            type="text"
+                            value={form.taskRemarks[key]}
+                            onChange={(e) => setTaskRemark(key, e.target.value)}
+                            disabled={readOnly}
+                            placeholder="Add remarks..."
+                            className="w-full bg-neutral-900 border border-neutral-600 rounded-lg px-2.5 py-1.5 text-xs sm:text-sm text-white outline-none focus:border-amber-500 transition-all disabled:opacity-50 placeholder-neutral-600"
+                          />
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Total Row */}
+                    <div className="grid grid-cols-[1.2fr_90px_1fr] gap-0 items-center bg-amber-500/10 border-t-2 border-amber-500/30">
+                      <div className="px-3.5 py-3 text-xs sm:text-sm font-bold text-amber-400">TOTAL SCORE</div>
+                      <div className="px-2 py-3 text-center">
+                        <span className="text-base sm:text-lg font-bold text-amber-400">{totalScore}</span>
+                        <span className="text-neutral-500 text-xs sm:text-sm">/60</span>
+                      </div>
+                      <div className="px-3.5 py-3 text-xs text-neutral-400">
+                        {totalScore >= 50 ? "🌟 Excellent!" : totalScore >= 40 ? "👍 Good" : totalScore >= 30 ? "📈 Average" : "📝 Needs Improvement"}
+                      </div>
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Overall Remarks */}
-              <div className="space-y-4">
-                <h3 className="text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <div className="space-y-3 sm:space-y-4">
+                <h3 className="text-xs sm:text-sm font-bold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-amber-400" />
                   Overall Remarks
                 </h3>
@@ -361,30 +363,30 @@ export default function DemoReportModal({ session, onClose, readOnly = false }: 
                   disabled={readOnly}
                   rows={4}
                   placeholder="Provide overall assessment and recommendations for the student..."
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-3 text-sm text-white outline-none focus:border-amber-500 transition-all resize-none disabled:opacity-50 placeholder-neutral-600"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all resize-none disabled:opacity-50 placeholder-neutral-600"
                 />
               </div>
 
               {/* Actions */}
-              <div className="flex justify-between items-center pt-2">
+              <div className="flex flex-col-reverse sm:flex-row justify-between items-stretch sm:items-center gap-3 pt-2">
                 <div>
                   {existingReport && (
                     <DemoReportPDF report={existingReport} />
                   )}
                 </div>
                 {!readOnly && (
-                  <div className="flex justify-end gap-3">
+                  <div className="flex flex-col sm:flex-row justify-end gap-2.5 sm:gap-3">
                     <button
                       type="button"
                       onClick={onClose}
-                      className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl transition-all text-sm border border-neutral-700"
+                      className="px-5 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 font-semibold rounded-xl transition-all text-xs sm:text-sm border border-neutral-700 min-h-[44px]"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={isSaving}
-                      className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold rounded-xl transition-all text-sm shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center gap-2"
+                      className="px-6 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-bold rounded-xl transition-all text-xs sm:text-sm shadow-lg shadow-amber-500/20 disabled:opacity-50 flex items-center justify-center gap-2 min-h-[44px]"
                     >
                       <Save className="w-4 h-4" />
                       {isSaving ? "Saving..." : isEditing ? "Update Report" : "Create Report"}

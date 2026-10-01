@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import User from '../models/User';
 
-import { isSupabaseConfigured, getSupabase } from '../config/supabase';
+import { getSupabase } from '../config/supabase';
 
 // @desc    Get all sales people
 // @route   GET /api/sales-people

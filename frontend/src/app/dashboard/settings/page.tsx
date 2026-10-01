@@ -269,8 +269,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-white">Settings</h1>
-        <p className="text-neutral-400 text-sm mt-0.5">Manage your profile, status, and preferences</p>
+        <h1 className="text-xl sm:text-2xl font-bold text-white">Settings</h1>
+        <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">Manage your profile, status, and preferences</p>
       </div>
 
       <div className="grid gap-6">
@@ -313,13 +313,13 @@ export default function SettingsPage() {
           ) : (
             <form onSubmit={handleProfileSubmit} className="space-y-6">
               {/* Profile Card */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
                 <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
                   <User className="w-5 h-5 text-amber-500" />
                   My Teacher Profile
                 </h3>
 
-                <div className="flex flex-col md:flex-row items-start md:items-center gap-6 mb-6 pb-6 border-b border-neutral-800">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6 mb-6 pb-6 border-b border-neutral-800">
                   <div className="w-16 h-16 rounded-2xl brand-gradient flex items-center justify-center text-2xl font-bold text-black shrink-0 shadow-lg shadow-amber-500/10">
                     {user?.name?.charAt(0) || "T"}
                   </div>
@@ -357,7 +357,7 @@ export default function SettingsPage() {
               </div>
 
               {/* Date-Based Duty Status & Scheduled Leaves Manager */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 space-y-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
                     <h3 className="font-semibold text-white flex items-center gap-2">
@@ -371,13 +371,13 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Form to add date-based duty status */}
-                <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-4 space-y-3">
+                <div className="bg-neutral-950/60 border border-neutral-800 rounded-xl p-3 sm:p-4 space-y-3">
                   <h4 className="text-xs font-semibold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
                     <Plus className="w-3.5 h-3.5" />
                     Add Date-Based Duty Schedule
                   </h4>
                   
-                  <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Start Date */}
                     <div className="space-y-1">
                       <label className="text-xs font-medium text-neutral-400">Start Date</label>
@@ -499,26 +499,26 @@ export default function SettingsPage() {
               </div>
 
               {/* Availability Manager */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-                <div className="flex items-center justify-between mb-4">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-4">
                   <div>
-                    <h3 className="font-semibold text-white flex items-center gap-2">
-                      <Clock className="w-5 h-5 text-amber-500" />
+                    <h3 className="font-semibold text-white flex items-center gap-2 text-base sm:text-lg">
+                      <Clock className="w-5 h-5 text-amber-500 shrink-0" />
                       Manage My Weekly Availability
                     </h3>
-                    <p className="text-xs text-neutral-500 mt-0.5">
+                    <p className="text-xs text-neutral-400 mt-0.5">
                       Set standard working hours day-by-day. Admins will schedule classes and demo sessions matching these slots.
                     </p>
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4">
                   {availability.map((dayAvail) => {
                     const hasSlots = dayAvail.slots.length > 0;
                     return (
                       <div
                         key={dayAvail.day}
-                        className={`border rounded-2xl p-4 flex flex-col justify-between transition-all ${
+                        className={`border rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between transition-all ${
                           hasSlots
                             ? "bg-neutral-800/40 border-neutral-750"
                             : "bg-neutral-950/20 border-neutral-800 opacity-60 hover:opacity-85"
@@ -544,32 +544,32 @@ export default function SettingsPage() {
                             <div className="space-y-2">
                               {dayAvail.slots.map((slot, sIdx) => (
                                 <div key={sIdx} className="flex items-center gap-1.5 bg-neutral-900 p-2 rounded-xl border border-neutral-800">
-                                  <div className="flex flex-col gap-1 w-full">
+                                  <div className="flex flex-col gap-1.5 w-full min-w-0">
                                     <div className="flex justify-between items-center gap-1">
-                                      <span className="text-[9px] text-neutral-500 uppercase">Start</span>
+                                      <span className="text-[10px] text-neutral-400 uppercase font-medium">Start</span>
                                       <input
                                         type="time"
                                         required
                                         value={slot.startTime}
                                         onChange={(e) => updateSlotTime(dayAvail.day, sIdx, "startTime", e.target.value)}
-                                        className="bg-neutral-800 border border-neutral-750 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                                        className="bg-neutral-800 border border-neutral-750 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-amber-500 w-[110px]"
                                       />
                                     </div>
                                     <div className="flex justify-between items-center gap-1">
-                                      <span className="text-[9px] text-neutral-500 uppercase">End</span>
+                                      <span className="text-[10px] text-neutral-400 uppercase font-medium">End</span>
                                       <input
                                         type="time"
                                         required
                                         value={slot.endTime}
                                         onChange={(e) => updateSlotTime(dayAvail.day, sIdx, "endTime", e.target.value)}
-                                        className="bg-neutral-800 border border-neutral-750 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                                        className="bg-neutral-800 border border-neutral-750 rounded px-1.5 py-0.5 text-xs text-white focus:outline-none focus:border-amber-500 w-[110px]"
                                       />
                                     </div>
                                   </div>
                                   <button
                                     type="button"
                                     onClick={() => removeSlot(dayAvail.day, sIdx)}
-                                    className="p-1 hover:bg-red-500/10 text-neutral-500 hover:text-red-400 rounded transition-colors"
+                                    className="p-1.5 hover:bg-red-500/10 text-neutral-400 hover:text-red-400 rounded-lg transition-colors shrink-0"
                                     title="Delete slot"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -578,7 +578,7 @@ export default function SettingsPage() {
                               ))}
                             </div>
                           ) : (
-                            <p className="text-neutral-600 text-xs italic py-2">No availability slots set.</p>
+                            <p className="text-neutral-500 text-xs italic py-2">No availability slots set.</p>
                           )}
                         </div>
 
@@ -586,9 +586,9 @@ export default function SettingsPage() {
                         <button
                           type="button"
                           onClick={() => addSlot(dayAvail.day)}
-                          className="mt-4 w-full flex items-center justify-center gap-1 py-1.5 text-xs font-semibold bg-neutral-800 hover:bg-neutral-750 text-neutral-400 hover:text-white rounded-xl border border-neutral-700 transition-colors"
+                          className="mt-4 w-full min-h-[38px] flex items-center justify-center gap-1 py-1.5 text-xs font-semibold bg-neutral-800 hover:bg-neutral-750 text-neutral-300 hover:text-white rounded-xl border border-neutral-700 transition-colors"
                         >
-                          <Plus className="w-3 h-3" />
+                          <Plus className="w-3.5 h-3.5" />
                           Add Time Slot
                         </button>
                       </div>
@@ -602,7 +602,7 @@ export default function SettingsPage() {
                 <button
                   type="submit"
                   disabled={updateProfileMutation.isPending}
-                  className="flex items-center gap-2 px-6 py-3 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/10 disabled:opacity-50"
+                  className="w-full sm:w-auto flex items-center justify-center gap-2 px-6 py-3 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/10 disabled:opacity-50 min-h-[44px]"
                 >
                   <Save className="w-4 h-4" />
                   {updateProfileMutation.isPending ? "Saving Profile..." : "Save Profile & Availability"}
@@ -612,21 +612,21 @@ export default function SettingsPage() {
           )
         ) : (
           /* NON-TEACHER PROFILE (ADMIN/SALES) */
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-            <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-              <Shield className="w-5 h-5 text-amber-500" />
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+            <h3 className="font-semibold text-white mb-4 flex items-center gap-2 text-base sm:text-lg">
+              <Shield className="w-5 h-5 text-amber-500 shrink-0" />
               {isSalesPerson ? "Sales Person Profile" : "Admin Profile"}
             </h3>
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl brand-gradient flex items-center justify-center text-2xl font-bold text-black">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 mb-6">
+              <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl brand-gradient flex items-center justify-center text-2xl font-bold text-black shrink-0">
                 {user?.name?.charAt(0) || "A"}
               </div>
               <div>
                 <p className="font-medium text-white">{isSalesPerson ? "Sales Executive" : "System Administrator"}</p>
-                <p className="text-sm text-neutral-400">{user?.email}</p>
+                <p className="text-sm text-neutral-400 break-all">{user?.email}</p>
               </div>
             </div>
-            <div className="grid md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {[
                 { label: "Full Name", value: user?.name || (isSalesPerson ? "Sales Person" : "System Admin"), disabled: true },
                 { label: "Email Address", value: user?.email, type: "email", disabled: true },
@@ -646,13 +646,13 @@ export default function SettingsPage() {
         )}
 
         {/* Change Password Form (All Roles) */}
-        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-          <h3 className="font-semibold text-white mb-4 flex items-center gap-2">
-            <KeyRound className="w-5 h-5 text-amber-500" />
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+          <h3 className="font-semibold text-white mb-4 flex items-center gap-2 text-base sm:text-lg">
+            <KeyRound className="w-5 h-5 text-amber-500 shrink-0" />
             Change Password
           </h3>
           
-          <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-md">
+          <form onSubmit={handlePasswordSubmit} className="space-y-4 max-w-md w-full">
             <AnimatePresence>
               {passwordSuccess && (
                 <motion.div
@@ -700,7 +700,7 @@ export default function SettingsPage() {
             <button
               type="submit"
               disabled={passwordLoading}
-              className="px-5 py-2.5 brand-gradient text-black font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-1.5"
+              className="w-full sm:w-auto px-5 py-2.5 brand-gradient text-black font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center justify-center gap-1.5 min-h-[44px]"
             >
               {passwordLoading && <div className="w-3.5 h-3.5 border-2 border-black border-t-transparent rounded-full animate-spin" />}
               Update Password

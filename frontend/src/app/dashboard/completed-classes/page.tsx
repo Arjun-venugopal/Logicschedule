@@ -133,18 +133,18 @@ export default function CompletedClassesPage() {
   return (
     <div className="flex flex-col gap-6 h-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-white">Completed Classes</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Completed Classes</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             View your past classes and add remarks or topics covered.
           </p>
         </div>
-        <div className="flex flex-col md:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <select
             value={selectedStudentId}
             onChange={(e) => setSelectedStudentId(e.target.value)}
-            className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            className="w-full sm:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
           >
             <option value="">All Students</option>
             {students.map((s: any) => (
@@ -152,12 +152,12 @@ export default function CompletedClassesPage() {
             ))}
           </select>
 
-          <div className="relative w-full md:w-48">
+          <div className="relative w-full sm:w-48">
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              className="w-full bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
             />
             {selectedDate && (
               <button 
@@ -197,7 +197,7 @@ export default function CompletedClassesPage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-5 hover:bg-neutral-800/60 transition-colors flex flex-col md:flex-row justify-between gap-4"
+                  className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 sm:p-5 hover:bg-neutral-800/60 transition-colors flex flex-col md:flex-row justify-between gap-4"
                 >
                   <div className="space-y-3">
                     <div className="flex flex-col">
@@ -226,7 +226,7 @@ export default function CompletedClassesPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col justify-between items-start md:items-end gap-3 md:w-1/2">
+                  <div className="flex flex-col justify-between items-start md:items-end gap-3 w-full md:w-1/2">
                     <div className="w-full">
                       <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Notes</p>
                       <div className="text-sm text-neutral-300 bg-neutral-900/50 p-3 rounded-lg border border-neutral-800/80 min-h-[44px] w-full line-clamp-2">
@@ -235,7 +235,7 @@ export default function CompletedClassesPage() {
                     </div>
                     <button
                       onClick={() => openEdit(cls)}
-                      className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium rounded-lg transition-colors border border-neutral-700 hover:border-neutral-600 shrink-0"
+                      className="w-full sm:w-auto justify-center flex items-center gap-2 px-4 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white text-sm font-medium rounded-lg transition-colors border border-neutral-700 hover:border-neutral-600 shrink-0"
                     >
                       <Edit2 className="w-4 h-4" />
                       {cls.notes ? "Edit Note" : "Add Note"}
@@ -255,22 +255,22 @@ export default function CompletedClassesPage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto"
             >
-              <div className="flex items-center justify-between p-6 border-b border-neutral-800">
-                <h2 className="text-lg font-bold text-white">Add Class Notes</h2>
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-10">
+                <h2 className="text-base sm:text-lg font-bold text-white">Add Class Notes</h2>
                 <button onClick={() => setModal(null)} className="text-neutral-500 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4">
                 <div className="p-4 bg-neutral-800/40 rounded-xl border border-neutral-800 mb-2">
                   <p className="text-sm font-medium text-white mb-1">
                     {modal.batch?.name}

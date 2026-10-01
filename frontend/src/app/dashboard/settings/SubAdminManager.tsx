@@ -135,8 +135,8 @@ export default function SubAdminManager() {
   };
 
   return (
-    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6">
-      <div className="flex items-center justify-between mb-6">
+    <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h3 className="font-semibold text-white flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-amber-500" />
@@ -146,7 +146,7 @@ export default function SubAdminManager() {
         </div>
         <button
           onClick={openCreateModal}
-          className="flex items-center gap-1.5 px-4 py-2 brand-gradient text-black font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity"
+          className="flex items-center gap-1.5 px-4 py-2 brand-gradient text-black font-semibold rounded-xl text-sm hover:opacity-90 transition-opacity w-full sm:w-auto justify-center"
         >
           <Plus className="w-4 h-4" />
           Add Sub Admin
@@ -156,8 +156,8 @@ export default function SubAdminManager() {
       {isLoading ? (
         <div className="py-8 text-center text-neutral-500 text-sm">Loading sub admins...</div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-left">
+        <div className="overflow-x-auto w-full">
+          <table className="w-full text-sm text-left whitespace-nowrap min-w-[500px]">
             <thead className="text-xs text-neutral-400 uppercase bg-neutral-900 border-b border-neutral-800">
               <tr>
                 <th className="px-4 py-3 font-medium">Name</th>
@@ -208,20 +208,20 @@ export default function SubAdminManager() {
 
       <AnimatePresence>
         {isModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col shadow-2xl"
+              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl"
             >
-              <div className="p-6 border-b border-neutral-800 shrink-0">
-                <h2 className="text-xl font-bold text-white">
+              <div className="p-4 sm:p-6 border-b border-neutral-800 shrink-0">
+                <h2 className="text-lg sm:text-xl font-bold text-white">
                   {editingId ? "Edit Sub Admin" : "Create Sub Admin"}
                 </h2>
               </div>
 
-              <div className="p-6 overflow-y-auto">
+              <div className="p-4 sm:p-6 overflow-y-auto">
                 {formError && (
                   <div className="mb-6 bg-red-500/10 border border-red-500/30 rounded-xl p-3 flex items-center gap-2 text-red-400 text-sm">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -231,7 +231,7 @@ export default function SubAdminManager() {
 
                 <form id="subAdminForm" onSubmit={handleSubmit} className="space-y-6">
                   {!editingId && (
-                    <div className="flex gap-4 p-1 bg-neutral-950 rounded-xl mb-4 w-max">
+                    <div className="flex flex-wrap gap-2 sm:gap-4 p-1 bg-neutral-950 rounded-xl mb-4 w-full sm:w-max">
                       <button
                         type="button"
                         onClick={() => {

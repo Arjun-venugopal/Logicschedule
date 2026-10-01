@@ -8,9 +8,12 @@ import { motion } from "framer-motion";
 import Link from "next/link";
 import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import dynamic from "next/dynamic";
 
-import { ActiveBatchesAnalyticsModal } from "@/components/batches/ActiveBatchesAnalyticsModal";
-
+const ActiveBatchesAnalyticsModal = dynamic(
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then(mod => mod.ActiveBatchesAnalyticsModal),
+  { ssr: false }
+);
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
@@ -80,16 +83,16 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 w-full min-w-0">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Dashboard</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start sm:self-auto">
           <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-xs font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
             System Live
@@ -97,7 +100,7 @@ export default function DashboardPage() {
           <button
             onClick={() => refetch()}
             disabled={isRefetching}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-full text-neutral-400 hover:text-white text-xs font-medium transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 border border-neutral-800 rounded-full text-neutral-400 hover:text-white text-xs font-medium transition-colors cursor-pointer"
           >
             <RefreshCw className={`w-3 h-3 ${isRefetching ? "animate-spin" : ""}`} />
             {isRefetching ? "Refreshing..." : "Refresh"}
@@ -106,7 +109,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-4">
         {statCards.map((stat, i) => {
           const isActiveBatchesCard = stat.label === "Active Batches";
           return (
@@ -118,11 +121,11 @@ export default function DashboardPage() {
               onClick={() => {
                 if (isActiveBatchesCard) setShowActiveAnalyticsModal(true);
               }}
-              className={`p-5 rounded-2xl bg-neutral-900 border ${stat.border} relative overflow-hidden ${
+              className={`p-4 sm:p-5 rounded-xl sm:rounded-2xl bg-neutral-900 border ${stat.border} relative overflow-hidden ${
                 isActiveBatchesCard ? "cursor-pointer hover:border-orange-500/50 hover:bg-neutral-800/80 transition-all group shadow-lg shadow-orange-950/10" : ""
               }`}
             >
-              <div className="flex items-start justify-between mb-4">
+              <div className="flex items-start justify-between mb-3 sm:mb-4">
                 <div className={`p-2 rounded-xl ${stat.bg}`}>
                   <stat.icon className={`w-5 h-5 ${stat.color}`} />
                 </div>
@@ -132,49 +135,49 @@ export default function DashboardPage() {
                   <TrendingUp className="w-4 h-4 text-neutral-700" />
                 )}
               </div>
-              <div className="text-3xl font-bold text-white mb-0.5">
+              <div className="text-2xl sm:text-3xl font-bold text-white mb-0.5 truncate">
                 {isLoading ? <span className="text-neutral-600 text-lg">—</span> : stat.value}
               </div>
               <div className="text-xs text-neutral-500 font-medium flex items-center justify-between">
-                <span>{stat.label}</span>
+                <span className="truncate">{stat.label}</span>
                 {isActiveBatchesCard && (
-                  <span className="text-[10px] text-orange-400 font-semibold group-hover:underline">
+                  <span className="text-[10px] text-orange-400 font-semibold group-hover:underline shrink-0 ml-1">
                     View Analytics →
                   </span>
                 )}
               </div>
-              {stat.sub && <div className="text-[10px] text-neutral-600 mt-0.5">{stat.sub}</div>}
+              {stat.sub && <div className="text-[10px] text-neutral-600 mt-0.5 truncate">{stat.sub}</div>}
             </motion.div>
           );
         })}
       </div>
 
       {/* Charts + Live Status */}
-      <div className="grid lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
         {/* Weekly Chart */}
         <motion.div
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} bg-neutral-900 border border-neutral-800 rounded-2xl p-6`}
+          className={`${isAdmin ? 'lg:col-span-2' : 'lg:col-span-3'} bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-w-0`}
         >
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between mb-4 sm:mb-6">
             <div>
-              <h3 className="font-semibold text-white">Weekly Classes</h3>
+              <h3 className="font-semibold text-white text-sm sm:text-base">Weekly Classes</h3>
               <p className="text-xs text-neutral-500">Total classes scheduled this week</p>
             </div>
-            <div className="flex items-center gap-2 text-xs text-amber-400 font-medium">
-              <Calendar className="w-4 h-4" />
+            <div className="flex items-center gap-1.5 text-xs text-amber-400 font-medium">
+              <Calendar className="w-3.5 h-3.5" />
               This Week
             </div>
           </div>
-          <div className="h-56">
+          <div className="h-48 sm:h-56 w-full min-w-0">
             {isLoading ? (
               <div className="h-full flex items-center justify-center">
                 <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                 <AreaChart data={weekData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="amberGrad" x1="0" y1="0" x2="0" y2="1">
@@ -202,9 +205,9 @@ export default function DashboardPage() {
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.45 }}
-          className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 flex flex-col"
-        >
+            transition={{ delay: 0.45 }}
+            className="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-6 flex flex-col min-w-0"
+          >
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="font-semibold text-white">Live Status & Timings</h3>
@@ -235,13 +238,13 @@ export default function DashboardPage() {
                     key={t._id || i}
                     className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-neutral-800/50 hover:bg-neutral-800 transition-colors"
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex items-center gap-2.5 min-w-0">
                       <div className="w-7 h-7 rounded-full brand-gradient flex items-center justify-center text-xs font-bold text-black shrink-0">
                         {t.name.charAt(0)}
                       </div>
-                      <div>
-                        <p className="text-xs font-medium text-white">{t.name}</p>
-                        <p className="text-[10px] text-neutral-500">{t.subject}</p>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-white truncate">{t.name}</p>
+                        <p className="text-[10px] text-neutral-500 truncate">{t.subject}</p>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-0.5">

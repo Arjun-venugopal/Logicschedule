@@ -123,7 +123,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
   const ringColor = attendancePercentage >= 75 ? "text-emerald-500" : attendancePercentage >= 50 ? "text-amber-500" : "text-red-500";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-12">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8">
       {/* Backdrop */}
       <motion.div
         initial={{ opacity: 0 }}
@@ -139,34 +139,34 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="bg-neutral-900 border border-neutral-800 rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col relative z-10 max-h-[90vh]"
+        className="bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col relative z-10 max-h-[92vh]"
       >
         {/* Dynamic Glass Header */}
-        <div className="relative h-16 shrink-0 overflow-hidden bg-orange-900">
+        <div className="relative h-14 sm:h-16 shrink-0 overflow-hidden bg-orange-900">
           <div className="absolute inset-0 brand-gradient opacity-70" />
           <div className="absolute top-0 right-0 p-8 w-full h-full" />
 
-          <button onClick={onClose} className="absolute top-4 right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all backdrop-blur-md hover:scale-110">
-            <X className="w-5 h-5" />
+          <button onClick={onClose} className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all backdrop-blur-md hover:scale-110 min-h-[38px] min-w-[38px] flex items-center justify-center">
+            <X className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
         </div>
 
-        <div className="px-8 pb-8 pt-0 relative flex-1 overflow-y-auto custom-scrollbar">
+        <div className="px-4 sm:px-8 pb-6 sm:pb-8 pt-0 relative flex-1 overflow-y-auto custom-scrollbar">
           {/* Profile Header (Overlapping) */}
-          <div className="flex flex-col md:flex-row gap-6 items-center md:items-end mb-8 text-center md:text-left">
+          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-center sm:items-end mb-6 sm:mb-8 text-center sm:text-left -mt-8 sm:-mt-10">
             <motion.div
               initial={{ scale: 0.8, y: 20 }}
               animate={{ scale: 1, y: 0 }}
               transition={{ type: "spring", delay: 0.1 }}
-              className="w-32 h-32 rounded-[2rem] bg-neutral-900 border-[6px] border-neutral-900 flex items-center justify-center text-4xl font-black text-amber-500 shadow-2xl shrink-0 brand-gradient-bg relative overflow-hidden group"
+              className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] bg-neutral-900 border-4 sm:border-[6px] border-neutral-900 flex items-center justify-center text-3xl sm:text-4xl font-black text-amber-500 shadow-2xl shrink-0 brand-gradient-bg relative overflow-hidden group"
             >
               <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
               <span className="relative z-10">{student.name.charAt(0).toUpperCase()}</span>
             </motion.div>
 
-            <div className="flex-1 pb-2">
-              <h2 className="text-3xl font-black text-white tracking-tight">{student.name}</h2>
-              <p className="text-amber-500/80 mt-1 flex items-center justify-center md:justify-start gap-2 font-medium">
+            <div className="flex-1 pb-1 sm:pb-2">
+              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">{student.name}</h2>
+              <p className="text-amber-500/80 mt-1 flex items-center justify-center sm:justify-start gap-2 font-medium text-xs sm:text-sm">
                 <BookOpen className="w-4 h-4" /> {student.batch?.name || "Unassigned Batch"}
               </p>
             </div>
@@ -210,7 +210,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
             </div>
           )}
 
-          <div className="grid md:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6">
             {/* Contact Information Cards (Col Span 3) */}
             <div className="md:col-span-3 space-y-4">
               <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest px-1">
@@ -219,30 +219,30 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {/* Parent */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-4 border border-neutral-800/50 flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
                     <User className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Parent / Guardian</p>
                     <p className="text-sm font-semibold text-white truncate">{student.parentName || "—"}</p>
                   </div>
                 </div>
 
                 {/* Mobile */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-4 border border-neutral-800/50 flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
                     <Phone className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Mobile Number</p>
                     <p className="text-sm font-semibold text-white truncate">{student.mobileNumber || "—"}</p>
                   </div>
                 </div>
 
                 {/* Email */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-4 border border-neutral-800/50 flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
                     <Mail className="w-5 h-5" />
                   </div>
                   <div className="min-w-0 flex-1">
@@ -252,11 +252,11 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                 </div>
 
                 {/* WhatsApp */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-4 border border-neutral-800/50 flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
+                  <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
                     <MessageCircle className="w-5 h-5" />
                   </div>
-                  <div>
+                  <div className="min-w-0 flex-1">
                     <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">WhatsApp</p>
                     <p className="text-sm font-semibold text-white truncate">{student.whatsappNumber || "—"}</p>
                   </div>
@@ -270,7 +270,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                 <Activity className="w-4 h-4 text-amber-500" />
                 <span>Attendance</span>
               </div>
-              <div className="bg-neutral-800/40 rounded-2xl p-5 border border-neutral-800/50 h-[172px] flex items-center justify-center relative overflow-hidden">
+              <div className="bg-neutral-800/40 rounded-2xl p-4 sm:p-5 border border-neutral-800/50 min-h-[160px] flex items-center justify-center relative overflow-hidden">
                 {attLoading ? (
                   <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
                 ) : !student.batch ? (
@@ -279,9 +279,9 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                     <p className="text-neutral-500 text-xs font-medium">Assign batch to track</p>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-6 w-full max-w-[200px] mx-auto">
+                  <div className="flex items-center justify-center gap-4 sm:gap-6 w-full max-w-[220px] mx-auto">
                     {/* SVG Progress Ring */}
-                    <div className="relative w-24 h-24 shrink-0">
+                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
                       <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 80 80">
                         {/* Background ring */}
                         <circle cx="40" cy="40" r="36" className="text-neutral-800" strokeWidth="6" stroke="currentColor" fill="none" />
@@ -300,17 +300,17 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-xl font-bold text-white">{attendancePercentage}%</span>
+                        <span className="text-lg sm:text-xl font-bold text-white">{attendancePercentage}%</span>
                       </div>
                     </div>
 
-                    <div className="space-y-3 flex-1">
+                    <div className="space-y-2 sm:space-y-3 flex-1 min-w-0">
                       <div>
-                        <p className="text-2xl font-bold text-white leading-none">{presentCount}</p>
+                        <p className="text-xl sm:text-2xl font-bold text-white leading-none">{presentCount}</p>
                         <p className="text-[10px] uppercase text-neutral-500 font-bold mt-0.5">Attended</p>
                       </div>
                       <div>
-                        <p className="text-xl font-bold text-neutral-400 leading-none">{totalClasses}</p>
+                        <p className="text-lg sm:text-xl font-bold text-neutral-400 leading-none">{totalClasses}</p>
                         <p className="text-[10px] uppercase text-neutral-600 font-bold mt-0.5">Total</p>
                       </div>
                     </div>
@@ -332,18 +332,18 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                 <div className="divide-y divide-neutral-800/50">
                   {/* Current Batch */}
                   {student.batch && (
-                    <div className="p-4 flex items-center justify-between hover:bg-neutral-800/40 transition-colors relative overflow-hidden group">
+                    <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-neutral-800/40 transition-colors relative overflow-hidden group">
                       <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-r" />
-                      <div className="flex items-center gap-4 pl-2">
-                        <div className="w-10 h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
+                      <div className="flex items-center gap-3 sm:gap-4 pl-2 min-w-0">
+                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
                           <BookOpen className="w-4 h-4 text-emerald-500" />
                         </div>
-                        <div>
-                          <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors">{student.batch.name}</h4>
-                          <p className="text-xs text-neutral-500 font-medium mt-0.5">{student.batch.subject || "General"}</p>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors truncate">{student.batch.name}</h4>
+                          <p className="text-xs text-neutral-500 font-medium mt-0.5 truncate">{student.batch.subject || "General"}</p>
                         </div>
                       </div>
-                      <div className="px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest">
+                      <div className="self-start sm:self-auto px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest shrink-0">
                         Current
                       </div>
                     </div>
@@ -368,25 +368,25 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                     }
 
                     return (
-                      <div key={idx} className="p-4 flex items-center justify-between hover:bg-neutral-800/40 transition-colors relative group">
-                        <div className="flex items-center gap-4 pl-3">
-                          <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center shrink-0">
+                      <div key={idx} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-neutral-800/40 transition-colors relative group">
+                        <div className="flex items-center gap-3 sm:gap-4 pl-2 sm:pl-3 min-w-0">
+                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-neutral-800 flex items-center justify-center shrink-0">
                             <CheckCircle2 className="w-4 h-4 text-neutral-500" />
                           </div>
-                          <div>
-                            <h4 className="text-sm font-bold text-neutral-300 group-hover:text-white transition-colors">{batchName}</h4>
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-sm font-bold text-neutral-300 group-hover:text-white transition-colors truncate">{batchName}</h4>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-xs text-neutral-500 font-medium">{batchSubject}</p>
+                              <p className="text-xs text-neutral-500 font-medium truncate">{batchSubject}</p>
                               {completedDateStr && (
                                 <>
-                                  <span className="w-1 h-1 rounded-full bg-neutral-700" />
-                                  <p className="text-[10px] text-neutral-600 font-medium">Completed {completedDateStr}</p>
+                                  <span className="w-1 h-1 rounded-full bg-neutral-700 shrink-0" />
+                                  <p className="text-[10px] text-neutral-600 font-medium shrink-0">Completed {completedDateStr}</p>
                                 </>
                               )}
                             </div>
                           </div>
                         </div>
-                        <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2">
+                        <div className="self-start sm:self-auto text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2 shrink-0">
                           Completed
                         </div>
                       </div>
@@ -394,7 +394,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                   })}
                 </div>
               ) : (
-                <div className="p-8 text-center flex flex-col items-center justify-center">
+                <div className="p-6 sm:p-8 text-center flex flex-col items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mb-3">
                     <History className="w-5 h-5 text-neutral-600" />
                   </div>
@@ -408,12 +408,12 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
 
         {/* Choose Next Course Selection Dialog */}
         {showNextCourseModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-md p-6 shadow-2xl space-y-4"
+              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-md p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
             >
               <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                 <div className="flex items-center gap-2">

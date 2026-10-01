@@ -113,10 +113,10 @@ export default function SalesPeoplePage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-white">Sales People</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">Manage sales executives and access credentials</p>
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Sales People</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">Manage sales executives and access credentials</p>
         </div>
         {hasWriteAccess && (
           <button
@@ -125,7 +125,7 @@ export default function SalesPeoplePage() {
               setFormData({ name: "", email: "", tempPassword: generatePassword() });
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-2 px-4 py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm shadow-lg shadow-amber-500/20"
+            className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
           >
             <UserPlus className="w-4 h-4" /> Add Sales Person
           </button>
@@ -203,7 +203,7 @@ export default function SalesPeoplePage() {
             )}
           </div>
         ) : (
-          <table className="w-full">
+          <table className="w-full text-left text-sm whitespace-nowrap min-w-[550px]">
             <thead>
               <tr className="border-b border-neutral-800 text-xs text-neutral-500 uppercase tracking-wider">
                 <th className="py-3.5 px-5 font-medium text-left">Name</th>
@@ -286,17 +286,17 @@ export default function SalesPeoplePage() {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4"
           >
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
               transition={{ duration: 0.15 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl max-h-[92vh] overflow-y-auto"
             >
-              <div className="flex items-center justify-between p-6 border-b border-neutral-800">
-                <h2 className="text-lg font-bold text-white">{editSalesPerson ? "Edit Sales Person" : "Add Sales Person"}</h2>
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 sticky top-0 bg-neutral-900 z-10">
+                <h2 className="text-base sm:text-lg font-bold text-white">{editSalesPerson ? "Edit Sales Person" : "Add Sales Person"}</h2>
                 <button onClick={() => { setIsModalOpen(false); setEditSalesPerson(null); }} className="text-neutral-500 hover:text-white transition-colors">
                   <X className="w-5 h-5" />
                 </button>

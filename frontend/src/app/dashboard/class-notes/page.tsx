@@ -116,23 +116,23 @@ export default function ClassNotesPage() {
   return (
     <div className="flex flex-col gap-6 h-full">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 shrink-0">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-white">Completed Class Notes</h1>
-          <p className="text-neutral-400 text-sm mt-0.5">
+          <h1 className="text-xl sm:text-2xl font-bold text-white">Completed Class Notes</h1>
+          <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             Review subjects taught and remarks submitted by teachers.
           </p>
         </div>
         
         {/* Filters */}
-        <div className="flex flex-col md:flex-row items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3 w-full sm:w-auto">
           <select
             value={selectedTeacherId}
             onChange={(e) => {
               setSelectedTeacherId(e.target.value);
               setSelectedStudentId(""); // Reset student on teacher change
             }}
-            className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+            className="w-full sm:w-44 md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
           >
             <option value="">Select Teacher</option>
             {teachers.map((t: any) => (
@@ -144,7 +144,7 @@ export default function ClassNotesPage() {
             <select
               value={selectedStudentId}
               onChange={(e) => setSelectedStudentId(e.target.value)}
-              className="w-full md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
+              className="w-full sm:w-44 md:w-48 bg-neutral-900 border border-neutral-800 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
             >
               <option value="">Select Student ({studentsForTeacher.length})</option>
               {studentsForTeacher.map((s: any) => (
@@ -153,7 +153,7 @@ export default function ClassNotesPage() {
             </select>
           )}
 
-          <div className="relative w-full md:w-64">
+          <div className="relative w-full sm:w-48 md:w-64">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500" />
             <input
               type="text"
@@ -192,7 +192,7 @@ export default function ClassNotesPage() {
                   initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.05 }}
-                  className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-5 hover:bg-neutral-800/60 transition-colors"
+                  className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-4 sm:p-5 hover:bg-neutral-800/60 transition-colors"
                 >
                   <div className="flex flex-col lg:flex-row gap-6">
                     {/* Left Column: Metadata */}
