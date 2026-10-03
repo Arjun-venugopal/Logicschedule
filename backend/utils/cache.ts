@@ -4,16 +4,21 @@ interface CacheEntry<T> {
 }
 
 /**
- * High-Performance O(1) LRU Cache with TTL expiration.
- * Evicts least-recently-used items when capacity is reached.
+ * High-Performance O(1) LRU Cache with TTL expiration and active memory optimization.
+ * Evicts least-recently-used items when capacity is reached and actively prunes expired entries.
  */
 class LruTtlCache {
   private capacity: number;
   private store = new Map<string, CacheEntry<any>>();
-  private backupStore = new Map<string, any>();
+  private cleanupInterval: NodeJS.Timeout | null = null;
 
-  constructor(capacity: number = 1000) {
+  constructor(capacity: number = 150) {
     this.capacity = capacity;
+    // Active background cleanup of expired entries every 60 seconds
+    this.cleanupInterval = setInterval(() => this.pruneExpired(), 60_000);
+    if (this.cleanupInterval && typeof this.cleanupInterval.unref === 'function') {
+      this.cleanupInterval.unref(); // Ensure it doesn't prevent graceful shutdown
+    }
   }
 
   get<T>(key: string): T | null {
@@ -31,37 +36,30 @@ class LruTtlCache {
 
   getStale<T>(key: string): T | null {
     const entry = this.store.get(key);
-    if (entry) return entry.data;
-    return this.backupStore.get(key) || null;
+    return entry ? entry.data : null;
   }
 
   set<T>(key: string, data: T, ttlMs: number = 30_000): void {
-    // If key already exists, refresh its position
     if (this.store.has(key)) {
       this.store.delete(key);
     } else if (this.store.size >= this.capacity) {
-      // Evict least recently used (first item in Map)
-      const lruKey = this.store.keys().next().value;
-      if (lruKey !== undefined) this.store.delete(lruKey);
-    }
-
-    if (this.backupStore.has(key)) {
-      this.backupStore.delete(key);
-    } else if (this.backupStore.size >= this.capacity) {
-      const lruBackupKey = this.backupStore.keys().next().value;
-      if (lruBackupKey !== undefined) this.backupStore.delete(lruBackupKey);
+      // First prune any expired entries to free capacity without evicting warm items
+      this.pruneExpired();
+      if (this.store.size >= this.capacity) {
+        // Evict least recently used (first item in Map)
+        const lruKey = this.store.keys().next().value;
+        if (lruKey !== undefined) this.store.delete(lruKey);
+      }
     }
 
     this.store.set(key, {
       data,
       expiresAt: Date.now() + ttlMs,
     });
-    this.backupStore.set(key, data);
   }
 
   delete(key: string): void {
     this.store.delete(key);
-    this.backupStore.delete(key);
   }
 
   clearPattern(prefix: string): void {
@@ -70,20 +68,23 @@ class LruTtlCache {
         this.store.delete(key);
       }
     }
-    for (const key of Array.from(this.backupStore.keys())) {
-      if (key.startsWith(prefix)) {
-        this.backupStore.delete(key);
-      }
-    }
   }
 
   clear(): void {
     this.store.clear();
-    this.backupStore.clear();
+  }
+
+  pruneExpired(): void {
+    const now = Date.now();
+    for (const [key, entry] of this.store.entries()) {
+      if (now > entry.expiresAt) {
+        this.store.delete(key);
+      }
+    }
   }
 }
 
-export const serverCache = new LruTtlCache(1000);
+export const serverCache = new LruTtlCache(150);
 
 import fs from 'fs';
 import path from 'path';

@@ -19,6 +19,10 @@ const nextConfig = {
     // Ignore type checking during build to save memory on Render's free tier
     ignoreBuildErrors: true,
   },
+  experimental: {
+    // Tree-shake heavy libraries to reduce build-time & runtime memory consumption
+    optimizePackageImports: ["lucide-react", "date-fns", "framer-motion", "recharts"],
+  },
   allowedDevOrigins: [
     '192.168.1.39',
     '192.168.1.39:3000',

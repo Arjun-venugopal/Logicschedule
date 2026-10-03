@@ -427,28 +427,43 @@ class FirestoreDocument {
   }
 }
 
-const populateGlobalCache: Record<string, { doc: any; timestamp: number }> = {};
+const MAX_POPULATE_CACHE_SIZE = 250;
+const populateGlobalCache = new Map<string, { doc: any; timestamp: number }>();
 const POPULATE_CACHE_TTL_MS = 15000;
 
 function getCachedPopDoc(collectionName: string, id: string): any | null {
   const key = `${collectionName}_${id}`;
-  const entry = populateGlobalCache[key];
-  if (entry && (Date.now() - entry.timestamp) < POPULATE_CACHE_TTL_MS) {
+  const entry = populateGlobalCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.timestamp < POPULATE_CACHE_TTL_MS) {
     return entry.doc;
   }
+  populateGlobalCache.delete(key);
   return null;
 }
 
 function setCachedPopDoc(collectionName: string, id: string, doc: any) {
   const key = `${collectionName}_${id}`;
-  populateGlobalCache[key] = { doc, timestamp: Date.now() };
+  if (populateGlobalCache.size >= MAX_POPULATE_CACHE_SIZE) {
+    const now = Date.now();
+    for (const [k, v] of populateGlobalCache.entries()) {
+      if (now - v.timestamp >= POPULATE_CACHE_TTL_MS) {
+        populateGlobalCache.delete(k);
+      }
+    }
+    if (populateGlobalCache.size >= MAX_POPULATE_CACHE_SIZE) {
+      const oldestKey = populateGlobalCache.keys().next().value;
+      if (oldestKey !== undefined) populateGlobalCache.delete(oldestKey);
+    }
+  }
+  populateGlobalCache.set(key, { doc, timestamp: Date.now() });
 }
 
 function invalidatePopulateCache(collectionName: string) {
   const prefix = `${collectionName}_`;
-  for (const k of Object.keys(populateGlobalCache)) {
+  for (const k of populateGlobalCache.keys()) {
     if (k.startsWith(prefix)) {
-      delete populateGlobalCache[k];
+      populateGlobalCache.delete(k);
     }
   }
 }
@@ -905,6 +920,8 @@ export class BaseModel {
 
     if (isFindOne && allKeysPushed) {
       q = q.limit(1);
+    } else if (limitOpt && allKeysPushed && (!sortOpt || validCols.has(Object.keys(sortOpt)[0]))) {
+      q = q.limit(limitOpt);
     }
 
     const { data, error } = await q;
