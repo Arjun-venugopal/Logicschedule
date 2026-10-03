@@ -329,7 +329,7 @@ export default function BatchesPage() {
           <p className="text-neutral-600 text-sm mb-4">Try adjusting your search criteria</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {filteredBatches.map((batch: any, i: number) => {
             const isCompleted = batch.status === "Completed" || (batch.totalClassesCount > 0 && (batch.completedClassesCount || 0) >= batch.totalClassesCount);
             
