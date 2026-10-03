@@ -47,6 +47,7 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
     }
 
     const demoSessions = await DemoSession.find(query)
+      .sort({ date: -1 })
       .populate('teacher', 'name email status availability');
 
     // Mask fee details for Sales Person if they are not the assigned salesExecutive
@@ -60,6 +61,15 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
         }
       }
       return sessionObj;
+    });
+
+    maskedSessions.sort((a: any, b: any) => {
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      const validA = isNaN(timeA) ? 0 : timeA;
+      const validB = isNaN(timeB) ? 0 : timeB;
+      if (validB !== validA) return validB - validA;
+      return (b.startTime || '').localeCompare(a.startTime || '');
     });
 
     serverCache.set(cacheKey, maskedSessions, 30_000);

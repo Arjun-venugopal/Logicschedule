@@ -603,9 +603,35 @@ export default function DemoSessionsPage() {
 
   const sortedSessions = useMemo(() => {
     return [...filteredSessions].sort((a, b) => {
-      const createdA = new Date(a.createdAt || a.date || 0).getTime();
-      const createdB = new Date(b.createdAt || b.date || 0).getTime();
-      return (isNaN(createdB) ? 0 : createdB) - (isNaN(createdA) ? 0 : createdA); // Descending createdAt (newest first)
+      const dateAStr = formatDateSafe(a.date, "yyyy-MM-dd");
+      const dateBStr = formatDateSafe(b.date, "yyyy-MM-dd");
+
+      // Compare dates descending (newest date first)
+      if (dateAStr && dateBStr && dateAStr !== dateBStr) {
+        return dateBStr.localeCompare(dateAStr);
+      }
+
+      if (!dateAStr && dateBStr) return 1;
+      if (dateAStr && !dateBStr) return -1;
+
+      const timeA = a.date ? new Date(a.date).getTime() : 0;
+      const timeB = b.date ? new Date(b.date).getTime() : 0;
+      const validA = isNaN(timeA) ? 0 : timeA;
+      const validB = isNaN(timeB) ? 0 : timeB;
+      if (validB !== validA) {
+        return validB - validA;
+      }
+
+      // If dates are identical, sort by startTime descending
+      const timeCompare = (b.startTime || "").localeCompare(a.startTime || "");
+      if (timeCompare !== 0) {
+        return timeCompare;
+      }
+
+      // If both date and startTime are identical, fallback to createdAt descending
+      const createdA = new Date(a.createdAt || 0).getTime();
+      const createdB = new Date(b.createdAt || 0).getTime();
+      return (isNaN(createdB) ? 0 : createdB) - (isNaN(createdA) ? 0 : createdA);
     });
   }, [filteredSessions]);
 
