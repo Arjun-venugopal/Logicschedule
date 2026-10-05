@@ -30,13 +30,13 @@ export default function AttendancePage() {
     queryFn: async () => (await api.get("/students")).data,
   });
 
-  // 2. Fetch All Completed Schedules
+  // 2. Fetch All Completed & Cancelled Schedules with Attendance
   const { data: schedules = [], isLoading: loadingSchedules } = useQuery({
     queryKey: ["all-completed-schedules"],
     queryFn: async () => {
       const res = await api.get("/schedules");
       return res.data
-        .filter((s: any) => s.status === "Completed")
+        .filter((s: any) => s.status === "Completed" || s.status === "Cancelled")
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     },
   });
@@ -231,7 +231,7 @@ export default function AttendancePage() {
           </div>
           <h3 className="text-xl sm:text-2xl font-bold text-white mb-2">No Classes Found</h3>
           <p className="text-neutral-400 text-xs sm:text-sm max-w-md mx-auto">
-            There are currently no completed classes in the system that require attendance marking for the selected filters.
+            There are currently no completed or cancelled classes in the system that require attendance marking for the selected filters.
           </p>
         </div>
       ) : (
@@ -316,7 +316,14 @@ export default function AttendancePage() {
                             <CalendarIcon className="w-3.5 h-3.5" />
                             {schedule.startTime} - {schedule.endTime}
                           </div>
-                          <p className="text-[11px] text-neutral-500 uppercase font-bold mt-2 tracking-wider">{schedule.subject}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <p className="text-[11px] text-neutral-500 uppercase font-bold tracking-wider">{schedule.subject}</p>
+                            {schedule.status === "Cancelled" && (
+                              <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-red-500/20 text-red-400 border border-red-500/30">
+                                Cancelled
+                              </span>
+                            )}
+                          </div>
                         </div>
 
                         {/* Actions */}

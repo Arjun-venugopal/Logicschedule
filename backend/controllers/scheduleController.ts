@@ -6,6 +6,7 @@ import Student from '../models/Student';
 import { checkIntervalConflict, checkTeacherConflict } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 import { normalizeDateOnlyToUtc } from './batchController';
+import { resolveScheduleAttendance, autoCompletePastSchedules } from '../utils/attendanceHelper';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -15,6 +16,9 @@ export const getSchedules = async (req: any, res: Response) => {
   const cacheKey = isTeacher ? `schedules_teacher_${req.user._id}` : 'schedules_all';
 
   try {
+    // Automatically complete past scheduled classes and mark attendance present
+    await autoCompletePastSchedules();
+
     const cached = serverCache.get(cacheKey);
     if (cached) {
       res.json(cached);
@@ -119,20 +123,30 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
 
     const isConflict = conflictResult.hasConflict;
 
+    const scheduleStatus = status || 'Scheduled';
+    const batchId = batch?._id ? batch._id : batch;
+    const resolvedAttendance = await resolveScheduleAttendance({
+      status: scheduleStatus,
+      batchId,
+      inputAttendance: req.body.attendance,
+    });
+
     const schedule = await Schedule.create({
       teacher,
       batch,
       date: normalizedDate,
       startTime,
       endTime,
-      status: status || 'Scheduled',
+      status: scheduleStatus,
       replacementTeacher,
       conflict: isConflict,
       meetingLink: meetingLink || '',
       subject: subject || '',
       notes: notes || '',
+      attendance: resolvedAttendance,
       cancellationReason: req.body.cancellationReason || '',
     });
+
 
     const populated = await schedule.populate([
       { path: 'teacher', select: 'name email' },
@@ -177,20 +191,19 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         return;
       }
 
+      const previousStatus = schedule.status;
+
       if (isAdmin) {
         schedule.teacher = req.body.teacher || schedule.teacher;
         schedule.batch = req.body.batch || schedule.batch;
         schedule.date = req.body.date ? (normalizeDateOnlyToUtc(req.body.date) || schedule.date) : schedule.date;
         schedule.startTime = req.body.startTime || schedule.startTime;
         schedule.endTime = req.body.endTime || schedule.endTime;
-        schedule.status = req.body.status || schedule.status;
+        if (req.body.status !== undefined) schedule.status = req.body.status;
         schedule.replacementTeacher = req.body.replacementTeacher || schedule.replacementTeacher;
         if (req.body.meetingLink !== undefined) schedule.meetingLink = req.body.meetingLink;
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
-        if (req.body.attendance !== undefined) {
-          (schedule as any).attendance = req.body.attendance;
-        }
         if (req.body.cancellationReason !== undefined) {
           (schedule as any).cancellationReason = req.body.cancellationReason;
         }
@@ -200,13 +213,25 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
         if (req.body.meetingLink !== undefined) schedule.meetingLink = req.body.meetingLink;
-        if (req.body.attendance !== undefined) {
-          (schedule as any).attendance = req.body.attendance;
-        }
         if (req.body.cancellationReason !== undefined) {
           (schedule as any).cancellationReason = req.body.cancellationReason;
         }
       }
+
+      // Automatically resolve attendance:
+      // - Completed -> student(s) automatically marked present
+      // - Cancelled -> student(s) automatically marked absent
+      // - Rescheduled -> no mark anything (empty attendance)
+      const batchId = schedule.batch?._id ? schedule.batch._id : schedule.batch;
+      const statusChanged = req.body.status !== undefined && req.body.status !== previousStatus;
+      schedule.attendance = await resolveScheduleAttendance({
+        status: schedule.status,
+        batchId,
+        existingAttendance: schedule.attendance,
+        inputAttendance: req.body.attendance,
+        preserveCustomIfCompleted: !statusChanged,
+      });
+
 
       // Automatically recalculate conflict status dynamically
       if (schedule.status === 'Cancelled') {
@@ -317,7 +342,7 @@ export const getSchedulesByStudent = async (req: Request, res: Response): Promis
     if (batchIds.length > 0) {
       const batchSchedules = await Schedule.find({
         batch: { $in: batchIds },
-        status: 'Completed'
+        status: { $in: ['Completed', 'Cancelled'] }
       })
         .populate('teacher', 'name email')
         .populate('batch', 'name subject');

@@ -246,17 +246,22 @@ export default function SchedulePage() {
       if (form.status === "Cancelled") {
         const reasonText = form.cancellationReason?.trim() || "";
         const notesSuffix = reasonText ? `Cancelled. Reason: ${reasonText}` : "Cancelled";
+        const cancelledAttendance = students.length > 0
+          ? students.map((st: any) => ({ studentId: st._id, isPresent: false }))
+          : (form.attendance?.map((a: any) => ({ ...a, isPresent: false })) || []);
         const updateData = { 
           ...form, 
           cancellationReason: reasonText,
-          notes: form.notes ? (form.notes.includes(notesSuffix) ? form.notes : `${notesSuffix}\n\n${form.notes}`) : notesSuffix
+          notes: form.notes ? (form.notes.includes(notesSuffix) ? form.notes : `${notesSuffix}\n\n${form.notes}`) : notesSuffix,
+          attendance: cancelledAttendance
         };
         updateSchedule.mutate({ id: editingId, data: updateData });
       } else if (form.status === "Rescheduled" && form.rescheduleDate && form.rescheduleStartTime && form.rescheduleEndTime) {
         const notesSuffix = `Rescheduled to ${format(parseISO(form.rescheduleDate), "MMM d, yyyy")} ${form.rescheduleStartTime}-${form.rescheduleEndTime}.${form.cancellationReason ? ` Reason: ${form.cancellationReason}` : ''}`;
         const updateData = { 
           ...form, 
-          notes: form.notes ? `${notesSuffix}\n\n${form.notes}` : notesSuffix
+          notes: form.notes ? `${notesSuffix}\n\n${form.notes}` : notesSuffix,
+          attendance: []
         };
         updateSchedule.mutate({ id: editingId, data: updateData });
 
@@ -270,13 +275,33 @@ export default function SchedulePage() {
           status: "Scheduled",
           subject: form.subject,
           notes: "Rescheduled from " + (form.date ? format(parseISO(form.date), "MMM d, yyyy") : "previous date"),
+          attendance: []
         };
         createSchedule.mutate(newClass);
+      } else if (form.status === "Completed") {
+        const resolvedAttendance = students.length > 0
+          ? students.map((st: any) => {
+              const existing = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
+              return {
+                studentId: st._id,
+                isPresent: existing !== undefined ? existing.isPresent : true
+              };
+            })
+          : (form.attendance || []);
+        updateSchedule.mutate({ id: editingId, data: { ...form, attendance: resolvedAttendance } });
       } else {
-        updateSchedule.mutate({ id: editingId, data: form });
+        updateSchedule.mutate({ id: editingId, data: { ...form, attendance: [] } });
       }
     } else {
-      createSchedule.mutate(form);
+      let createData = { ...form };
+      if (form.status === "Completed") {
+        createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: true })) : [];
+      } else if (form.status === "Cancelled") {
+        createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: false })) : [];
+      } else {
+        createData.attendance = [];
+      }
+      createSchedule.mutate(createData);
     }
   };
 
@@ -870,7 +895,24 @@ export default function SchedulePage() {
                       <div className="relative">
                         <select
                           value={form.status}
-                          onChange={(e) => setForm({ ...form, status: e.target.value })}
+                          onChange={(e) => {
+                            const newStatus = e.target.value;
+                            let newAttendance = form.attendance || [];
+                            if (newStatus === "Completed") {
+                              newAttendance = students.map((st: any) => ({
+                                studentId: st._id,
+                                isPresent: true
+                              }));
+                            } else if (newStatus === "Cancelled") {
+                              newAttendance = students.map((st: any) => ({
+                                studentId: st._id,
+                                isPresent: false
+                              }));
+                            } else if (newStatus === "Rescheduled" || newStatus === "Scheduled") {
+                              newAttendance = [];
+                            }
+                            setForm({ ...form, status: newStatus, attendance: newAttendance });
+                          }}
                           className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm appearance-none focus:outline-none transition-colors ${
                             form.status === "Scheduled" ? "text-amber-400 border-amber-500/30" :
                             form.status === "Completed" ? "text-emerald-400 border-emerald-500/30" :
@@ -1019,55 +1061,74 @@ export default function SchedulePage() {
                 </div>
 
                 {/* Attendance */}
-                {isTeacher && modal.mode === "edit" && students.length > 0 && (
+                {modal.mode === "edit" && students.length > 0 && (
                   <div className="pt-2 border-t border-neutral-800/80">
                     <div className="flex items-center justify-between mb-2">
                       <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider">
                         Student Attendance
                       </label>
                       <span className="text-[10px] text-neutral-500">
-                        Check box to mark Present
+                        {form.status === "Completed"
+                          ? "Auto-marked Present · Uncheck if Absent"
+                          : form.status === "Cancelled"
+                          ? "Class Cancelled · Auto-marked Absent"
+                          : form.status === "Rescheduled"
+                          ? "Rescheduled · No attendance marked"
+                          : "Scheduled · Attendance recorded on completion"}
                       </span>
                     </div>
-                    <div className="max-h-44 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                      {students.map((student: any) => {
-                        const existingRecord = form.attendance?.find(a => a.studentId === student._id);
-                        const isPresent = existingRecord ? existingRecord.isPresent : true;
-                        return (
-                          <label
-                            key={student._id}
-                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
-                              isPresent
-                                ? "bg-emerald-500/10 border-emerald-500/30"
-                                : "bg-neutral-800/40 border-neutral-700/60 opacity-80"
-                            }`}
-                          >
-                            <div className="flex items-center gap-3">
-                              <input
-                                type="checkbox"
-                                checked={isPresent}
-                                onChange={(e) => {
-                                  const checked = e.target.checked;
-                                  const currentAttendance = form.attendance || [];
-                                  const newAttendance = currentAttendance.filter(a => a.studentId !== student._id);
-                                  newAttendance.push({ studentId: student._id, isPresent: checked });
-                                  setForm({ ...form, attendance: newAttendance });
-                                }}
-                                className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
-                              />
-                              <span className="text-sm font-medium text-white">{student.name}</span>
-                            </div>
-                            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md ${
-                              isPresent
-                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                : "bg-neutral-800 text-neutral-400 border border-neutral-700"
-                            }`}>
-                              {isPresent ? "Present" : "Absent"}
-                            </span>
-                          </label>
-                        );
-                      })}
-                    </div>
+
+                    {form.status === "Rescheduled" ? (
+                      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
+                        No attendance marked for rescheduled classes. Attendance will be recorded for the newly scheduled session.
+                      </div>
+                    ) : form.status === "Scheduled" ? (
+                      <div className="p-3 bg-neutral-800/60 border border-neutral-700/60 rounded-xl text-xs text-neutral-400">
+                        Class is currently scheduled. Once the class is completed, enrolled students will automatically be marked Present in attendance.
+                      </div>
+                    ) : (
+                      <div className="max-h-44 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                        {students.map((student: any) => {
+                          const existingRecord = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
+                          const isPresent = existingRecord 
+                            ? existingRecord.isPresent 
+                            : (form.status === "Cancelled" ? false : true);
+                          return (
+                            <label
+                              key={student._id}
+                              className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                                isPresent
+                                  ? "bg-emerald-500/10 border-emerald-500/30"
+                                  : "bg-red-500/5 border-red-500/20 opacity-90"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <input
+                                  type="checkbox"
+                                  checked={isPresent}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    const currentAttendance = form.attendance || [];
+                                    const newAttendance = currentAttendance.filter((a: any) => (a.studentId?._id || a.studentId) !== student._id);
+                                    newAttendance.push({ studentId: student._id, isPresent: checked });
+                                    setForm({ ...form, attendance: newAttendance });
+                                  }}
+                                  className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
+                                />
+                                <span className="text-sm font-medium text-white">{student.name}</span>
+                              </div>
+                              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md ${
+                                isPresent
+                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                  : "bg-red-500/20 text-red-400 border border-red-500/30"
+                              }`}>
+                                {isPresent ? "Present" : "Absent"}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
 

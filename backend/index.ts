@@ -159,13 +159,17 @@ if (isSupabaseConfigured()) {
   console.warn('⚠️  Supabase is not configured. Please set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env');
 }
 
+import { startScheduleAutoCompleter } from './utils/attendanceHelper';
+
 // Connection Management: Keep-alive timeouts tailored for reverse proxies (Nginx / ALB)
 httpServer.keepAliveTimeout = 65000;
 httpServer.headersTimeout = 66000;
 
 httpServer.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
+  startScheduleAutoCompleter();
 });
+
 
 // Graceful shutdown handling
 const gracefulShutdown = (signal: string) => {

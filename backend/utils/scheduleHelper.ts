@@ -197,3 +197,58 @@ export function indexSchedulesByTeacherAndDate(schedules: any[]): Map<string, an
   }
   return map;
 }
+
+export function getKolkataNow(): { todayStr: string; currentTotalMinutes: number; now: Date } {
+  const now = new Date();
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  });
+  const parts = formatter.formatToParts(now);
+  let year = '', month = '', day = '', hour = '0', minute = '0';
+  for (const part of parts) {
+    if (part.type === 'year') year = part.value;
+    else if (part.type === 'month') month = part.value;
+    else if (part.type === 'day') day = part.value;
+    else if (part.type === 'hour') hour = part.value;
+    else if (part.type === 'minute') minute = part.value;
+  }
+  const h = Number(hour) % 24;
+  const m = Number(minute);
+  return {
+    todayStr: `${year}-${month}-${day}`,
+    currentTotalMinutes: h * 60 + m,
+    now
+  };
+}
+
+export function formatDateToYYYYMMDD(dateVal: Date | string): string {
+  if (!dateVal) return getKolkataNow().todayStr;
+  if (typeof dateVal === 'string') {
+    return dateVal.split('T')[0];
+  }
+  if (dateVal instanceof Date) {
+    if (isNaN(dateVal.getTime())) return '';
+    // If it's a UTC midnight date (or default normalized date), format UTC parts
+    if (dateVal.getUTCHours() === 0 && dateVal.getUTCMinutes() === 0 && dateVal.getUTCSeconds() === 0) {
+      const y = dateVal.getUTCFullYear();
+      const m = String(dateVal.getUTCMonth() + 1).padStart(2, '0');
+      const d = String(dateVal.getUTCDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    }
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Kolkata',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+    return formatter.format(dateVal);
+  }
+  return '';
+}
+
