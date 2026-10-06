@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, BookOpen, Calendar, AlignLeft, Info, Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, Users, BookOpen, Calendar, AlignLeft, Info, Loader2, CheckCircle2 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -74,6 +74,7 @@ type PopulatedScheduleEntry = {
   meetingLink?: string;
   subject?: string;
   notes?: string;
+  attendance?: { studentId: any; isPresent: boolean; date?: string; notes?: string }[];
 };
 
 const emptyForm = (): ScheduleEntry => ({
@@ -214,13 +215,18 @@ export default function SchedulePage() {
   };
 
   const openEdit = (s: any) => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const safeDate = getSafeDateOnly(s.date);
+    const isAfterToday = Boolean(safeDate && safeDate > todayStr);
+    const resolvedStatus = isAfterToday && s.status === "Completed" ? "Scheduled" : s.status;
+
     setForm({
       teacher: s.teacher?._id || s.teacher,
       batch: s.batch?._id || s.batch,
-      date: getSafeDateOnly(s.date),
+      date: safeDate,
       startTime: s.startTime,
       endTime: s.endTime,
-      status: s.status,
+      status: resolvedStatus,
       meetingLink: s.meetingLink || "",
       subject: s.subject || "",
       notes: s.notes || "",
@@ -242,62 +248,70 @@ export default function SchedulePage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const formDateStr = form.date ? form.date.split("T")[0] : "";
+    const isAfterToday = Boolean(formDateStr && formDateStr > todayStr);
+
+    // Requirement: strictly after today, status must always be Scheduled (cannot be Completed)
+    let effectiveForm = { ...form };
+    if (isAfterToday && effectiveForm.status === "Completed") {
+      effectiveForm.status = "Scheduled";
+    }
+
     if (modal?.mode === "edit" && editingId) {
-      if (form.status === "Cancelled") {
-        const reasonText = form.cancellationReason?.trim() || "";
+      if (effectiveForm.status === "Cancelled") {
+        const reasonText = effectiveForm.cancellationReason?.trim() || "";
         const notesSuffix = reasonText ? `Cancelled. Reason: ${reasonText}` : "Cancelled";
         const cancelledAttendance = students.length > 0
           ? students.map((st: any) => ({ studentId: st._id, isPresent: false }))
-          : (form.attendance?.map((a: any) => ({ ...a, isPresent: false })) || []);
+          : (effectiveForm.attendance?.map((a: any) => ({ ...a, isPresent: false })) || []);
         const updateData = { 
-          ...form, 
+          ...effectiveForm, 
           cancellationReason: reasonText,
-          notes: form.notes ? (form.notes.includes(notesSuffix) ? form.notes : `${notesSuffix}\n\n${form.notes}`) : notesSuffix,
+          notes: effectiveForm.notes ? (effectiveForm.notes.includes(notesSuffix) ? effectiveForm.notes : `${notesSuffix}\n\n${effectiveForm.notes}`) : notesSuffix,
           attendance: cancelledAttendance
         };
         updateSchedule.mutate({ id: editingId, data: updateData });
-      } else if (form.status === "Rescheduled" && form.rescheduleDate && form.rescheduleStartTime && form.rescheduleEndTime) {
-        const notesSuffix = `Rescheduled to ${format(parseISO(form.rescheduleDate), "MMM d, yyyy")} ${form.rescheduleStartTime}-${form.rescheduleEndTime}.${form.cancellationReason ? ` Reason: ${form.cancellationReason}` : ''}`;
+      } else if (effectiveForm.status === "Rescheduled" && effectiveForm.rescheduleDate && effectiveForm.rescheduleStartTime && effectiveForm.rescheduleEndTime) {
+        const notesSuffix = `Rescheduled to ${format(parseISO(effectiveForm.rescheduleDate), "MMM d, yyyy")} ${effectiveForm.rescheduleStartTime}-${effectiveForm.rescheduleEndTime}.${effectiveForm.cancellationReason ? ` Reason: ${effectiveForm.cancellationReason}` : ''}`;
         const updateData = { 
-          ...form, 
-          notes: form.notes ? `${notesSuffix}\n\n${form.notes}` : notesSuffix,
+          ...effectiveForm, 
+          notes: effectiveForm.notes ? `${notesSuffix}\n\n${effectiveForm.notes}` : notesSuffix,
           attendance: []
         };
         updateSchedule.mutate({ id: editingId, data: updateData });
 
-        const newClass = {
+        const newClass: ScheduleEntry = {
           ...emptyForm(),
-          teacher: form.teacher,
-          batch: form.batch,
-          date: form.rescheduleDate,
-          startTime: form.rescheduleStartTime,
-          endTime: form.rescheduleEndTime,
+          teacher: effectiveForm.teacher,
+          batch: effectiveForm.batch,
+          date: effectiveForm.rescheduleDate,
+          startTime: effectiveForm.rescheduleStartTime,
+          endTime: effectiveForm.rescheduleEndTime,
           status: "Scheduled",
-          subject: form.subject,
-          notes: "Rescheduled from " + (form.date ? format(parseISO(form.date), "MMM d, yyyy") : "previous date"),
+          subject: effectiveForm.subject,
+          notes: "Rescheduled from " + (effectiveForm.date ? format(parseISO(effectiveForm.date), "MMM d, yyyy") : "previous date"),
           attendance: []
         };
         createSchedule.mutate(newClass);
-      } else if (form.status === "Completed") {
+      } else if (effectiveForm.status === "Completed") {
         const resolvedAttendance = students.length > 0
           ? students.map((st: any) => {
-              const existing = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
+              const existing = effectiveForm.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
               return {
                 studentId: st._id,
                 isPresent: existing !== undefined ? existing.isPresent : true
               };
             })
-          : (form.attendance || []);
-        updateSchedule.mutate({ id: editingId, data: { ...form, attendance: resolvedAttendance } });
+          : (effectiveForm.attendance || []);
+        updateSchedule.mutate({ id: editingId, data: { ...effectiveForm, attendance: resolvedAttendance } });
       } else {
-        updateSchedule.mutate({ id: editingId, data: { ...form, attendance: [] } });
+        updateSchedule.mutate({ id: editingId, data: { ...effectiveForm, attendance: [] } });
       }
     } else {
-      let createData = { ...form };
-      if (form.status === "Completed") {
+      let createData = { ...effectiveForm };
+      if (effectiveForm.status === "Completed") {
         createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: true })) : [];
-      } else if (form.status === "Cancelled") {
-        createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: false })) : [];
       } else {
         createData.attendance = [];
       }
@@ -549,9 +563,16 @@ export default function SchedulePage() {
                                 <span className="truncate">{event.batch?.name || "Class"}</span>
                                 <span className="shrink-0 opacity-75 text-[9px] font-medium">{event.startTime}</span>
                               </div>
-                              <div className={`text-[9px] truncate opacity-60 ${color.text} mt-0.5 flex items-center gap-1`}>
-                                <User className="w-2.5 h-2.5" />
-                                {event.teacher?.name}
+                              <div className="flex items-center justify-between gap-1 mt-0.5">
+                                <div className={`text-[9px] truncate opacity-60 ${color.text} flex items-center gap-1`}>
+                                  <User className="w-2.5 h-2.5" />
+                                  {event.teacher?.name}
+                                </div>
+                                {event.status === "Completed" ? (
+                                  <span className="text-[8px] text-emerald-400 font-semibold shrink-0">✓ Done</span>
+                                ) : event.status === "Cancelled" ? (
+                                  <span className="text-[8px] text-red-400 font-semibold shrink-0">✕ Cancelled</span>
+                                ) : null}
                               </div>
                             </div>
                           )
@@ -634,15 +655,15 @@ export default function SchedulePage() {
                                     <span className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
                                       {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
                                     </span>
-                                    {event.status !== "Scheduled" && (
-                                      <span className={`text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 ${
-                                        event.status === "Completed" ? "bg-emerald-500/30 text-emerald-300 border border-emerald-500/40" :
-                                        event.status === "Cancelled" ? "bg-red-500/30 text-red-300" :
-                                        "bg-neutral-500/30 text-neutral-300"
-                                      }`}>
-                                        {event.status === "Completed" ? "✓ Finished" : event.status}
+                                    {event.status === "Completed" ? (
+                                      <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
+                                        ✓ Finished{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
                                       </span>
-                                    )}
+                                    ) : event.status === "Cancelled" ? (
+                                      <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
+                                        ✕ Cancelled
+                                      </span>
+                                    ) : null}
                                   </div>
 
                                   <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
@@ -675,6 +696,15 @@ export default function SchedulePage() {
                                     )}
                                     {canEditSchedule(event) && (
                                       <>
+                                        {event.status === "Completed" && (
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); openEdit(event); }}
+                                            className="p-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 transition-colors"
+                                            title="View / Edit Attendance"
+                                          >
+                                            <Users className="w-2.5 h-2.5 text-emerald-300" />
+                                          </button>
+                                        )}
                                         <button
                                           onClick={(e) => { e.stopPropagation(); openEdit(event); }}
                                           className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
@@ -850,7 +880,13 @@ export default function SchedulePage() {
                             type="date"
                             required
                             value={form.date}
-                            onChange={(e) => setForm({ ...form, date: e.target.value })}
+                            onChange={(e) => {
+                              const newDate = e.target.value;
+                              const todayStr = format(new Date(), "yyyy-MM-dd");
+                              const isAfterToday = Boolean(newDate && newDate > todayStr);
+                              const newStatus = isAfterToday && form.status === "Completed" ? "Scheduled" : form.status;
+                              setForm({ ...form, date: newDate, status: newStatus });
+                            }}
                             className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
@@ -897,19 +933,15 @@ export default function SchedulePage() {
                           value={form.status}
                           onChange={(e) => {
                             const newStatus = e.target.value;
-                            let newAttendance = form.attendance || [];
+                            let newAttendance: any[] = [];
                             if (newStatus === "Completed") {
-                              newAttendance = students.map((st: any) => ({
-                                studentId: st._id,
-                                isPresent: true
-                              }));
-                            } else if (newStatus === "Cancelled") {
-                              newAttendance = students.map((st: any) => ({
-                                studentId: st._id,
-                                isPresent: false
-                              }));
-                            } else if (newStatus === "Rescheduled" || newStatus === "Scheduled") {
-                              newAttendance = [];
+                              newAttendance = students.map((st: any) => {
+                                const existing = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
+                                return {
+                                  studentId: st._id,
+                                  isPresent: existing !== undefined ? existing.isPresent : true
+                                };
+                              });
                             }
                             setForm({ ...form, status: newStatus, attendance: newAttendance });
                           }}
@@ -920,9 +952,17 @@ export default function SchedulePage() {
                             "text-white border-neutral-700"
                           }`}
                         >
-                          {STATUS_OPTIONS.map((s) => (
-                            <option key={s} value={s}>{s}</option>
-                          ))}
+                          {STATUS_OPTIONS.map((s) => {
+                            const todayStr = format(new Date(), "yyyy-MM-dd");
+                            const formDateStr = form.date ? form.date.split("T")[0] : "";
+                            const isAfterToday = Boolean(formDateStr && formDateStr > todayStr);
+                            const isDisabled = isAfterToday && s === "Completed";
+                            return (
+                              <option key={s} value={s} disabled={isDisabled}>
+                                {s}{isDisabled ? " (Only available for today or previous days)" : ""}
+                              </option>
+                            );
+                          })}
                         </select>
                         <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-neutral-500">
                           <ChevronRight className="w-4 h-4 rotate-90" />
@@ -1060,75 +1100,99 @@ export default function SchedulePage() {
                   </div>
                 </div>
 
-                {/* Attendance */}
-                {modal.mode === "edit" && students.length > 0 && (
-                  <div className="pt-2 border-t border-neutral-800/80">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider">
-                        Student Attendance
-                      </label>
-                      <span className="text-[10px] text-neutral-500">
-                        {form.status === "Completed"
-                          ? "Auto-marked Present · Uncheck if Absent"
-                          : form.status === "Cancelled"
-                          ? "Class Cancelled · Auto-marked Absent"
-                          : form.status === "Rescheduled"
-                          ? "Rescheduled · No attendance marked"
-                          : "Scheduled · Attendance recorded on completion"}
-                      </span>
+                {/* Attendance: ONLY visible when class is marked Completed */}
+                {modal.mode === "edit" && students.length > 0 && form.status === "Completed" && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 6 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="pt-2 border-t border-neutral-800/80"
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 mb-2.5">
+                      <div>
+                        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                          Student Attendance
+                        </label>
+                        <p className="text-[11px] text-neutral-500 mt-0.5">
+                          {form.date ? `Class Date: ${format(parseISO(form.date), "MMM d, yyyy")}` : "Class Date"} · Auto-marked Present (uncheck if student was absent)
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 self-start sm:self-auto">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allPresent = students.map((st: any) => ({ studentId: st._id, isPresent: true }));
+                            setForm({ ...form, attendance: allPresent });
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors cursor-pointer"
+                        >
+                          Mark All Present
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const allAbsent = students.map((st: any) => ({ studentId: st._id, isPresent: false }));
+                            setForm({ ...form, attendance: allAbsent });
+                          }}
+                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors cursor-pointer"
+                        >
+                          Mark All Absent
+                        </button>
+                      </div>
                     </div>
 
-                    {form.status === "Rescheduled" ? (
-                      <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-300">
-                        No attendance marked for rescheduled classes. Attendance will be recorded for the newly scheduled session.
-                      </div>
-                    ) : form.status === "Scheduled" ? (
-                      <div className="p-3 bg-neutral-800/60 border border-neutral-700/60 rounded-xl text-xs text-neutral-400">
-                        Class is currently scheduled. Once the class is completed, enrolled students will automatically be marked Present in attendance.
-                      </div>
-                    ) : (
-                      <div className="max-h-44 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {students.map((student: any) => {
-                          const existingRecord = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
-                          const isPresent = existingRecord 
-                            ? existingRecord.isPresent 
-                            : (form.status === "Cancelled" ? false : true);
-                          return (
-                            <label
-                              key={student._id}
-                              className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
-                                isPresent
-                                  ? "bg-emerald-500/10 border-emerald-500/30"
-                                  : "bg-red-500/5 border-red-500/20 opacity-90"
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <input
-                                  type="checkbox"
-                                  checked={isPresent}
-                                  onChange={(e) => {
-                                    const checked = e.target.checked;
-                                    const currentAttendance = form.attendance || [];
-                                    const newAttendance = currentAttendance.filter((a: any) => (a.studentId?._id || a.studentId) !== student._id);
-                                    newAttendance.push({ studentId: student._id, isPresent: checked });
-                                    setForm({ ...form, attendance: newAttendance });
-                                  }}
-                                  className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
-                                />
-                                <span className="text-sm font-medium text-white">{student.name}</span>
+                    <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                      {students.map((student: any) => {
+                        const existingRecord = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
+                        const isPresent = existingRecord !== undefined ? existingRecord.isPresent : true;
+
+                        return (
+                          <label
+                            key={student._id}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
+                              isPresent
+                                ? "bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15"
+                                : "bg-red-500/5 border-red-500/20 opacity-90 hover:bg-red-500/10"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="checkbox"
+                                checked={isPresent}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  const currentAttendance = form.attendance || [];
+                                  const newAttendance = currentAttendance.filter((a: any) => (a.studentId?._id || a.studentId) !== student._id);
+                                  newAttendance.push({ studentId: student._id, isPresent: checked });
+                                  setForm({ ...form, attendance: newAttendance });
+                                }}
+                                className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
+                              />
+                              <div>
+                                <span className="text-sm font-medium text-white block">{student.name}</span>
+                                {student.mobileNumber && (
+                                  <span className="text-[10px] text-neutral-500 block">{student.mobileNumber}</span>
+                                )}
                               </div>
-                              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-md ${
-                                isPresent
-                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                                  : "bg-red-500/20 text-red-400 border border-red-500/30"
-                              }`}>
-                                {isPresent ? "Present" : "Absent"}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                    )}
+                            </div>
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
+                              isPresent ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"
+                            }`}>
+                              {isPresent ? "Present" : "Absent"}
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* Helpful hint when class is Scheduled */}
+                {modal.mode === "edit" && students.length > 0 && form.status === "Scheduled" && (
+                  <div className="text-[11px] text-neutral-400 flex items-center gap-2 pt-2 border-t border-neutral-800/80 bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800">
+                    <Info className="w-4 h-4 text-amber-400 shrink-0" />
+                    <span>Student attendance will be visible and recorded when the class is marked as <strong className="text-emerald-400">Completed</strong>.</span>
                   </div>
                 )}
 

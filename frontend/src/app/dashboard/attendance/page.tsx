@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import { format, parseISO } from "date-fns";
 import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Lock, Edit2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 
 export default function AttendancePage() {
@@ -16,29 +16,36 @@ export default function AttendancePage() {
   const [savingScheduleId, setSavingScheduleId] = useState<string | null>(null);
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
+  const [selectedDate, setSelectedDate] = useState<string>("");
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
 
   const { data: teachers = [], isLoading: loadingTeachers } = useQuery({
     queryKey: ["all-teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
     enabled: !isTeacher,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // 1. Fetch Students
   const { data: students = [], isLoading: loadingStudents } = useQuery({
     queryKey: ["all-students"],
     queryFn: async () => (await api.get("/students")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
-  // 2. Fetch All Completed & Cancelled Schedules with Attendance
+  // 2. Fetch All Completed, Cancelled & Attended Schedules with Attendance
   const { data: schedules = [], isLoading: loadingSchedules } = useQuery({
     queryKey: ["all-completed-schedules"],
     queryFn: async () => {
       const res = await api.get("/schedules");
       return res.data
-        .filter((s: any) => s.status === "Completed" || s.status === "Cancelled")
+        .filter((s: any) => s.status === "Completed" || s.status === "Cancelled" || (s.attendance && s.attendance.length > 0))
         .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
     },
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const updateSchedule = useMutation({
@@ -64,7 +71,7 @@ export default function AttendancePage() {
     if (existingIndex >= 0) {
       currentAttendance[existingIndex].isPresent = isPresent;
     } else {
-      currentAttendance.push({ studentId, isPresent });
+      currentAttendance.push({ studentId, isPresent, date: schedule.date });
     }
 
     updateSchedule.mutate({
@@ -76,6 +83,90 @@ export default function AttendancePage() {
     });
   };
 
+  // Memoized schedule grouping by batch ID for O(1) matching
+  const schedulesByBatch = useMemo(() => {
+    const map = new Map<string, any[]>();
+    for (const s of schedules) {
+      if (selectedDate) {
+        const sDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
+        if (sDateStr !== selectedDate) continue;
+      }
+      const bId = s.batch?._id || s.batch;
+      if (bId) {
+        const bIdStr = String(bId);
+        let list = map.get(bIdStr);
+        if (!list) {
+          list = [];
+          map.set(bIdStr, list);
+        }
+        list.push(s);
+      }
+    }
+    return map;
+  }, [schedules, selectedDate]);
+
+  // Filter out students who don't have any relevant schedules to show
+  const studentsWithSchedules = useMemo(() => {
+    return students.map((student: any) => {
+      const studentBatchId = String(student.batch?._id || student.batch || '');
+      const studentSchedules = studentBatchId ? (schedulesByBatch.get(studentBatchId) || []) : [];
+      
+      // Calculate Analytics
+      let presentCount = 0;
+      let markedCount = 0;
+      
+      for (const s of studentSchedules) {
+        const record = s.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
+        if (record) {
+          markedCount++;
+          if (record.isPresent) presentCount++;
+        }
+      }
+
+      const attendanceRate = markedCount > 0 ? Math.round((presentCount / markedCount) * 100) : 0;
+
+      return {
+        ...student,
+        schedules: studentSchedules,
+        stats: { total: studentSchedules.length, marked: markedCount, present: presentCount, rate: attendanceRate }
+      };
+    }).filter((s: any) => s.schedules.length > 0);
+  }, [students, schedulesByBatch]);
+
+  const filteredStudentsWithSchedules = useMemo(() => {
+    return studentsWithSchedules.filter((student: any) => {
+      if (isTeacher) return true; // Teachers only see their own students/schedules from the backend anyway
+      if (!selectedTeacherId) return true;
+      return student.schedules.some((s: any) => 
+        s.teacher?._id === selectedTeacherId || 
+        s.teacher === selectedTeacherId ||
+        s.replacementTeacher?._id === selectedTeacherId ||
+        s.replacementTeacher === selectedTeacherId
+      );
+    });
+  }, [studentsWithSchedules, isTeacher, selectedTeacherId]);
+
+  const { globalTotal, globalMarked, globalPresent, globalRate } = useMemo(() => {
+    let total = 0;
+    let marked = 0;
+    let present = 0;
+
+    for (const s of filteredStudentsWithSchedules) {
+      total += s.stats.total;
+      marked += s.stats.marked;
+      present += s.stats.present;
+    }
+
+    const rate = marked > 0 ? Math.round((present / marked) * 100) : 0;
+    return { globalTotal: total, globalMarked: marked, globalPresent: present, globalRate: rate };
+  }, [filteredStudentsWithSchedules]);
+
+  const displayedStudents = useMemo(() => {
+    return selectedStudentId 
+      ? filteredStudentsWithSchedules.filter((s: any) => s._id === selectedStudentId)
+      : filteredStudentsWithSchedules;
+  }, [selectedStudentId, filteredStudentsWithSchedules]);
+
   if (loadingStudents || loadingSchedules || (!isTeacher && loadingTeachers)) {
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-8 h-full">
@@ -84,58 +175,6 @@ export default function AttendancePage() {
       </div>
     );
   }
-
-  // Filter out students who don't have any completed schedules to show
-  const studentsWithSchedules = students.map((student: any) => {
-    const studentSchedules = schedules.filter((s: any) => (s.batch?._id || s.batch) === (student.batch?._id || student.batch));
-    
-    // Calculate Analytics
-    let presentCount = 0;
-    let markedCount = 0;
-    
-    studentSchedules.forEach((s: any) => {
-      const record = s.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
-      if (record) {
-        markedCount++;
-        if (record.isPresent) presentCount++;
-      }
-    });
-
-    const attendanceRate = markedCount > 0 ? Math.round((presentCount / markedCount) * 100) : 0;
-
-    return {
-      ...student,
-      schedules: studentSchedules,
-      stats: { total: studentSchedules.length, marked: markedCount, present: presentCount, rate: attendanceRate }
-    };
-  }).filter((s: any) => s.schedules.length > 0);
-
-  const filteredStudentsWithSchedules = studentsWithSchedules.filter((student: any) => {
-    if (isTeacher) return true; // Teachers only see their own students/schedules from the backend anyway
-    if (!selectedTeacherId) return true;
-    return student.schedules.some((s: any) => 
-      s.teacher?._id === selectedTeacherId || 
-      s.teacher === selectedTeacherId ||
-      s.replacementTeacher?._id === selectedTeacherId ||
-      s.replacementTeacher === selectedTeacherId
-    );
-  });
-
-  let globalTotal = 0;
-  let globalMarked = 0;
-  let globalPresent = 0;
-
-  filteredStudentsWithSchedules.forEach((s: any) => {
-    globalTotal += s.stats.total;
-    globalMarked += s.stats.marked;
-    globalPresent += s.stats.present;
-  });
-
-  const globalRate = globalMarked > 0 ? Math.round((globalPresent / globalMarked) * 100) : 0;
-
-  const displayedStudents = selectedStudentId 
-    ? filteredStudentsWithSchedules.filter((s: any) => s._id === selectedStudentId)
-    : filteredStudentsWithSchedules;
 
   return (
     <div className="flex flex-col gap-6 h-full max-w-6xl 2xl:max-w-full w-full min-w-0 mx-auto pb-10 overflow-y-auto">
@@ -205,6 +244,30 @@ export default function AttendancePage() {
             </select>
           </div>
         )}
+
+        {/* Filter by Date */}
+        <div className="w-full lg:w-1/4 flex flex-col justify-center">
+          <div className="flex items-center justify-between mb-1.5 sm:mb-2">
+            <label className="flex items-center gap-2 text-xs sm:text-sm font-medium text-neutral-300">
+              <CalendarIcon className="w-4 h-4 text-amber-500" /> Filter by Date
+            </label>
+            {selectedDate && (
+              <button
+                type="button"
+                onClick={() => setSelectedDate("")}
+                className="text-[10px] text-amber-400 hover:text-amber-300 cursor-pointer font-medium"
+              >
+                Clear Date
+              </button>
+            )}
+          </div>
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setSelectedDate(e.target.value)}
+            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 sm:px-4 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all cursor-pointer"
+          />
+        </div>
 
         {/* Filter by Student */}
         <div className="w-full lg:w-1/3 flex flex-col justify-center">

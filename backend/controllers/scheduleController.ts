@@ -3,7 +3,7 @@ import Schedule from '../models/Schedule';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
-import { checkIntervalConflict, checkTeacherConflict } from '../utils/scheduleHelper';
+import { checkIntervalConflict, checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 import { normalizeDateOnlyToUtc } from './batchController';
 import { resolveScheduleAttendance, autoCompletePastSchedules } from '../utils/attendanceHelper';
@@ -16,14 +16,14 @@ export const getSchedules = async (req: any, res: Response) => {
   const cacheKey = isTeacher ? `schedules_teacher_${req.user._id}` : 'schedules_all';
 
   try {
-    // Automatically complete past scheduled classes and mark attendance present
-    await autoCompletePastSchedules();
-
     const cached = serverCache.get(cacheKey);
     if (cached) {
       res.json(cached);
       return;
     }
+
+    // Automatically complete past scheduled classes and mark attendance present (throttled)
+    await autoCompletePastSchedules();
 
     let schedules: any[] = [];
 
@@ -123,11 +123,19 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
 
     const isConflict = conflictResult.hasConflict;
 
-    const scheduleStatus = status || 'Scheduled';
+    const kolkata = getKolkataNow();
+    const sDateStr = formatDateToYYYYMMDD(normalizedDate);
+    let scheduleStatus = status || 'Scheduled';
+    // Any class whose date is strictly after today must never be marked Completed
+    if (sDateStr > kolkata.todayStr && scheduleStatus === 'Completed') {
+      scheduleStatus = 'Scheduled';
+    }
+
     const batchId = batch?._id ? batch._id : batch;
     const resolvedAttendance = await resolveScheduleAttendance({
       status: scheduleStatus,
       batchId,
+      date: normalizedDate,
       inputAttendance: req.body.attendance,
     });
 
@@ -193,6 +201,18 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
 
       const previousStatus = schedule.status;
 
+      const kolkata = getKolkataNow();
+      const targetDate = req.body.date ? (normalizeDateOnlyToUtc(req.body.date) || schedule.date) : schedule.date;
+      const targetDateStr = formatDateToYYYYMMDD(targetDate);
+
+      // Requirement: classes after today CANNOT be marked as Completed. They must remain Scheduled.
+      if (req.body.status === 'Completed' && targetDateStr > kolkata.todayStr) {
+        res.status(400).json({
+          message: 'Classes scheduled after today cannot be marked as Completed. Only classes for today or previous days can be completed.'
+        });
+        return;
+      }
+
       if (isAdmin) {
         schedule.teacher = req.body.teacher || schedule.teacher;
         schedule.batch = req.body.batch || schedule.batch;
@@ -218,18 +238,25 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         }
       }
 
-      // Automatically resolve attendance:
+      // Final safeguard: any schedule strictly after today must be Scheduled
+      if (targetDateStr > kolkata.todayStr && schedule.status === 'Completed') {
+        schedule.status = 'Scheduled';
+      }
+
+      // Automatically resolve attendance based on date:
       // - Completed -> student(s) automatically marked present
       // - Cancelled -> student(s) automatically marked absent
+      // - Scheduled -> student attendance marked by teacher or preserved
       // - Rescheduled -> no mark anything (empty attendance)
       const batchId = schedule.batch?._id ? schedule.batch._id : schedule.batch;
       const statusChanged = req.body.status !== undefined && req.body.status !== previousStatus;
       schedule.attendance = await resolveScheduleAttendance({
         status: schedule.status,
         batchId,
+        date: schedule.date,
         existingAttendance: schedule.attendance,
         inputAttendance: req.body.attendance,
-        preserveCustomIfCompleted: !statusChanged,
+        preserveCustomIfCompleted: req.body.attendance !== undefined ? true : !statusChanged,
       });
 
 
@@ -341,18 +368,18 @@ export const getSchedulesByStudent = async (req: Request, res: Response): Promis
     let matchingSchedules: any[] = [];
     if (batchIds.length > 0) {
       const batchSchedules = await Schedule.find({
-        batch: { $in: batchIds },
-        status: { $in: ['Completed', 'Cancelled'] }
+        batch: { $in: batchIds }
       })
         .populate('teacher', 'name email')
         .populate('batch', 'name subject');
 
       matchingSchedules = batchSchedules.filter((s: any) => {
         if (!s.attendance || !Array.isArray(s.attendance)) return false;
-        return s.attendance.some((a: any) => {
-          const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
-          return id === studentId;
-        });
+        return (s.status === 'Completed' || s.status === 'Cancelled' || s.attendance.length > 0) &&
+          s.attendance.some((a: any) => {
+            const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+            return id === studentId;
+          });
       });
     }
 

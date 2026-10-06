@@ -28,11 +28,13 @@ import {
   UserCheck,
   Filter,
   RotateCcw,
-  SlidersHorizontal
+  SlidersHorizontal,
+  CreditCard,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 import dynamic from "next/dynamic";
 const DemoReportModal = dynamic(() => import("@/components/demo/DemoReportModal"), { ssr: false });
 
@@ -160,6 +162,7 @@ export default function DemoSessionsPage() {
   const [filterEndDate, setFilterEndDate] = useState<string>("");
   const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
   const [reportSession, setReportSession] = useState<DemoSession | null>(null);
+  const [admissionPaymentSession, setAdmissionPaymentSession] = useState<DemoSession | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
@@ -170,30 +173,40 @@ export default function DemoSessionsPage() {
     endTime: "10:00",
   });
 
-  // Queries
+  // Queries with optimized caching
   const { data: demoSessions = [], isLoading: isLoadingDemo } = useQuery<DemoSession[]>({
     queryKey: ["demo-sessions"],
     queryFn: async () => (await api.get("/demo-sessions")).data,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: teachers = [] } = useQuery<Teacher[]>({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: schedules = [] } = useQuery<any[]>({
     queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: demoSlots = [], isLoading: isLoadingSlots } = useQuery<any[]>({
     queryKey: ["demo-slots"],
     queryFn: async () => (await api.get("/demo-slots")).data,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: salesPeople = [] } = useQuery<any[]>({
     queryKey: ["salesPeople"],
     queryFn: async () => (await api.get("/sales-people")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const createSlotMutation = useMutation({
@@ -233,9 +246,15 @@ export default function DemoSessionsPage() {
   const updateDemoMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: DemoSessionForm }) =>
       api.put(`/demo-sessions/${id}`, data),
-    onSuccess: () => {
+    onSuccess: (_res, variables) => {
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       closeModal();
+      if (variables.data.admissionConfirmed === "Yes" || variables.data.admissionConfirmed === "Won") {
+        setAdmissionPaymentSession({
+          ...variables.data,
+          _id: variables.id,
+        } as any);
+      }
     },
   });
 
@@ -449,7 +468,66 @@ export default function DemoSessionsPage() {
     }
   };
 
-  // Conflict Logic (real time check with numeric minute parsing & memoization)
+  // Memoized teacher+date index for fast sub-linear conflict checking
+  const teacherDateSchedulesMap = useMemo(() => {
+    const map = new Map<string, { start: number; end: number }[]>();
+    const parseMin = (t: string) => {
+      if (!t) return -1;
+      const [h, m] = t.split(":").map(Number);
+      return isNaN(h) || isNaN(m) ? -1 : h * 60 + m;
+    };
+
+    for (const s of schedules) {
+      if (s.status === "Cancelled" || !s.date || !s.startTime || !s.endTime) continue;
+      const tId = s.teacher?._id || s.teacher;
+      if (!tId) continue;
+      const sDate = formatDateSafe(s.date, "yyyy-MM-dd");
+      if (!sDate) continue;
+      const start = parseMin(s.startTime);
+      const end = parseMin(s.endTime);
+      if (start < 0 || end < 0) continue;
+
+      const key = `${tId}_${sDate}`;
+      let list = map.get(key);
+      if (!list) {
+        list = [];
+        map.set(key, list);
+      }
+      list.push({ start, end });
+    }
+    return map;
+  }, [schedules]);
+
+  const teacherDateDemosMap = useMemo(() => {
+    const map = new Map<string, { id: string; start: number; end: number }[]>();
+    const parseMin = (t: string) => {
+      if (!t) return -1;
+      const [h, m] = t.split(":").map(Number);
+      return isNaN(h) || isNaN(m) ? -1 : h * 60 + m;
+    };
+
+    for (const d of demoSessions) {
+      if (d.status === "Cancelled" || !d.date || !d.startTime || !d.endTime) continue;
+      const tId = d.teacher?._id || (d.teacher as any);
+      if (!tId) continue;
+      const dDate = formatDateSafe(d.date, "yyyy-MM-dd");
+      if (!dDate) continue;
+      const start = parseMin(d.startTime);
+      const end = parseMin(d.endTime);
+      if (start < 0 || end < 0) continue;
+
+      const key = `${tId}_${dDate}`;
+      let list = map.get(key);
+      if (!list) {
+        list = [];
+        map.set(key, list);
+      }
+      list.push({ id: d._id, start, end });
+    }
+    return map;
+  }, [demoSessions]);
+
+  // Conflict Logic (O(1) key lookup into date-slot intervals)
   const hasConflict = useMemo(() => {
     if (!form.teacher || !form.date || !form.startTime || !form.endTime) return false;
 
@@ -463,32 +541,22 @@ export default function DemoSessionsPage() {
     const targetEnd = parseMin(form.endTime);
     if (targetStart < 0 || targetEnd < 0 || targetEnd <= targetStart) return false;
 
-    // Check regular classes
-    const scheduleOverlap = schedules.some((s: any) => {
-      if (s.status === "Cancelled") return false;
-      const tId = s.teacher?._id || s.teacher;
-      if (tId !== form.teacher) return false;
-      const sDate = formatDateSafe(s.date, "yyyy-MM-dd");
-      if (sDate !== form.date) return false;
-      const sStart = parseMin(s.startTime);
-      const sEnd = parseMin(s.endTime);
-      return sStart >= 0 && sEnd >= 0 && targetStart < sEnd && targetEnd > sStart;
-    });
+    const lookupKey = `${form.teacher}_${form.date}`;
 
-    if (scheduleOverlap) return true;
+    // 1. Check regular classes for this teacher on this date
+    const daySchedules = teacherDateSchedulesMap.get(lookupKey);
+    if (daySchedules && daySchedules.some(s => targetStart < s.end && targetEnd > s.start)) {
+      return true;
+    }
 
-    // Check other demo sessions
-    return demoSessions.some((d) => {
-      if (d._id === editingId || d.status === "Cancelled") return false;
-      const tId = d.teacher?._id || (d.teacher as any);
-      if (tId !== form.teacher) return false;
-      const dDate = formatDateSafe(d.date, "yyyy-MM-dd");
-      if (dDate !== form.date) return false;
-      const dStart = parseMin(d.startTime);
-      const dEnd = parseMin(d.endTime);
-      return dStart >= 0 && dEnd >= 0 && targetStart < dEnd && targetEnd > dStart;
-    });
-  }, [form.teacher, form.date, form.startTime, form.endTime, schedules, demoSessions, editingId]);
+    // 2. Check other demo sessions for this teacher on this date
+    const dayDemos = teacherDateDemosMap.get(lookupKey);
+    if (dayDemos && dayDemos.some(d => d.id !== editingId && targetStart < d.end && targetEnd > d.start)) {
+      return true;
+    }
+
+    return false;
+  }, [form.teacher, form.date, form.startTime, form.endTime, teacherDateSchedulesMap, teacherDateDemosMap, editingId]);
 
   const availability = checkAvailabilityStatus();
 
@@ -1249,8 +1317,6 @@ export default function DemoSessionsPage() {
                   <th className="px-4 py-3">Time</th>
                   <th className="px-4 py-3">Demo Tutor</th>
                   <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Fee Discussed</th>
-                  <th className="px-4 py-3">No. Hours</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Admn Confirmed</th>
                   <th className="px-4 py-3">Sales Exec</th>
@@ -1269,10 +1335,6 @@ export default function DemoSessionsPage() {
                     <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
                     <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
                     <td className="px-4 py-3">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</td>
-                    <td className="px-4 py-3">
-                      {canViewFee(session.salesExecutive) ? (session.feeDiscussed || "-") : <span className="text-neutral-600 italic">Hidden</span>}
-                    </td>
-                    <td className="px-4 py-3">{session.numberOfSessions || "-"}</td>
                     <td className="px-4 py-3">
                       {canEditSession(session) ? (
                         <select
@@ -1318,6 +1380,15 @@ export default function DemoSessionsPage() {
                       )}
                       {session.status === "Completed" && (
                         <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
+                      )}
+                      {(session.admissionConfirmed === "Yes" || session.status === "Completed") && (
+                        <button
+                          onClick={() => setAdmissionPaymentSession(session)}
+                          className="text-amber-400 hover:text-amber-300"
+                          title="Fee Collection / Payment Details"
+                        >
+                          <CreditCard className="w-4 h-4" />
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -1858,18 +1929,6 @@ export default function DemoSessionsPage() {
                           className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                         />
                       </div>
-                      {(!isSalesPerson || modal?.mode === "create" || canViewFee(form.salesExecutive)) && (
-                        <div className="space-y-1.5">
-                          <label className="text-xs font-semibold text-neutral-400">Fee Discussed</label>
-                          <input
-                            type="text"
-                            placeholder="e.g. 5000 INR"
-                            value={form.feeDiscussed}
-                            onChange={(e) => setForm({ ...form, feeDiscussed: e.target.value })}
-                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                          />
-                        </div>
-                      )}
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
                         <select
@@ -1884,16 +1943,6 @@ export default function DemoSessionsPage() {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">No. of Hours</label>
-                        <input
-                          type="number"
-                          placeholder="e.g. 10"
-                          value={form.numberOfSessions}
-                          onChange={(e) => setForm({ ...form, numberOfSessions: e.target.value ? Number(e.target.value) : "" })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
                       </div>
                     </div>
 
@@ -2357,16 +2406,6 @@ export default function DemoSessionsPage() {
                    </h3>
                    <div className="grid grid-cols-2 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
                      <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Fee Discussed</p>
-                       <p className="text-sm text-white font-medium mt-1">
-                         {canViewFee(viewingSession.salesExecutive) ? (viewingSession.feeDiscussed || "-") : <span className="text-neutral-500 italic">Hidden</span>}
-                       </p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">No. of Hours</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.numberOfSessions || "-"}</p>
-                     </div>
-                     <div>
                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Sales Executive</p>
                        <p className="text-sm text-white font-medium mt-1">{viewingSession.salesExecutive || "-"}</p>
                      </div>
@@ -2411,6 +2450,18 @@ export default function DemoSessionsPage() {
           session={reportSession as any}
           onClose={() => setReportSession(null)}
           readOnly={isSalesPerson}
+        />
+      )}
+
+      {admissionPaymentSession && (
+        <AdmissionPaymentModal
+          isOpen={true}
+          onClose={() => setAdmissionPaymentSession(null)}
+          demoSessionId={admissionPaymentSession._id}
+          studentName={admissionPaymentSession.studentName}
+          courseName={admissionPaymentSession.subject}
+          initialFee={15000}
+          initialSessions={15}
         />
       )}
     </div>

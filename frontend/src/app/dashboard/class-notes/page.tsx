@@ -22,23 +22,31 @@ export default function ClassNotesPage() {
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
     enabled: user?.role === "Admin",
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: batches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
     enabled: user?.role === "Admin",
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: students = [] } = useQuery({
     queryKey: ["students"],
     queryFn: async () => (await api.get("/students")).data,
     enabled: user?.role === "Admin",
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ["schedules-completed"],
     queryFn: async () => (await api.get("/schedules")).data,
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   const studentBatchMap = useMemo(() => {

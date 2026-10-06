@@ -43,6 +43,8 @@ export default function SalesPeoplePage() {
   const { data: salesPeople, isLoading } = useQuery({
     queryKey: ["salesPeople"],
     queryFn: async () => (await api.get("/sales-people")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { searchQuery } = useSearchStore();

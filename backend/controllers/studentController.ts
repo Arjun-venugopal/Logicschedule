@@ -182,7 +182,31 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
 export const getStudentsByBatch = async (req: Request, res: Response): Promise<void> => {
   try {
     const { batchId } = req.params;
-    const students = await Student.find({ batch: batchId });
+    const bId = (Array.isArray(batchId) ? batchId[0] : batchId) as string;
+    const students = await Student.find({ batch: bId });
+    
+    // Also include any students referenced in batch.students
+    const batch = await Batch.findById(bId);
+    if (batch && Array.isArray(batch.students) && batch.students.length > 0) {
+      const studentMap = new Map<string, any>();
+      students.forEach((s: any) => {
+        if (s?._id) studentMap.set(s._id.toString(), s);
+      });
+
+      const extraIds = batch.students
+        .map((st: any) => (st?._id ? st._id.toString() : (typeof st === 'string' ? st : '')))
+        .filter((id: string) => id && !studentMap.has(id));
+
+      if (extraIds.length > 0) {
+        const extraStudents = await Student.find({ _id: { $in: extraIds } });
+        extraStudents.forEach((s: any) => {
+          if (s?._id) studentMap.set(s._id.toString(), s);
+        });
+      }
+      res.status(200).json(Array.from(studentMap.values()));
+      return;
+    }
+
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch students' });

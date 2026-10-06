@@ -34,7 +34,9 @@ export default function DashboardPage() {
   const { data: stats, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => (await api.get("/stats")).data,
-    refetchInterval: false, // Manual refresh via Refresh button to preserve Firestore quota
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
+    refetchInterval: false, // Manual refresh via Refresh button to preserve quota
   });
 
   const statCards = useMemo(() => [

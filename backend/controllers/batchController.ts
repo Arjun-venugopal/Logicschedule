@@ -4,7 +4,7 @@ import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import DemoSession from '../models/DemoSession';
-import { checkIntervalConflict } from '../utils/scheduleHelper';
+import { checkIntervalConflict, getKolkataNow } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // Day name → JS getUTCDay() index
@@ -93,8 +93,12 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
       const cursorTime = cursor.getTime();
 
       if (!existingTimes.has(cursorTime)) {
-        const isCompleted = schedulesToCreate.length < preCompletedClasses;
         const dateKey = cursor.toISOString().split('T')[0];
+        const kolkata = getKolkataNow();
+        // Crucial requirement: only today and previous days can ever be marked Completed.
+        // Any class strictly after today (dateKey > kolkata.todayStr) MUST ALWAYS be 'Scheduled'.
+        const isPastOrToday = dateKey <= kolkata.todayStr;
+        const isCompleted = isPastOrToday && (schedulesToCreate.length < preCompletedClasses);
         const daySlots = teacherSlotsByDate.get(dateKey) || [];
         const isConflict = checkIntervalConflict(daySlots, {
           startTime: timing.startTime,
@@ -190,12 +194,23 @@ export const getBatches = async (req: any, res: Response) => {
       const batchObj = b.toObject ? b.toObject() : b;
       const bId = batchObj._id.toString();
       const completedCount = completedCountMap[bId] || 0;
-      const totalCount = totalCountMap[bId] || 0;
+      const schedCount = totalCountMap[bId] || 0;
+      const targetSessions = (batchObj.numberOfSessions && Number(batchObj.numberOfSessions) > 0)
+        ? Number(batchObj.numberOfSessions)
+        : schedCount;
+
+      const isClassCompleted = targetSessions > 0 && completedCount >= targetSessions;
+      const effectiveStatus = (isClassCompleted && batchObj.status !== 'Dropped')
+        ? 'Completed'
+        : batchObj.status;
 
       return {
         ...batchObj,
+        status: effectiveStatus,
         completedClassesCount: completedCount,
-        totalClassesCount: totalCount
+        totalClassesCount: targetSessions,
+        scheduledClassesCount: schedCount,
+        isCompleted: isClassCompleted || batchObj.status === 'Completed'
       };
     });
 
@@ -376,10 +391,14 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
       };
     });
 
+    const targetSessions = (batch.numberOfSessions && Number(batch.numberOfSessions) > 0)
+      ? Number(batch.numberOfSessions)
+      : schedules.length;
+
     res.json({
       batch,
       studentsCount: students.length,
-      totalSchedules: schedules.length,
+      totalSchedules: targetSessions,
       completedSchedules: completedClasses.length,
       attendanceStats,
       schedules,

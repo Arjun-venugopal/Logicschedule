@@ -4,8 +4,10 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus } from "lucide-react";
+import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, IndianRupee, AlertCircle, Clock, Receipt } from "lucide-react";
 import { format } from "date-fns";
+import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
+import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 
 export function StudentDetailsModal({ studentId, onClose }: { studentId: string; onClose: () => void }) {
   const queryClient = useQueryClient();
@@ -13,6 +15,8 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
   const [selectedNextBatch, setSelectedNextBatch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
   const [customBatchInput, setCustomBatchInput] = useState("");
+  const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
+  const [showAdmissionPaymentModal, setShowAdmissionPaymentModal] = useState(false);
 
   const { data: student, isLoading } = useQuery({
     queryKey: ["student", studentId],
@@ -94,6 +98,12 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
       );
     },
     enabled: !!student?.batch?._id,
+  });
+
+  const { data: paymentData } = useQuery({
+    queryKey: ["student-payment", studentId],
+    queryFn: async () => (await api.get(`/payments/student/${studentId}`)).data,
+    enabled: !!studentId,
   });
 
   if (isLoading) {
@@ -404,7 +414,200 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
               )}
             </div>
           </div>
+
+          {/* Fees & Payment Summary Section */}
+          <div className="space-y-4 pt-4 mt-6 border-t border-neutral-800/50">
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest">
+                <CreditCard className="w-4 h-4 text-amber-500" />
+                <span>Fees & Payment Summary</span>
+              </div>
+              {paymentData?.hasPayment && paymentData.payment.remainingAmount > 0 && (
+                <button
+                  onClick={() => setShowRecordPaymentModal(true)}
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <Receipt className="w-3.5 h-3.5" />
+                  Record Payment
+                </button>
+              )}
+            </div>
+
+            {paymentData?.hasPayment ? (
+              <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 p-4 sm:p-5 space-y-4">
+                {/* Status & Key Stats */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800/60">
+                  <div>
+                    <span className="text-[10px] text-neutral-500 uppercase font-bold block">Payment Status</span>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold border inline-flex items-center gap-1.5 ${
+                        paymentData.payment.paymentStatus === "Paid"
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : paymentData.payment.paymentStatus === "Due" || paymentData.payment.paymentStatus === "Overdue"
+                          ? "bg-red-500/10 text-red-400 border-red-500/20"
+                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                      }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${
+                          paymentData.payment.paymentStatus === "Paid" ? "bg-emerald-400" : paymentData.payment.paymentStatus === "Due" ? "bg-red-400" : "bg-amber-400"
+                        }`} />
+                        {paymentData.payment.paymentStatus === "Due" ? "🔴 Payment Due" : paymentData.payment.paymentStatus === "Paid" ? "🟢 Paid" : paymentData.payment.paymentStatus === "Upcoming" ? "🟡 Upcoming Reminder" : `🔵 ${paymentData.payment.paymentStatus}`}
+                      </span>
+                      <span className="text-xs text-neutral-400 font-medium">({paymentData.payment.paymentType})</span>
+                    </div>
+                  </div>
+
+                  <div className="text-left sm:text-right">
+                    <span className="text-[10px] text-neutral-500 uppercase font-bold block">Outstanding Balance</span>
+                    <span className={`text-base sm:text-lg font-black block mt-0.5 ${paymentData.payment.remainingAmount === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                      ₹{Number(paymentData.payment.remainingAmount).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                </div>
+
+                {/* 4 Metrics Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs">
+                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
+                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Total Fee</span>
+                    <span className="text-white font-bold text-sm mt-0.5 block">
+                      ₹{Number(paymentData.payment.totalFee).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
+                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Amount Paid</span>
+                    <span className="text-emerald-400 font-bold text-sm mt-0.5 block">
+                      ₹{Number(paymentData.payment.amountPaid).toLocaleString("en-IN")}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
+                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Classes Completed</span>
+                    <span className="text-white font-bold text-sm mt-0.5 block">
+                      {paymentData.payment.completedClasses} / {paymentData.payment.assignedClasses}
+                    </span>
+                  </div>
+                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
+                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Due After</span>
+                    <span className="text-amber-400 font-bold text-sm mt-0.5 block">
+                      {paymentData.payment.dueAfterClasses} Classes
+                    </span>
+                  </div>
+                </div>
+
+                {/* Due Progress Bar */}
+                <div className="p-3.5 bg-neutral-950/60 rounded-xl border border-neutral-800/80 space-y-2">
+                  <div className="flex justify-between text-xs">
+                    <span className="text-neutral-300 font-semibold">
+                      Class Due Trigger Progress:
+                    </span>
+                    <span className="text-amber-400 font-bold">
+                      {paymentData.payment.completedClasses >= paymentData.payment.dueAfterClasses
+                        ? "Trigger Met (Payment Due)"
+                        : `${paymentData.payment.dueAfterClasses - paymentData.payment.completedClasses} classes remaining until due`}
+                    </span>
+                  </div>
+                  <div className="relative w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          Math.round((paymentData.payment.completedClasses / paymentData.payment.assignedClasses) * 100)
+                        )}%`,
+                      }}
+                    />
+                    <div
+                      className="absolute top-0 bottom-0 w-1.5 bg-amber-400 z-10"
+                      style={{
+                        left: `${Math.min(
+                          100,
+                          Math.round((paymentData.payment.dueAfterClasses / paymentData.payment.assignedClasses) * 100)
+                        )}%`,
+                      }}
+                      title={`Due trigger at ${paymentData.payment.dueAfterClasses} classes`}
+                    />
+                  </div>
+                </div>
+
+                {/* Payment History Accordion */}
+                {paymentData.payment.paymentHistory && paymentData.payment.paymentHistory.length > 0 && (
+                  <div className="space-y-2 pt-2 border-t border-neutral-800/60">
+                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider block">
+                      Payment History ({paymentData.payment.paymentHistory.length})
+                    </span>
+                    <div className="space-y-2">
+                      {paymentData.payment.paymentHistory.map((tx: any, idx: number) => (
+                        <div
+                          key={tx.id || idx}
+                          className="p-3 bg-neutral-900/60 border border-neutral-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-white">Payment #{paymentData.payment.paymentHistory.length - idx}</span>
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400">
+                                {tx.paymentType || "Payment"}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-neutral-400 mt-0.5">
+                              {tx.paymentDate ? format(new Date(tx.paymentDate), "dd MMM yyyy") : "-"} · {tx.paymentMethod} {tx.transactionId ? `· Ref: ${tx.transactionId}` : ""}
+                            </p>
+                          </div>
+                          <div className="text-left sm:text-right">
+                            <span className="font-extrabold text-sm text-emerald-400">
+                              ₹{Number(tx.amount).toLocaleString("en-IN")}
+                            </span>
+                            <span className="text-[11px] text-neutral-500 block">
+                              Balance: ₹{Number(tx.remainingBalance || 0).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 p-6 text-center space-y-3">
+                <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center mx-auto text-neutral-500">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">No payment record found</p>
+                  <p className="text-xs text-neutral-500 mt-0.5">
+                    Admission fee has not been recorded yet for this student.
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAdmissionPaymentModal(true)}
+                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-sm"
+                >
+                  <Plus className="w-4 h-4" /> Collect Admission Fee
+                </button>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Record Payment Modal */}
+        {showRecordPaymentModal && paymentData?.payment && (
+          <RecordPaymentModal
+            isOpen={true}
+            onClose={() => setShowRecordPaymentModal(false)}
+            payment={paymentData.payment}
+          />
+        )}
+
+        {/* Admission Payment Modal */}
+        {showAdmissionPaymentModal && (
+          <AdmissionPaymentModal
+            isOpen={true}
+            onClose={() => setShowAdmissionPaymentModal(false)}
+            studentId={student._id}
+            batchId={student.batch?._id}
+            studentName={student.name}
+            courseName={student.batch?.subject || student.batch?.name || "General"}
+            initialFee={15000}
+            initialSessions={student.batch?.numberOfSessions || 15}
+          />
+        )}
 
         {/* Choose Next Course Selection Dialog */}
         {showNextCourseModal && (

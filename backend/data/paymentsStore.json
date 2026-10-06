@@ -1,0 +1,96 @@
+[
+  {
+    "student": "a343555e-58fd-4c7b-90f5-2fb150cc55d8",
+    "batch": "42768558-d0ee-4efd-91e4-10eb46d3c221",
+    "demoSession": "qFSs8NDzFaw6WHZfFsdI",
+    "totalFee": 26000,
+    "amountPaid": 13000,
+    "remainingAmount": 13000,
+    "paymentType": "Half Payment",
+    "paymentStatus": "Partially Paid",
+    "assignedClasses": 25,
+    "dueAfterClasses": 12,
+    "reminderBeforeClasses": 2,
+    "paymentHistory": [
+      {
+        "id": "81edb09c-90ba-4f22-9333-7bff358e0d50",
+        "amount": 13000,
+        "paymentDate": "2026-10-03",
+        "paymentMethod": "UPI",
+        "transactionId": "",
+        "recordedBy": "Super Admin",
+        "paymentType": "Initial Payment",
+        "remainingBalance": 13000,
+        "notes": "",
+        "createdAt": "2026-10-06T07:33:54.206Z"
+      }
+    ],
+    "notes": "",
+    "_id": "pay_1791272034428_g4p70",
+    "createdAt": "2026-10-06T07:33:54.429Z",
+    "updatedAt": "2026-10-06T09:00:54.348Z",
+    "salesExecutive": "Niharika",
+    "closedBy": "Niharika"
+  },
+  {
+    "student": "QriFewcHTTBLMWPeaO6C",
+    "batch": "4005d263-44bd-4b35-b5a6-4f645fe678fa",
+    "demoSession": "692fa079-8fff-4f37-a4bb-b6e1f55befcd",
+    "totalFee": 27000,
+    "amountPaid": 13000,
+    "remainingAmount": 14000,
+    "paymentType": "Custom Payment",
+    "paymentStatus": "Overdue",
+    "assignedClasses": 25,
+    "dueAfterClasses": 12,
+    "reminderBeforeClasses": 2,
+    "salesExecutive": "Arjun venugopal",
+    "closedBy": "Arjun venugopal",
+    "paymentHistory": [
+      {
+        "id": "87050812-cbd8-4138-8ee9-7c486cbe0a86",
+        "amount": 3000,
+        "paymentDate": "2026-08-06",
+        "paymentMethod": "Bank Transfer",
+        "transactionId": "",
+        "recordedBy": "Super Admin",
+        "paymentType": "Initial Payment",
+        "remainingBalance": 24000,
+        "salesExecutive": "Arjun venugopal",
+        "closedBy": "Arjun venugopal",
+        "notes": "",
+        "createdAt": "2026-10-06T10:09:08.475Z"
+      },
+      {
+        "id": "fa11db01-b513-49d8-836f-7d052520c516",
+        "amount": 3000,
+        "paymentDate": "2026-08-09",
+        "paymentMethod": "Bank Transfer",
+        "transactionId": "",
+        "recordedBy": "Super Admin",
+        "paymentType": "Initial Payment",
+        "remainingBalance": 24000,
+        "salesExecutive": "Arjun venugopal",
+        "closedBy": "Arjun venugopal",
+        "notes": "",
+        "createdAt": "2026-10-06T10:05:01.293Z"
+      },
+      {
+        "id": "9860033c-7db3-4070-a5a9-eba5de65c0ad",
+        "amount": 10000,
+        "paymentDate": "2026-09-24",
+        "paymentMethod": "UPI",
+        "transactionId": "",
+        "recordedBy": "Super Admin",
+        "paymentType": "Installment",
+        "remainingBalance": 14000,
+        "notes": "",
+        "createdAt": "2026-10-06T10:13:04.178Z"
+      }
+    ],
+    "notes": "",
+    "_id": "pay_1791281101713_pc4b9",
+    "createdAt": "2026-10-06T10:05:01.713Z",
+    "updatedAt": "2026-10-06T10:13:04.615Z"
+  }
+]

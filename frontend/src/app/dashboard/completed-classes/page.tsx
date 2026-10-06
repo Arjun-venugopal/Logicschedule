@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Clock, Edit2, X, AlertTriangle } from "lucide-react";
+import { CheckCircle, Clock, Edit2, X, AlertTriangle, Users } from "lucide-react";
 import { useState, useMemo } from "react";
 import { format, parseISO, isBefore } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
@@ -15,25 +15,37 @@ export default function CompletedClassesPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>("");
   
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<{
+    subject: string;
+    notes: string;
+    status: string;
+    attendance: any[];
+  }>({
     subject: "",
     notes: "",
     status: "Completed",
+    attendance: [],
   });
 
   const { data: schedules = [], isLoading } = useQuery({
     queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: students = [] } = useQuery({
     queryKey: ["all-students"],
     queryFn: async () => (await api.get("/students")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: batches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const updateSchedule = useMutation({
@@ -70,6 +82,11 @@ export default function CompletedClassesPage() {
 
     return schedules
       .filter((s: any) => {
+        const scheduleDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
+        const todayStr = format(new Date(), "yyyy-MM-dd");
+        // Requirement: classes strictly after today can never be in completed classes
+        if (scheduleDateStr > todayStr) return false;
+
         const isPast = isBefore(new Date(s.date), todayStart);
         const isCompleted = s.status === "Completed";
         
@@ -108,10 +125,26 @@ export default function CompletedClassesPage() {
   }
 
   const openEdit = (cls: any) => {
+    const batchId = cls.batch?._id ? cls.batch._id.toString() : (cls.batch ? cls.batch.toString() : '');
+    const batchStudents = students.filter((st: any) => {
+      const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+      return bId === batchId;
+    });
+
+    let initialAttendance = cls.attendance && cls.attendance.length > 0 ? cls.attendance : [];
+    if (initialAttendance.length === 0 && batchStudents.length > 0) {
+      initialAttendance = batchStudents.map((st: any) => ({
+        studentId: st._id,
+        isPresent: true,
+        date: cls.date
+      }));
+    }
+
     setForm({
       subject: cls.subject || "",
       notes: cls.notes || "",
       status: "Completed",
+      attendance: initialAttendance,
     });
     setModal(cls);
   };
@@ -223,6 +256,14 @@ export default function CompletedClassesPage() {
                           {cls.startTime} – {cls.endTime}
                         </div>
                       </div>
+                      {cls.attendance && cls.attendance.length > 0 && (
+                        <div>
+                          <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-1">Attendance</p>
+                          <span className="text-xs font-semibold px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {cls.attendance.filter((a: any) => a.isPresent).length}/{cls.attendance.length} Present
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -299,13 +340,78 @@ export default function CompletedClassesPage() {
                     Class Remarks / Notes
                   </label>
                   <textarea
-                    rows={4}
+                    rows={3}
                     value={form.notes}
                     onChange={(e) => setForm({ ...form, notes: e.target.value })}
                     className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600 resize-none"
                     placeholder="Describe student performance, assignments, etc."
                   />
                 </div>
+
+                {/* Student Attendance */}
+                {(() => {
+                  const batchId = modal.batch?._id ? modal.batch._id.toString() : (modal.batch ? modal.batch.toString() : '');
+                  const batchStudents = students.filter((st: any) => {
+                    const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+                    return bId === batchId;
+                  });
+
+                  if (batchStudents.length === 0) return null;
+
+                  return (
+                    <div className="pt-2 border-t border-neutral-800">
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="block text-xs font-bold text-neutral-400 uppercase tracking-wider">
+                          Student Attendance
+                        </label>
+                        <span className="text-[10px] text-emerald-400 font-medium">
+                          Auto-marked Present · Uncheck if Absent
+                        </span>
+                      </div>
+
+                      <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                        {batchStudents.map((student: any) => {
+                          const existingRecord = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
+                          const isPresent = existingRecord ? existingRecord.isPresent : true;
+
+                          return (
+                            <label
+                              key={student._id}
+                              className={`flex items-center justify-between p-2 rounded-xl border cursor-pointer transition-all ${
+                                isPresent
+                                  ? "bg-emerald-500/10 border-emerald-500/30"
+                                  : "bg-red-500/5 border-red-500/20 opacity-90"
+                              }`}
+                            >
+                              <div className="flex items-center gap-2.5">
+                                <input
+                                  type="checkbox"
+                                  checked={isPresent}
+                                  onChange={(e) => {
+                                    const checked = e.target.checked;
+                                    const currentAttendance = form.attendance || [];
+                                    const newAttendance = currentAttendance.filter((a: any) => (a.studentId?._id || a.studentId) !== student._id);
+                                    newAttendance.push({ studentId: student._id, isPresent: checked, date: modal.date });
+                                    setForm({ ...form, attendance: newAttendance });
+                                  }}
+                                  className="w-4 h-4 rounded border-neutral-600 text-emerald-500 focus:ring-emerald-500 focus:ring-offset-neutral-900 accent-emerald-500 cursor-pointer"
+                                />
+                                <span className="text-sm font-medium text-white">{student.name}</span>
+                              </div>
+                              <span className={`text-[11px] font-semibold px-2 py-0.5 rounded ${
+                                isPresent
+                                  ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                  : "bg-red-500/20 text-red-400 border border-red-500/30"
+                              }`}>
+                                {isPresent ? "Present" : "Absent"}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="flex gap-3 pt-2">
                   <button

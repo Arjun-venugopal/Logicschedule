@@ -1,6 +1,5 @@
 -- ==============================================================================
 -- LOGICSCHEDULE - SUPABASE DATABASE SCHEMA
--- Run this in the Supabase Dashboard -> SQL Editor -> New Query
 -- ==============================================================================
 
 -- 1. Enable pgcrypto for UUID generation if needed
@@ -172,10 +171,3 @@ CREATE TABLE IF NOT EXISTS public.payments (
 CREATE INDEX IF NOT EXISTS idx_payments_student ON public.payments(student);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON public.payments("paymentStatus");
 CREATE INDEX IF NOT EXISTS idx_payments_sales ON public.payments("salesExecutive");
-
--- ==============================================================================
--- Security: Disable RLS for backend service-role access or configure policies
--- Note: When using SUPABASE_SERVICE_ROLE_KEY from the backend, RLS is automatically bypassed.
--- ==============================================================================
-
-

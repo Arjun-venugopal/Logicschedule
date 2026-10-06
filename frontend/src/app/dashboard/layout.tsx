@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff } from "lucide-react";
+import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
@@ -8,6 +8,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePwa } from "@/components/pwa/PwaProvider";
+import { NotificationDropdown } from "@/components/notifications/NotificationPanel";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -73,6 +74,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions", show: canAccess("demoSessions") },
           { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes", show: canAccess("classNotes") },
           { icon: Users, label: "Attendance", href: "/dashboard/attendance", show: canAccess("attendance") },
+          { icon: CreditCard, label: "Fees & Payments", href: "/dashboard/payments", show: canAccess("payments") || !isTeacher },
         ]),
     { icon: Settings, label: "Settings", href: "/dashboard/settings", show: canAccess("settings") },
   ].filter(item => item.show);
@@ -279,10 +281,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <Search className="w-5 h-5" />
             </button>
 
-            <button className="relative p-2 rounded-lg hover:bg-neutral-800 transition-colors">
-              <Bell className="w-5 h-5 text-neutral-400" />
-              <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
-            </button>
+            <NotificationDropdown />
           </div>
 
           {/* Expandable Mobile Search Dropdown */}

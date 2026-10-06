@@ -78,6 +78,8 @@ export default function TeachersPage() {
   const { data: teachers, isLoading, refetch, isRefetching } = useQuery({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
     refetchInterval: false,
   });
 

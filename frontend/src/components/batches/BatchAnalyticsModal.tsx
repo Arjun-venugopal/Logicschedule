@@ -24,7 +24,10 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
   if (!data) return null;
 
   const { batch, studentsCount, totalSchedules, completedSchedules, attendanceStats, schedules } = data;
-  const progress = totalSchedules > 0 ? Math.round((completedSchedules / totalSchedules) * 100) : 0;
+  const targetClasses = (batch?.numberOfSessions && Number(batch.numberOfSessions) > 0)
+    ? Number(batch.numberOfSessions)
+    : totalSchedules;
+  const progress = targetClasses > 0 ? Math.min(100, Math.round((completedSchedules / targetClasses) * 100)) : 0;
 
 
   const barChartData = attendanceStats.map((stu: any) => ({
@@ -34,7 +37,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
   const pieChartData = [
     { name: 'Completed', value: completedSchedules },
-    { name: 'Remaining', value: Math.max(0, totalSchedules - completedSchedules) }
+    { name: 'Remaining', value: Math.max(0, targetClasses - completedSchedules) }
   ];
   const PIE_COLORS = ['#10b981', '#3f3f46'];
 
@@ -77,7 +80,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                 <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Total Classes</span>
                 <Calendar className="w-4 h-4 text-blue-500" />
               </div>
-              <p className="text-xl sm:text-2xl font-bold text-white">{totalSchedules}</p>
+              <p className="text-xl sm:text-2xl font-bold text-white">{targetClasses}</p>
             </div>
             <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
               <div className="flex items-center justify-between mb-1 sm:mb-2">

@@ -115,11 +115,15 @@ export default function BatchesPage() {
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: teachers = [] } = useQuery({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const createBatch = useMutation({
@@ -195,7 +199,12 @@ export default function BatchesPage() {
     if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
     
     if (filterStatus) {
-      const bStatus = (b.status || "").toLowerCase();
+      const targetSessions = (b.numberOfSessions && Number(b.numberOfSessions) > 0)
+        ? Number(b.numberOfSessions)
+        : (b.totalClassesCount || 0);
+      const isClassCompleted = b.status === "Completed" || (targetSessions > 0 && (b.completedClassesCount || 0) >= targetSessions);
+      const bStatus = isClassCompleted ? "completed" : (b.status || "").toLowerCase();
+
       if (filterStatus === "Ongoing") {
         if (bStatus !== "active" && bStatus !== "ongoing") return false;
       } else if (filterStatus === "Completed") {
@@ -331,7 +340,12 @@ export default function BatchesPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
           {filteredBatches.map((batch: any, i: number) => {
-            const isCompleted = batch.status === "Completed" || (batch.totalClassesCount > 0 && (batch.completedClassesCount || 0) >= batch.totalClassesCount);
+            const targetSessions = (batch.numberOfSessions && Number(batch.numberOfSessions) > 0)
+              ? Number(batch.numberOfSessions)
+              : (batch.totalClassesCount || 0);
+
+            const completedCount = batch.completedClassesCount || 0;
+            const isCompleted = batch.status === "Completed" || (targetSessions > 0 && completedCount >= targetSessions);
             
             return (
               <motion.div
@@ -408,7 +422,7 @@ export default function BatchesPage() {
                   <div className="bg-neutral-800/60 rounded-xl p-3">
                     <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes Done</p>
                     <p className={`text-lg font-bold ${isCompleted ? "text-emerald-400" : "text-amber-400"}`}>
-                      {batch.completedClassesCount || 0} / {batch.totalClassesCount || 0}
+                      {completedCount} / {targetSessions || 0}
                     </p>
                   </div>
                   <div className="bg-neutral-800/60 rounded-xl p-3">
@@ -426,7 +440,7 @@ export default function BatchesPage() {
                 </div>
 
                 {/* Start Date + Progress */}
-                {(batch.startDate || (batch.totalClassesCount && batch.totalClassesCount > 0)) && (
+                {(batch.startDate || (targetSessions && targetSessions > 0)) && (
                   <div>
                     {batch.startDate && (
                       <div className="flex items-center text-[10px] text-neutral-500 mb-1.5">
@@ -441,7 +455,7 @@ export default function BatchesPage() {
                         className={`h-full rounded-full transition-all ${
                           isCompleted ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50" : "brand-gradient"
                         }`}
-                        style={{ width: `${isCompleted ? 100 : batchProgress(batch.completedClassesCount, batch.totalClassesCount)}%` }}
+                        style={{ width: `${isCompleted ? 100 : batchProgress(completedCount, targetSessions)}%` }}
                       />
                     </div>
                     {isCompleted ? (
@@ -449,12 +463,12 @@ export default function BatchesPage() {
                         <span className="text-emerald-400 flex items-center gap-1">
                           <Check className="w-3.5 h-3.5" /> Class is Completed
                         </span>
-                        <span className="text-emerald-400">100% completed</span>
+                        <span className="text-emerald-400">100% completed ({completedCount}/{targetSessions})</span>
                       </div>
                     ) : (
-                      <div className="flex items-center justify-between text-[9px] text-neutral-600 mt-1">
-                        <span>{Math.max((batch.totalClassesCount || 0) - (batch.completedClassesCount || 0), 0)} classes remaining</span>
-                        <span>{batchProgress(batch.completedClassesCount, batch.totalClassesCount)}% completed</span>
+                      <div className="flex items-center justify-between text-[9px] text-neutral-400 mt-1">
+                        <span>{Math.max(targetSessions - completedCount, 0)} classes remaining</span>
+                        <span>{batchProgress(completedCount, targetSessions)}% completed</span>
                       </div>
                     )}
                   </div>

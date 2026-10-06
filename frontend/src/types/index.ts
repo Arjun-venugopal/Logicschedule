@@ -56,6 +56,7 @@ export interface AttendanceRecord {
   studentId: string | Student;
   isPresent: boolean;
   notes?: string;
+  date?: string;
 }
 
 export interface Schedule {

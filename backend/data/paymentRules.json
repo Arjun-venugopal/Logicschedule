@@ -1,0 +1,13 @@
+{
+  "rules": [
+    {
+      "assignedClasses": 15,
+      "dueAfterClasses": 5
+    },
+    {
+      "assignedClasses": 25,
+      "dueAfterClasses": 12
+    }
+  ],
+  "reminderLeadClasses": 2
+}

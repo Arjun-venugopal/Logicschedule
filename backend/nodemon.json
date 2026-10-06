@@ -1,0 +1,5 @@
+{
+  "watch": ["*.ts", "controllers/**/*.ts", "models/**/*.ts", "routes/**/*.ts", "middleware/**/*.ts", "utils/**/*.ts", "config/**/*.ts"],
+  "ignore": ["data/**", ".cache/**", "node_modules/**", "dist/**", "*.json"],
+  "ext": "ts"
+}

@@ -22,6 +22,8 @@ export default function TeacherPerformancePage() {
     queryKey: ["my-performance"],
     queryFn: async () => (await api.get("/teachers/self/performance")).data,
     enabled: !!user && user.role === "Teacher",
+    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
 
   if (user && user.role !== "Teacher") {

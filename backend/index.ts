@@ -94,6 +94,7 @@ import demoSlotRoutes from './routes/demoSlotRoutes';
 import userRoutes from './routes/userRoutes';
 import salesRoutes from './routes/salesRoutes';
 import demoReportRoutes from './routes/demoReportRoutes';
+import paymentRoutes from './routes/paymentRoutes';
 import { notFound, errorHandler } from './middleware/errorMiddleware';
 
 app.use('/auth', authRoutes);
@@ -107,6 +108,7 @@ app.use('/demo-slots', demoSlotRoutes);
 app.use('/users', userRoutes);
 app.use('/sales-people', salesRoutes);
 app.use('/demo-reports', demoReportRoutes);
+app.use('/payments', paymentRoutes);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({

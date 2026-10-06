@@ -34,11 +34,15 @@ export default function StudentsPage() {
   const { data: students = [], isLoading, refetch } = useQuery({
     queryKey: ["students-all"],
     queryFn: async () => (await api.get("/students")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const { data: batches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
+    staleTime: 5 * 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   const createMutation = useMutation({

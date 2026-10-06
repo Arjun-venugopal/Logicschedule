@@ -10,6 +10,7 @@ const tableColumns: Record<string, string[]> = {
   demoSlots: ['_id', 'teacher', 'date', 'startTime', 'endTime', 'status', 'createdAt', 'updatedAt', 'data'],
   demos: ['_id', 'slot', 'student', 'teacher', 'salesPerson', 'status', 'notes', 'report', 'createdAt', 'updatedAt', 'data'],
   demoReports: ['_id', 'session', 'feedback', 'status', 'createdAt', 'updatedAt', 'data'],
+  payments: ['_id', 'student', 'batch', 'demoSession', 'totalFee', 'amountPaid', 'remainingAmount', 'paymentType', 'paymentStatus', 'assignedClasses', 'dueAfterClasses', 'salesExecutive', 'closedBy', 'paymentHistory', 'createdAt', 'updatedAt', 'data'],
 };
 
 function convertTimestampsInPlace(obj: any): any {
@@ -926,7 +927,11 @@ export class BaseModel {
 
     const { data, error } = await q;
     if (error) {
-      console.error(`Supabase query error on ${this.collectionName}:`, error.message);
+      if (error.code === 'PGRST205' || error.message?.includes('schema cache')) {
+        console.warn(`[Supabase Notice] Table '${this.collectionName}' does not exist in schema cache. Using fallback.`);
+      } else {
+        console.error(`Supabase query error on ${this.collectionName}:`, error.message);
+      }
       throw error;
     }
 
