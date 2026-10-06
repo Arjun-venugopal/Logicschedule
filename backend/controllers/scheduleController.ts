@@ -227,6 +227,9 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.cancellationReason !== undefined) {
           (schedule as any).cancellationReason = req.body.cancellationReason;
         }
+        if (req.body.rescheduleDate !== undefined) (schedule as any).rescheduleDate = req.body.rescheduleDate;
+        if (req.body.rescheduleStartTime !== undefined) (schedule as any).rescheduleStartTime = req.body.rescheduleStartTime;
+        if (req.body.rescheduleEndTime !== undefined) (schedule as any).rescheduleEndTime = req.body.rescheduleEndTime;
       } else {
         // Teacher edits: only allowed to change status, subject, completed class note (notes), meetingLink, attendance, and cancellationReason
         if (req.body.status !== undefined) schedule.status = req.body.status;
@@ -236,6 +239,9 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.cancellationReason !== undefined) {
           (schedule as any).cancellationReason = req.body.cancellationReason;
         }
+        if (req.body.rescheduleDate !== undefined) (schedule as any).rescheduleDate = req.body.rescheduleDate;
+        if (req.body.rescheduleStartTime !== undefined) (schedule as any).rescheduleStartTime = req.body.rescheduleStartTime;
+        if (req.body.rescheduleEndTime !== undefined) (schedule as any).rescheduleEndTime = req.body.rescheduleEndTime;
       }
 
       // Final safeguard: any schedule strictly after today must be Scheduled

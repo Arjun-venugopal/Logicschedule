@@ -18,6 +18,17 @@ const SLOT_COLORS = [
   { bg: "bg-blue-500/20", border: "border-blue-500/50", text: "text-blue-300", dot: "bg-blue-400" },
 ];
 
+// Dedicated distinct theme for Rescheduled classes
+const RESCHEDULED_COLOR = {
+  bg: "bg-purple-900/30 hover:bg-purple-900/45",
+  border: "border-purple-500/60",
+  text: "text-purple-300",
+  dot: "bg-purple-400",
+  badgeBg: "bg-purple-500/25",
+  badgeText: "text-purple-200",
+  badgeBorder: "border-purple-500/40",
+};
+
 const HOURS = Array.from({ length: 14 }, (_, i) => i + 9); // 9 AM – 10 PM
 
 const STATUS_OPTIONS = ["Scheduled", "Completed", "Cancelled", "Rescheduled"];
@@ -75,6 +86,10 @@ type PopulatedScheduleEntry = {
   subject?: string;
   notes?: string;
   attendance?: { studentId: any; isPresent: boolean; date?: string; notes?: string }[];
+  cancellationReason?: string;
+  rescheduleDate?: string;
+  rescheduleStartTime?: string;
+  rescheduleEndTime?: string;
 };
 
 const emptyForm = (): ScheduleEntry => ({
@@ -232,9 +247,21 @@ export default function SchedulePage() {
       notes: s.notes || "",
       attendance: s.attendance || [],
       cancellationReason: s.cancellationReason || "",
-      rescheduleDate: "",
-      rescheduleStartTime: s.startTime || "09:00",
-      rescheduleEndTime: s.endTime || "10:00",
+      rescheduleDate: (() => {
+        if (s.rescheduleDate) return s.rescheduleDate.split("T")[0];
+        if (s.notes) {
+          const match = s.notes.match(/Rescheduled to ([A-Za-z]+ \d{1,2},? \d{4})/i);
+          if (match) {
+            try {
+              const p = new Date(match[1]);
+              if (!isNaN(p.getTime())) return format(p, "yyyy-MM-dd");
+            } catch {}
+          }
+        }
+        return "";
+      })(),
+      rescheduleStartTime: s.rescheduleStartTime || s.startTime || "09:00",
+      rescheduleEndTime: s.rescheduleEndTime || s.endTime || "10:00",
     });
     setEditingId(s._id);
     setModal({ open: true, mode: "edit" });
@@ -276,6 +303,9 @@ export default function SchedulePage() {
         const notesSuffix = `Rescheduled to ${format(parseISO(effectiveForm.rescheduleDate), "MMM d, yyyy")} ${effectiveForm.rescheduleStartTime}-${effectiveForm.rescheduleEndTime}.${effectiveForm.cancellationReason ? ` Reason: ${effectiveForm.cancellationReason}` : ''}`;
         const updateData = { 
           ...effectiveForm, 
+          rescheduleDate: effectiveForm.rescheduleDate,
+          rescheduleStartTime: effectiveForm.rescheduleStartTime,
+          rescheduleEndTime: effectiveForm.rescheduleEndTime,
           notes: effectiveForm.notes ? `${notesSuffix}\n\n${effectiveForm.notes}` : notesSuffix,
           attendance: []
         };
@@ -379,6 +409,64 @@ export default function SchedulePage() {
   const colorForIndex = (id: string) => {
     const idx = id ? id.charCodeAt(id.length - 1) % SLOT_COLORS.length : 0;
     return SLOT_COLORS[idx];
+  };
+
+  const getEventColor = (event: any) => {
+    if (event?.status === "Rescheduled") {
+      return RESCHEDULED_COLOR;
+    }
+    return colorForIndex(event?._id || "");
+  };
+
+  const getRescheduledTargetInfo = (event: any): { targetText: string; shortText: string } | null => {
+    if (event?.status !== "Rescheduled") return null;
+
+    if (event.rescheduleDate) {
+      try {
+        const rawDate = typeof event.rescheduleDate === "string" ? event.rescheduleDate.split("T")[0] : "";
+        const parsed = parseISO(rawDate);
+        if (!isNaN(parsed.getTime())) {
+          const dayName = format(parsed, "EEEE");
+          const dateStr = format(parsed, "MMM d");
+          const timePart = event.rescheduleStartTime ? ` at ${event.rescheduleStartTime}` : "";
+          return {
+            targetText: `Rescheduled to ${dayName}, ${dateStr}${timePart}`,
+            shortText: `↳ Rescheduled to ${dayName}, ${dateStr}`,
+          };
+        }
+      } catch {
+        // fallback
+      }
+    }
+
+    if (event.notes) {
+      const match = event.notes.match(/Rescheduled to ([A-Za-z]+ \d{1,2},? \d{4})(?:\s+(\d{1,2}:\d{2})-(\d{1,2}:\d{2}))?/i);
+      if (match) {
+        try {
+          const parsed = new Date(match[1]);
+          if (!isNaN(parsed.getTime())) {
+            const dayName = format(parsed, "EEEE");
+            const dateStr = format(parsed, "MMM d");
+            const timePart = match[2] ? ` at ${match[2]}` : "";
+            return {
+              targetText: `Rescheduled to ${dayName}, ${dateStr}${timePart}`,
+              shortText: `↳ Rescheduled to ${dayName}, ${dateStr}`,
+            };
+          }
+        } catch {
+          // fallback
+        }
+        return {
+          targetText: `Rescheduled to ${match[1]}`,
+          shortText: `↳ Rescheduled to ${match[1]}`,
+        };
+      }
+    }
+
+    return {
+      targetText: "Rescheduled to the scheduled day",
+      shortText: "↳ Rescheduled",
+    };
   };
 
   const isPending = createSchedule.isPending || updateSchedule.isPending;
@@ -551,13 +639,15 @@ export default function SchedulePage() {
                       </div>
                       <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1 pr-0.5 pb-1">
                         {dayEvents.map((event: any) => {
-                          const color = colorForIndex(event._id);
+                          const isRescheduled = event.status === "Rescheduled";
+                          const color = getEventColor(event);
+                          const rescheduledInfo = isRescheduled ? getRescheduledTargetInfo(event) : null;
                           return (
                             <div 
                               key={event._id}
                               onClick={(e) => { e.stopPropagation(); openEdit(event); }}
                               className={`px-2 py-1.5 rounded-lg border border-transparent hover:border-current ${color.bg} border-l-2 ${color.border} cursor-pointer hover:brightness-110 transition-all`}
-                              title={`${event.startTime} - ${event.subject || event.batch?.name}`}
+                              title={isRescheduled && rescheduledInfo ? `${rescheduledInfo.targetText} (${event.startTime})` : `${event.startTime} - ${event.subject || event.batch?.name}`}
                             >
                               <div className={`text-[10px] font-bold truncate ${color.text} flex justify-between items-center gap-1.5`}>
                                 <span className="truncate">{event.batch?.name || "Class"}</span>
@@ -572,8 +662,16 @@ export default function SchedulePage() {
                                   <span className="text-[8px] text-emerald-400 font-semibold shrink-0">✓ Done</span>
                                 ) : event.status === "Cancelled" ? (
                                   <span className="text-[8px] text-red-400 font-semibold shrink-0">✕ Cancelled</span>
+                                ) : isRescheduled ? (
+                                  <span className="text-[8px] text-purple-300 font-semibold shrink-0 flex items-center gap-0.5">⟳ Rescheduled</span>
                                 ) : null}
                               </div>
+                              {isRescheduled && rescheduledInfo && (
+                                <div className="mt-1 px-1.5 py-0.5 rounded bg-purple-950/70 border border-purple-500/40 text-[9px] text-purple-200 font-medium truncate flex items-center gap-1 shadow-sm">
+                                  <Clock className="w-2.5 h-2.5 text-purple-400 shrink-0" />
+                                  <span className="truncate">{rescheduledInfo.shortText}</span>
+                                </div>
+                              )}
                             </div>
                           )
                         })}
@@ -642,7 +740,9 @@ export default function SchedulePage() {
                         {events.length > 0 ? (
                           <div className="h-full flex flex-col gap-1 overflow-y-auto custom-scrollbar">
                             {events.map((event) => {
-                              const color = colorForIndex(event._id);
+                              const isRescheduled = event.status === "Rescheduled";
+                              const color = getEventColor(event);
+                              const rescheduledInfo = isRescheduled ? getRescheduledTargetInfo(event) : null;
                               return (
                                 <motion.div
                                   key={event._id}
@@ -663,12 +763,34 @@ export default function SchedulePage() {
                                       <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
                                         ✕ Cancelled
                                       </span>
+                                    ) : isRescheduled ? (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40 flex items-center gap-1">
+                                        <Clock className="w-2.5 h-2.5 text-purple-300" /> Rescheduled
+                                      </span>
                                     ) : null}
                                   </div>
 
                                   <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
                                     {event.teacher?.name || (typeof event.teacher === "string" ? event.teacher : "Teacher")}
                                   </div>
+
+                                  {/* Distinct banner marking the scheduled day for rescheduled classes */}
+                                  {isRescheduled && rescheduledInfo && (
+                                    <div className="mt-1 px-2 py-1 rounded-lg bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-200 font-medium flex items-center gap-1.5 shadow-sm">
+                                      <Clock className="w-3 h-3 text-purple-400 shrink-0" />
+                                      <span className="truncate">
+                                        <strong className="text-purple-100 font-semibold">{rescheduledInfo.targetText}</strong>
+                                      </span>
+                                    </div>
+                                  )}
+
+                                  {/* Mark indicator on the newly scheduled class on the target day */}
+                                  {!isRescheduled && event.notes && event.notes.startsWith("Rescheduled from") && (
+                                    <div className="mt-1 px-2 py-0.5 rounded bg-neutral-800/80 border border-neutral-700/80 text-[9px] text-amber-300/90 font-medium flex items-center gap-1">
+                                      <Clock className="w-2.5 h-2.5 shrink-0 text-amber-400" />
+                                      <span className="truncate">{event.notes.split(".")[0]}</span>
+                                    </div>
+                                  )}
 
                                   {event.subject && (
                                     <div className="text-[9px] truncate font-medium border border-amber-500/20 px-1 py-0.5 rounded bg-black/30 text-amber-300 inline-block mt-0.5 max-w-full">
@@ -949,6 +1071,7 @@ export default function SchedulePage() {
                             form.status === "Scheduled" ? "text-amber-400 border-amber-500/30" :
                             form.status === "Completed" ? "text-emerald-400 border-emerald-500/30" :
                             form.status === "Cancelled" ? "text-red-400 border-red-500/30" :
+                            form.status === "Rescheduled" ? "text-purple-400 border-purple-500/30" :
                             "text-white border-neutral-700"
                           }`}
                         >
@@ -997,10 +1120,23 @@ export default function SchedulePage() {
 
                   {/* Reschedule Details (Date and time only when status is Rescheduled) */}
                   {form.status === "Rescheduled" && (
-                    <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-xl space-y-4 mb-4">
-                      <h4 className="text-xs font-bold text-amber-400 uppercase tracking-wider flex items-center gap-2">
-                        <Clock className="w-4 h-4" /> Reschedule Details
-                      </h4>
+                    <div className="p-4 bg-purple-500/10 border border-purple-500/30 rounded-xl space-y-4 mb-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-2">
+                          <Clock className="w-4 h-4 text-purple-400" /> Reschedule Details
+                        </h4>
+                        {form.rescheduleDate && (
+                          <span className="text-[11px] font-semibold text-purple-200 bg-purple-500/20 px-2 py-0.5 rounded border border-purple-500/30">
+                            Scheduled Day: {(() => {
+                              try {
+                                return format(parseISO(form.rescheduleDate), "EEEE, MMM d");
+                              } catch {
+                                return form.rescheduleDate;
+                              }
+                            })()}
+                          </span>
+                        )}
+                      </div>
                       
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Reason (Optional)</label>
@@ -1009,7 +1145,7 @@ export default function SchedulePage() {
                           placeholder="e.g. Rescheduled on student's request..."
                           value={form.cancellationReason || ""}
                           onChange={(e) => setForm({ ...form, cancellationReason: e.target.value })}
-                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-600"
+                          className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors placeholder:text-neutral-600"
                         />
                       </div>
 
@@ -1021,7 +1157,7 @@ export default function SchedulePage() {
                             required
                             value={form.rescheduleDate || ""}
                             onChange={(e) => setForm({ ...form, rescheduleDate: e.target.value })}
-                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -1031,7 +1167,7 @@ export default function SchedulePage() {
                             required
                             value={form.rescheduleStartTime || ""}
                             onChange={(e) => setForm({ ...form, rescheduleStartTime: e.target.value })}
-                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
                           />
                         </div>
                         <div className="space-y-1.5">
@@ -1041,7 +1177,7 @@ export default function SchedulePage() {
                             required
                             value={form.rescheduleEndTime || ""}
                             onChange={(e) => setForm({ ...form, rescheduleEndTime: e.target.value })}
-                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                            className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-purple-500 transition-colors"
                           />
                         </div>
                       </div>
