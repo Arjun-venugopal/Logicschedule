@@ -141,6 +141,7 @@ export default function SchedulePage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [form, setForm] = useState<ScheduleEntry>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterBatch, setFilterBatch] = useState<string>("");
 
@@ -195,6 +196,8 @@ export default function SchedulePage() {
       return (await api.get(`/students/batch/${form.batch}`)).data;
     },
     enabled: !!form.batch,
+    staleTime: 60 * 1000,
+    refetchOnWindowFocus: false,
   });
 
   // Mutations
@@ -226,10 +229,12 @@ export default function SchedulePage() {
   const openCreate = (prefillDate?: string) => {
     setForm({ ...emptyForm(), date: prefillDate || format(new Date(), "yyyy-MM-dd") });
     setEditingId(null);
+    setFormError(null);
     setModal({ open: true, mode: "create", prefillDate });
   };
 
   const openEdit = (s: any) => {
+    setFormError(null);
     const todayStr = format(new Date(), "yyyy-MM-dd");
     const safeDate = getSafeDateOnly(s.date);
     const isAfterToday = Boolean(safeDate && safeDate > todayStr);
@@ -271,6 +276,7 @@ export default function SchedulePage() {
     setModal(null);
     setForm(emptyForm());
     setEditingId(null);
+    setFormError(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -284,6 +290,23 @@ export default function SchedulePage() {
     if (isAfterToday && effectiveForm.status === "Completed") {
       effectiveForm.status = "Scheduled";
     }
+
+    // Requirement: Subject / Topic Covered and Class Notes / Remarks are required when marking a class as Completed
+    if (effectiveForm.status === "Completed") {
+      if (!effectiveForm.subject?.trim()) {
+        setFormError("Subject / Topic Covered is required to mark this class as Completed.");
+        return;
+      }
+      if (!effectiveForm.notes?.trim()) {
+        setFormError("Class Notes / Remarks are required to mark this class as Completed.");
+        return;
+      }
+    } else if (isTeacher && !effectiveForm.subject?.trim()) {
+      setFormError("Subject / Topic Covered is required.");
+      return;
+    }
+
+    setFormError(null);
 
     if (modal?.mode === "edit" && editingId) {
       if (effectiveForm.status === "Cancelled") {
@@ -1065,6 +1088,9 @@ export default function SchedulePage() {
                                 };
                               });
                             }
+                            if (newStatus !== "Completed" && formError) {
+                              setFormError(null);
+                            }
                             setForm({ ...form, status: newStatus, attendance: newAttendance });
                           }}
                           className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm appearance-none focus:outline-none transition-colors ${
@@ -1207,32 +1233,77 @@ export default function SchedulePage() {
                   {/* Subject / Topic Covered */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400 flex items-center justify-between">
-                      <span>Subject / Topic Covered</span>
-                      {isTeacher && <span className="text-[10px] text-amber-500 uppercase">Required</span>}
+                      <span className="flex items-center gap-1">
+                        <span>Subject / Topic Covered</span>
+                        {(isTeacher || form.status === "Completed") && <span className="text-amber-500 font-bold">*</span>}
+                      </span>
+                      {isTeacher || form.status === "Completed" ? (
+                        <span className="text-[10px] text-amber-500 font-semibold uppercase">Required</span>
+                      ) : (
+                        <span className="text-[10px] text-neutral-600 uppercase">Optional</span>
+                      )}
                     </label>
                     <input
                       type="text"
-                      required={isTeacher}
+                      required={isTeacher || form.status === "Completed"}
                       placeholder="e.g. Introduction to Variables, React Hooks..."
                       value={form.subject}
-                      onChange={(e) => setForm({ ...form, subject: e.target.value })}
-                      className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-600"
+                      onChange={(e) => {
+                        setForm({ ...form, subject: e.target.value });
+                        if (formError) setFormError(null);
+                      }}
+                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 ${
+                        (isTeacher || form.status === "Completed") && !form.subject?.trim() && formError
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-neutral-700 focus:border-amber-500"
+                      }`}
                     />
+                    {(isTeacher || form.status === "Completed") && !form.subject?.trim() && formError && (
+                      <p className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        Subject / Topic Covered is required to mark this class as Completed.
+                      </p>
+                    )}
                   </div>
 
                   {/* Completed Class Note */}
                   <div className="space-y-1.5">
                     <label className="text-xs font-semibold text-neutral-400 flex items-center justify-between">
-                      <span>Class Notes / Remarks</span>
-                      <span className="text-[10px] text-neutral-600 uppercase">Optional</span>
+                      <span className="flex items-center gap-1">
+                        Class Notes / Remarks
+                        {form.status === "Completed" && <span className="text-amber-500 font-bold">*</span>}
+                      </span>
+                      {form.status === "Completed" ? (
+                        <span className="text-[10px] text-amber-500 font-semibold uppercase">Required</span>
+                      ) : (
+                        <span className="text-[10px] text-neutral-600 uppercase">Optional</span>
+                      )}
                     </label>
                     <textarea
                       rows={3}
-                      placeholder="Describe what was taught, overall student performance, or any homework given..."
+                      required={form.status === "Completed"}
+                      placeholder={
+                        form.status === "Completed"
+                          ? "Required: Describe what was taught, overall student performance, or any remarks..."
+                          : "Describe what was taught, overall student performance, or any homework given..."
+                      }
                       value={form.notes}
-                      onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                      className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-600 resize-none"
+                      onChange={(e) => {
+                        setForm({ ...form, notes: e.target.value });
+                        if (formError) setFormError(null);
+                      }}
+                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 resize-none ${
+                        form.status === "Completed" && !form.notes?.trim() && formError
+                          ? "border-red-500 focus:border-red-500"
+                          : "border-neutral-700 focus:border-amber-500"
+                      }`}
                     />
+                    {form.status === "Completed" && !form.notes?.trim() && formError && (
+                      <p className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        Class Notes / Remarks are required to mark this class as Completed.
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -1252,29 +1323,6 @@ export default function SchedulePage() {
                         <p className="text-[11px] text-neutral-500 mt-0.5">
                           {form.date ? `Class Date: ${format(parseISO(form.date), "MMM d, yyyy")}` : "Class Date"} · Auto-marked Present (uncheck if student was absent)
                         </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-start sm:self-auto">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const allPresent = students.map((st: any) => ({ studentId: st._id, isPresent: true }));
-                            setForm({ ...form, attendance: allPresent });
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 hover:bg-emerald-500/25 transition-colors cursor-pointer"
-                        >
-                          Mark All Present
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const allAbsent = students.map((st: any) => ({ studentId: st._id, isPresent: false }));
-                            setForm({ ...form, attendance: allAbsent });
-                          }}
-                          className="px-2.5 py-1 text-[11px] font-semibold rounded-lg bg-red-500/15 text-red-400 border border-red-500/30 hover:bg-red-500/25 transition-colors cursor-pointer"
-                        >
-                          Mark All Absent
-                        </button>
                       </div>
                     </div>
 
@@ -1332,11 +1380,11 @@ export default function SchedulePage() {
                   </div>
                 )}
 
-                {/* API Error */}
-                {apiError && (
+                {/* Validation or API Error */}
+                {(formError || apiError) && (
                   <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <p>{apiError?.response?.data?.message || "Something went wrong"}</p>
+                    <p>{formError || apiError?.response?.data?.message || "Something went wrong"}</p>
                   </div>
                 )}
 

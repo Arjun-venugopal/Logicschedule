@@ -14,6 +14,7 @@ export default function CompletedClassesPage() {
   const [modal, setModal] = useState<any>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
   
   const [form, setForm] = useState<{
     subject: string;
@@ -53,6 +54,7 @@ export default function CompletedClassesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       setModal(null);
+      setFormError(null);
     },
   });
 
@@ -146,11 +148,21 @@ export default function CompletedClassesPage() {
       status: "Completed",
       attendance: initialAttendance,
     });
+    setFormError(null);
     setModal(cls);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!form.subject?.trim()) {
+      setFormError("Subject / Topic Covered is required to save a completed class.");
+      return;
+    }
+    if (!form.notes?.trim()) {
+      setFormError("Class Remarks / Notes are required to save a completed class.");
+      return;
+    }
+    setFormError(null);
     if (modal) {
       updateSchedule.mutate({
         id: modal._id,
@@ -336,16 +348,33 @@ export default function CompletedClassesPage() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1.5">
-                    Class Remarks / Notes
+                  <label className="block text-sm font-medium text-neutral-300 mb-1.5 flex items-center justify-between">
+                    <span>
+                      Class Remarks / Notes <span className="text-red-500">*</span>
+                    </span>
+                    <span className="text-[10px] text-amber-500 uppercase font-semibold">Required</span>
                   </label>
                   <textarea
                     rows={3}
+                    required
                     value={form.notes}
-                    onChange={(e) => setForm({ ...form, notes: e.target.value })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600 resize-none"
-                    placeholder="Describe student performance, assignments, etc."
+                    onChange={(e) => {
+                      setForm({ ...form, notes: e.target.value });
+                      if (formError) setFormError(null);
+                    }}
+                    className={`w-full bg-neutral-800 border rounded-xl px-3 py-2.5 text-sm text-white outline-none transition-all placeholder-neutral-600 resize-none ${
+                      formError && !form.notes?.trim()
+                        ? "border-red-500 focus:border-red-500"
+                        : "border-neutral-700 focus:border-amber-500"
+                    }`}
+                    placeholder="Required: Describe student performance, assignments, etc."
                   />
+                  {formError && !form.notes?.trim() && (
+                    <p className="text-xs text-red-400 flex items-center gap-1 mt-1">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      {formError}
+                    </p>
+                  )}
                 </div>
 
                 {/* Student Attendance */}
@@ -413,10 +442,20 @@ export default function CompletedClassesPage() {
                   );
                 })()}
 
+                {formError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2">
+                    <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                    <p>{formError}</p>
+                  </div>
+                )}
+
                 <div className="flex gap-3 pt-2">
                   <button
                     type="button"
-                    onClick={() => setModal(null)}
+                    onClick={() => {
+                      setModal(null);
+                      setFormError(null);
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors text-sm font-medium"
                   >
                     Cancel

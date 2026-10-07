@@ -131,6 +131,17 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       scheduleStatus = 'Scheduled';
     }
 
+    if (scheduleStatus === 'Completed') {
+      if (!subject || (typeof subject === 'string' && !subject.trim())) {
+        res.status(400).json({ message: 'Subject / Topic Covered is required to mark this class as Completed.' });
+        return;
+      }
+      if (!notes || (typeof notes === 'string' && !notes.trim())) {
+        res.status(400).json({ message: 'Class Notes / Remarks are required to mark this class as Completed.' });
+        return;
+      }
+    }
+
     const batchId = batch?._id ? batch._id : batch;
     const resolvedAttendance = await resolveScheduleAttendance({
       status: scheduleStatus,
@@ -211,6 +222,28 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
           message: 'Classes scheduled after today cannot be marked as Completed. Only classes for today or previous days can be completed.'
         });
         return;
+      }
+
+      // Requirement: Subject / Topic Covered and Class Notes / Remarks are required when marking a class as Completed
+      if (req.body.status === 'Completed') {
+        const proposedSubject = req.body.subject !== undefined ? req.body.subject : (schedule as any).subject;
+        const proposedNotes = req.body.notes !== undefined ? req.body.notes : schedule.notes;
+        const isChangingToCompleted = previousStatus !== 'Completed';
+        const isExplicitlyUpdating = req.body.subject !== undefined || req.body.notes !== undefined;
+        if (isChangingToCompleted || isExplicitlyUpdating) {
+          if (!proposedSubject || (typeof proposedSubject === 'string' && !proposedSubject.trim())) {
+            res.status(400).json({
+              message: 'Subject / Topic Covered is required to mark this class as Completed.'
+            });
+            return;
+          }
+          if (!proposedNotes || (typeof proposedNotes === 'string' && !proposedNotes.trim())) {
+            res.status(400).json({
+              message: 'Class Notes / Remarks are required to mark this class as Completed.'
+            });
+            return;
+          }
+        }
       }
 
       if (isAdmin) {
