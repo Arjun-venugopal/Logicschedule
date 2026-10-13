@@ -23,14 +23,26 @@ export interface Student {
   _id: string;
   name: string;
   batch: string | Batch;
+  currentLevel?: string;
+  level?: string;
+  classesNeeded?: number;
+  assignedTutor?: string | Teacher;
   parentName?: string;
   mobileNumber?: string;
   whatsappNumber?: string;
   email?: string;
   pastBatches?: {
     batch: string | Batch;
-    joinedAt: string;
-    leftAt: string;
+    batchName?: string;
+    batchSubject?: string;
+    level?: string;
+    teacher?: string | Teacher;
+    teacherName?: string;
+    numberOfClasses?: number;
+    completedClasses?: number;
+    status?: string;
+    joinedAt?: string;
+    leftAt?: string;
     reason?: string;
   }[];
   createdAt: string;

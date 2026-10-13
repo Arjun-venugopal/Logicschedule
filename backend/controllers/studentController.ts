@@ -4,6 +4,14 @@ import { z } from 'zod';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
+import { serverCache, deleteDiskCache } from '../utils/cache';
+import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
+
+export function extractLevel(text?: string, fallback = 'Level 1'): string {
+  if (!text) return fallback;
+  const match = text.match(/level\s*[-]?\s*(\d+)/i) || text.match(/lvl\s*[-]?\s*(\d+)/i);
+  return match ? `Level ${match[1]}` : fallback;
+}
 
 export const uploadStudents = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -107,7 +115,7 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
             continue;
           }
 
-          // Advance / Move existing student to the new level/batch
+          // Advance / Move existing student to the new level/batch without duplicating student record
           if (currBatchId) {
             if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
             const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
@@ -116,10 +124,16 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
             });
             if (!alreadyInPast) {
               const oldB = batchById.get(currBatchId);
+              const prevLevelTag = existingStudent.currentLevel || existingStudent.level || extractLevel(oldB?.name, 'Level 1');
               existingStudent.pastBatches.push({
                 batch: currBatchId,
                 batchName: oldB?.name,
                 batchSubject: oldB?.subject,
+                level: prevLevelTag,
+                teacher: oldB?.assignedTeacher?._id || oldB?.assignedTeacher,
+                teacherName: oldB?.assignedTeacher?.name || '',
+                numberOfClasses: oldB?.numberOfSessions || 0,
+                status: 'Completed',
                 leftAt: new Date(),
               });
             }
@@ -132,6 +146,11 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
           if (email) existingStudent.email = email;
           existingStudent.name = studentName;
 
+          const targetB = batchById.get(batchId);
+          const nextLvlTag = extractLevel(targetB?.name, existingStudent.currentLevel || 'Level 2');
+          existingStudent.currentLevel = nextLvlTag;
+          existingStudent.level = nextLvlTag;
+
           await existingStudent.save();
           const curr = batchCountIncrements.get(batchId) || 0;
           batchCountIncrements.set(batchId, curr + 1);
@@ -140,12 +159,15 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
           // Check if queued in same batch in this Excel file to avoid duplicates
           const alreadyQueued = newStudentsToInsert.find((s) => s.batch === batchId && s.name.toLowerCase() === normName);
           if (!alreadyQueued) {
+            const initialLvlTag = extractLevel(batchName, 'Level 1');
             const newDoc = {
               name: studentName,
               batch: batchId,
               parentName: parentName || '',
               mobileNumber: mobileNumber || '',
               email: email || '',
+              currentLevel: initialLvlTag,
+              level: initialLvlTag,
             };
             newStudentsToInsert.push(newDoc);
             studentByName.set(normName, newDoc);
@@ -238,8 +260,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
       if (startAfter) queryChain = queryChain.startAfter(startAfter);
 
       const students = await queryChain
-        .populate('batch', 'name subject status')
-        .populate('pastBatches.batch', 'name subject status');
+        .populate('batch', 'name subject status assignedTeacher numberOfSessions')
+        .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
       res.status(200).json(students);
       return;
     }
@@ -249,8 +271,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
     if (startAfter) queryChain = queryChain.startAfter(startAfter);
 
     const students = await queryChain
-      .populate('batch', 'name subject status')
-      .populate('pastBatches.batch', 'name subject status');
+      .populate('batch', 'name subject status assignedTeacher numberOfSessions')
+      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch all students' });
@@ -260,8 +282,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
 export const getStudentById = async (req: Request, res: Response): Promise<void> => {
   try {
     const student = await Student.findById(req.params.id as string)
-      .populate('batch', 'name subject status')
-      .populate('pastBatches.batch', 'name subject status');
+      .populate('batch', 'name subject status assignedTeacher numberOfSessions')
+      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
       return;
@@ -279,6 +301,10 @@ const studentSchema = z.object({
   mobileNumber: z.string().optional(),
   whatsappNumber: z.string().optional(),
   email: z.string().email("Invalid email").optional().or(z.literal('')),
+  currentLevel: z.string().optional(),
+  level: z.string().optional(),
+  classesNeeded: z.union([z.number(), z.string()]).optional(),
+  assignedTutor: z.string().optional(),
 });
 
 const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -324,7 +350,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
     const trimmedName = name.trim();
     
     // 1. Check if already enrolled in this exact batch
@@ -354,17 +380,31 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
         if (!alreadyInPast) {
           let oldBName = '';
           let oldBSub = '';
+          let oldTeacherId: any = undefined;
+          let oldTeacherName = '';
+          let oldSessions = 0;
           try {
-            const oldB = await Batch.findById(oldBatchId);
+            const oldB = await Batch.findById(oldBatchId).populate('assignedTeacher', 'name email');
             if (oldB) {
               oldBName = oldB.name;
               oldBSub = oldB.subject;
+              oldTeacherId = oldB.assignedTeacher?._id || oldB.assignedTeacher;
+              oldTeacherName = oldB.assignedTeacher?.name || oldB.assignedTeacher?.user?.name || '';
+              oldSessions = oldB.numberOfSessions || 0;
             }
           } catch {}
+
+          const prevLevel = existingStudent.currentLevel || existingStudent.level || extractLevel(oldBName, 'Level 1');
+
           existingStudent.pastBatches.push({
             batch: oldBatchId,
             batchName: oldBName,
             batchSubject: oldBSub,
+            level: prevLevel,
+            teacher: oldTeacherId,
+            teacherName: oldTeacherName || undefined,
+            numberOfClasses: oldSessions,
+            status: 'Completed',
             leftAt: new Date(),
           });
         }
@@ -378,16 +418,45 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       if (email) existingStudent.email = email;
       if (trimmedName) existingStudent.name = trimmedName;
 
+      let derivedLevel = currentLevel || level;
+      if (!derivedLevel && newBatchId) {
+        try {
+          const newB = await Batch.findById(newBatchId);
+          if (newB?.name) {
+            derivedLevel = extractLevel(newB.name, undefined);
+          }
+        } catch {}
+      }
+      if (derivedLevel) {
+        existingStudent.currentLevel = derivedLevel;
+        existingStudent.level = derivedLevel;
+      }
+      if (classesNeeded !== undefined) existingStudent.classesNeeded = Number(classesNeeded);
+      if (assignedTutor !== undefined) existingStudent.assignedTutor = assignedTutor;
+
       const updatedStudent = await existingStudent.save();
       if (newBatchId) {
         await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
       }
 
+      serverCache.clearPattern('students_');
+      serverCache.clearPattern('batches_');
       res.status(200).json(updatedStudent);
       return;
     }
 
     // 3. New child registration
+    let initialLevel = currentLevel || level;
+    if (!initialLevel && batch) {
+      try {
+        const batchDoc = await Batch.findById(batch);
+        if (batchDoc?.name) {
+          initialLevel = extractLevel(batchDoc.name, 'Level 1');
+        }
+      } catch {}
+    }
+    if (!initialLevel) initialLevel = 'Level 1';
+
     const newStudent = await Student.create({
       name: trimmedName,
       batch,
@@ -395,12 +464,18 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       mobileNumber: mobileNumber || '',
       whatsappNumber: whatsappNumber || '',
       email: email || '',
+      currentLevel: initialLevel,
+      level: initialLevel,
+      classesNeeded: classesNeeded !== undefined ? Number(classesNeeded) : undefined,
+      assignedTutor: assignedTutor || undefined,
     });
 
     if (batch) {
       await Batch.findByIdAndUpdate(batch, { $inc: { studentsCount: 1 } });
     }
 
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('batches_');
     res.status(201).json(newStudent);
   } catch (error: any) {
     next(error);
@@ -414,7 +489,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
     const studentId = req.params.id as string;
 
     const student = await Student.findById(studentId);
@@ -437,20 +512,33 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       if (!alreadyInPast) {
         let oldBatchName = '';
         let oldBatchSubject = '';
+        let oldTeacherId: any = undefined;
+        let oldTeacherName = '';
+        let oldSessions = 0;
         try {
-          const oldBatchDoc = await Batch.findById(oldBatchId);
+          const oldBatchDoc = await Batch.findById(oldBatchId).populate('assignedTeacher', 'name email');
           if (oldBatchDoc) {
             oldBatchName = oldBatchDoc.name;
             oldBatchSubject = oldBatchDoc.subject;
+            oldTeacherId = oldBatchDoc.assignedTeacher?._id || oldBatchDoc.assignedTeacher;
+            oldTeacherName = oldBatchDoc.assignedTeacher?.name || oldBatchDoc.assignedTeacher?.user?.name || '';
+            oldSessions = oldBatchDoc.numberOfSessions || 0;
           }
         } catch (e) {
           console.warn('Failed to fetch old batch info for snapshot:', e);
         }
 
+        const prevLevel = student.currentLevel || student.level || extractLevel(oldBatchName, 'Level 1');
+
         student.pastBatches.push({
           batch: oldBatchId,
           batchName: oldBatchName || (typeof student.batch === 'object' ? student.batch.name : undefined),
           batchSubject: oldBatchSubject || (typeof student.batch === 'object' ? student.batch.subject : undefined),
+          level: prevLevel,
+          teacher: oldTeacherId,
+          teacherName: oldTeacherName || undefined,
+          numberOfClasses: oldSessions,
+          status: 'Completed',
           leftAt: new Date(),
         });
       }
@@ -462,6 +550,15 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
     if (mobileNumber !== undefined) student.mobileNumber = mobileNumber;
     if (whatsappNumber !== undefined) student.whatsappNumber = whatsappNumber;
     if (email !== undefined) student.email = email;
+    if (currentLevel !== undefined) {
+      student.currentLevel = currentLevel;
+      student.level = currentLevel;
+    } else if (level !== undefined) {
+      student.currentLevel = level;
+      student.level = level;
+    }
+    if (classesNeeded !== undefined) student.classesNeeded = Number(classesNeeded);
+    if (assignedTutor !== undefined) student.assignedTutor = assignedTutor;
 
     await student.save();
 
@@ -473,12 +570,203 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
     }
 
-    await student.populate('batch', 'name subject status');
-    await student.populate('pastBatches.batch', 'name subject status');
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('batches_');
+
+    await student.populate('batch', 'name subject status assignedTeacher numberOfSessions');
+    await student.populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
 
     res.status(200).json(student);
   } catch (error) {
     res.status(500).json({ message: 'Failed to update student' });
+  }
+};
+
+export const advanceStudentLevel = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found' });
+      return;
+    }
+
+    const {
+      batchId,
+      batchName,
+      subject,
+      level,
+      numberOfClasses,
+      teacherId,
+      timing,
+      days,
+      meetingLink,
+      startDate,
+    } = req.body;
+
+    const oldBatchId = student.batch?._id 
+      ? student.batch._id.toString() 
+      : (typeof student.batch === 'string' ? student.batch : student.batch?.toString());
+
+    let oldBatchDoc: any = null;
+    let oldTeacherName = '';
+    let oldTeacherId: any = undefined;
+    let oldSessions = 0;
+
+    // 1. Snapshot previous batch and level into pastBatches (Academic History)
+    if (oldBatchId) {
+      if (!student.pastBatches) student.pastBatches = [];
+      const alreadyInPast = student.pastBatches.some((pb: any) => {
+        const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+        return pbId === oldBatchId;
+      });
+
+      try {
+        oldBatchDoc = await Batch.findById(oldBatchId).populate('assignedTeacher', 'name email');
+        if (oldBatchDoc) {
+          oldTeacherId = oldBatchDoc.assignedTeacher?._id || oldBatchDoc.assignedTeacher;
+          oldTeacherName = oldBatchDoc.assignedTeacher?.name || 
+                           oldBatchDoc.assignedTeacher?.user?.name || 
+                           (typeof oldBatchDoc.assignedTeacher === 'string' ? oldBatchDoc.assignedTeacher : '');
+          oldSessions = oldBatchDoc.numberOfSessions || 0;
+        }
+      } catch (e) {
+        console.warn('Could not populate old batch details:', e);
+      }
+
+      if (!alreadyInPast) {
+        const prevLevelTag = student.currentLevel || 
+          student.level || 
+          extractLevel(oldBatchDoc?.name, 'Level 1');
+
+        student.pastBatches.push({
+          batch: oldBatchId,
+          batchName: oldBatchDoc?.name || (typeof student.batch === 'object' ? student.batch.name : `${student.name} - ${prevLevelTag}`),
+          batchSubject: oldBatchDoc?.subject || (typeof student.batch === 'object' ? student.batch.subject : 'General'),
+          level: prevLevelTag,
+          teacher: oldTeacherId || student.assignedTutor,
+          teacherName: oldTeacherName || undefined,
+          numberOfClasses: oldSessions || student.classesNeeded || 15,
+          status: 'Completed',
+          leftAt: new Date(),
+        });
+      }
+
+      // Mark old batch as completed if it was a dedicated 1:1 batch (studentsCount <= 1)
+      if (oldBatchDoc && (!oldBatchDoc.studentsCount || oldBatchDoc.studentsCount <= 1)) {
+        oldBatchDoc.status = 'Completed';
+        await oldBatchDoc.save();
+      } else if (oldBatchDoc) {
+        try {
+          await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
+        } catch (err) {
+          console.warn('Failed to decrement old batch student count:', err);
+        }
+      }
+    }
+
+    // 2. Next Level Progression Tag
+    const finalLevelTag = level || `Level ${(student.pastBatches?.length || 0) + 1}`;
+    const targetSessions = numberOfClasses && Number(numberOfClasses) > 0 ? Number(numberOfClasses) : (oldSessions || 15);
+
+    // 3. Resolve or create new next level batch for this student (No separate batch selection needed!)
+    let targetBatchId: string;
+    let targetBatchDoc: any = null;
+
+    if (batchId) {
+      // Optional fallback if existing batch was explicitly provided
+      targetBatchDoc = await Batch.findById(batchId);
+      if (targetBatchDoc) {
+        let changed = false;
+        if (teacherId && targetBatchDoc.assignedTeacher?.toString() !== teacherId.toString()) {
+          targetBatchDoc.assignedTeacher = teacherId;
+          changed = true;
+        }
+        if (targetSessions > 0 && targetBatchDoc.numberOfSessions !== targetSessions) {
+          targetBatchDoc.numberOfSessions = targetSessions;
+          changed = true;
+        }
+        if (changed) {
+          await targetBatchDoc.save();
+        }
+      }
+      targetBatchId = batchId;
+    } else {
+      // Standard flow: Automatically create next level batch for the same student
+      const studentName = student.name ? student.name.trim() : 'Student';
+      const newBatchName = batchName && batchName.trim() ? batchName.trim() : `${studentName} - ${finalLevelTag}`;
+      const batchSubject = subject || oldBatchDoc?.subject || 'General';
+      const targetTeacherId = teacherId || oldTeacherId || student.assignedTutor || undefined;
+      const targetDays = (days && Array.isArray(days) && days.length > 0) 
+        ? days 
+        : (oldBatchDoc?.days?.length ? oldBatchDoc.days : ['Monday', 'Wednesday', 'Friday']);
+      const targetTiming = (timing && timing.startTime && timing.endTime) 
+        ? timing 
+        : (oldBatchDoc?.timing?.startTime ? oldBatchDoc.timing : { startTime: '09:00', endTime: '10:00' });
+      const targetMeetingLink = meetingLink !== undefined 
+        ? meetingLink 
+        : (oldBatchDoc?.meetingLink || '');
+      const targetStartDate = startDate ? (normalizeDateOnlyToUtc(startDate) || new Date()) : new Date();
+
+      targetBatchDoc = await Batch.create({
+        name: newBatchName,
+        subject: batchSubject,
+        assignedTeacher: targetTeacherId,
+        numberOfSessions: targetSessions,
+        studentsCount: 1,
+        status: 'Active',
+        days: targetDays,
+        timing: targetTiming,
+        meetingLink: targetMeetingLink,
+        startDate: targetStartDate,
+        durationType: 'Custom',
+        preCompletedClasses: 0,
+      });
+
+      targetBatchId = targetBatchDoc._id.toString();
+
+      // Auto-generate schedules for the new next level batch
+      try {
+        await generateSchedulesForBatch(targetBatchDoc, 0, studentId);
+      } catch (schedErr: any) {
+        console.warn('Failed to auto-generate schedules for next level batch:', schedErr?.message);
+      }
+    }
+
+    // 4. Update existing student in-place (ZERO DUPLICATION)
+    student.batch = targetBatchId;
+    student.currentLevel = finalLevelTag;
+    student.level = finalLevelTag;
+    student.classesNeeded = targetSessions;
+    if (teacherId || targetBatchDoc?.assignedTeacher) {
+      student.assignedTutor = teacherId || targetBatchDoc.assignedTeacher;
+    }
+
+    await student.save();
+
+    // Increment count on target batch only if target batch is different from old batch and was existing
+    if (batchId && oldBatchId !== targetBatchId) {
+      try {
+        await Batch.findByIdAndUpdate(targetBatchId, { $inc: { studentsCount: 1 } });
+      } catch (err) {
+        console.warn('Failed to increment new batch student count:', err);
+      }
+    }
+
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('schedules_');
+    serverCache.clearPattern('stats_');
+    deleteDiskCache('schedules_all');
+
+    const updated = await Student.findById(studentId)
+      .populate('batch', 'name subject status assignedTeacher numberOfSessions timing days meetingLink')
+      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+
+    res.status(200).json(updated);
+  } catch (error: any) {
+    console.error('Error advancing student level:', error);
+    res.status(500).json({ message: 'Failed to advance student to next level', detail: error.message });
   }
 };
 

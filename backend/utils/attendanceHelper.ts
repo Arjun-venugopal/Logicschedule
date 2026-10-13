@@ -151,9 +151,11 @@ export async function resolveScheduleAttendance(params: {
 }
 
 /**
- * Periodically or on-demand checks past schedules that are still marked 'Scheduled'.
- * Once their class end time has passed, automatically marks them 'Completed'
- * and marks enrolled students 'present' in attendance.
+ * Schedule status integrity check:
+ * - Classes strictly after today (date > todayStr) must NEVER be marked Completed;
+ *   if any are found, they are reverted to 'Scheduled'.
+ * - NOTE: Classes are NEVER automatically marked 'Completed' when their time passes.
+ *   The teacher is responsible for opening the schedule and marking it Completed with topic & notes.
  */
 let isAutoCompleting = false;
 let lastAutoCompleteTime = 0;
@@ -168,13 +170,10 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
   try {
     const kolkata = getKolkataNow();
     const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
-    const batchesToCheck = new Set<string>();
     let futureResetCount = 0;
-    let completedCount = 0;
 
     // 1. Enforce requirement: Any class strictly AFTER today (date > todayStr)
     // MUST NEVER be marked Completed; it must strictly be 'Scheduled'.
-    // Query only completed classes where date is greater than todayEnd
     const completedClasses = await Schedule.find({
       status: 'Completed',
       date: { $gt: todayEnd }
@@ -194,61 +193,11 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
           }
           await schedule.save();
           futureResetCount++;
-
-          const batchId = schedule.batch?._id ? schedule.batch._id : schedule.batch;
-          if (batchId) {
-            batchesToCheck.add(batchId.toString());
-          }
         }
       }
     }
 
-    // 2. Scheduled classes that have finished (previous days or today with end time passed)
-    // Prune by querying only scheduled classes up to todayEnd
-    const scheduledClasses = await Schedule.find({
-      status: 'Scheduled',
-      date: { $lte: todayEnd }
-    });
-    if (Array.isArray(scheduledClasses)) {
-      for (const schedule of scheduledClasses) {
-        if (!schedule.date || !schedule.endTime) continue;
-        const sDateStr = formatDateToYYYYMMDD(schedule.date);
-        if (!sDateStr) continue;
-
-        // If strictly after today, it must remain Scheduled
-        if (sDateStr > kolkata.todayStr) {
-          continue;
-        }
-
-        const isPastDate = sDateStr < kolkata.todayStr;
-        const isToday = sDateStr === kolkata.todayStr;
-        const endMinutes = timeToMinutes(schedule.endTime);
-
-        const isCompletedByTime = isPastDate || (isToday && endMinutes >= 0 && endMinutes <= kolkata.currentTotalMinutes);
-
-        if (isCompletedByTime) {
-          const batchId = schedule.batch?._id ? schedule.batch._id : schedule.batch;
-          const attendance = await resolveScheduleAttendance({
-            status: 'Completed',
-            batchId,
-            date: schedule.date,
-            existingAttendance: schedule.attendance,
-            preserveCustomIfCompleted: true,
-          });
-
-          schedule.status = 'Completed';
-          schedule.attendance = attendance;
-          await schedule.save();
-          completedCount++;
-
-          if (batchId) {
-            batchesToCheck.add(batchId.toString());
-          }
-        }
-      }
-    }
-
-    // Optimization: Batch-fetch all schedules in a single query to eliminate N+1 overhead
+    // Optimization: Sync batch status only based on classes that were explicitly completed by teachers
     const candidateBatches = await Batch.find({ status: { $in: ['Active', 'Upcoming', 'Completed'] } });
     if (Array.isArray(candidateBatches) && candidateBatches.length > 0) {
       const validBatches = candidateBatches.filter((b: any) => b && b.status !== 'Dropped');
@@ -282,21 +231,20 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
           if (isClassCompleted && batch.status !== 'Completed') {
             batch.status = 'Completed';
             await batch.save();
-            console.log(`[autoCompletePastSchedules] Batch "${batch.name}" marked Completed (${finishedCount}/${targetSessions} classes finished).`);
+            console.log(`[scheduleSync] Batch "${batch.name}" marked Completed (${finishedCount}/${targetSessions} classes finished).`);
           } else if (!isClassCompleted && batch.status === 'Completed' && targetSessions > 0 && finishedCount < targetSessions) {
             batch.status = 'Active';
             await batch.save();
-            console.log(`[autoCompletePastSchedules] Batch "${batch.name}" marked Active (${finishedCount}/${targetSessions} classes finished).`);
+            console.log(`[scheduleSync] Batch "${batch.name}" marked Active (${finishedCount}/${targetSessions} classes finished).`);
           }
         } catch (err: any) {
-          console.error('Error syncing batch completion in autoCompletePastSchedules:', err.message);
+          console.error('Error syncing batch completion in scheduleSync:', err.message);
         }
       }
     }
 
-    const totalUpdated = futureResetCount + completedCount;
-    if (totalUpdated > 0) {
-      console.log(`[autoCompletePastSchedules] Processed ${totalUpdated} classes (${completedCount} auto-completed past/today, ${futureResetCount} future classes reset to Scheduled).`);
+    if (futureResetCount > 0) {
+      console.log(`[scheduleSync] Reset ${futureResetCount} future classes back to Scheduled.`);
       serverCache.clearPattern('timings_');
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
@@ -304,9 +252,9 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
       deleteDiskCache('schedules_all');
     }
 
-    return totalUpdated;
+    return futureResetCount;
   } catch (error: any) {
-    console.error('Error in autoCompletePastSchedules:', error.message);
+    console.error('Error in schedule status integrity check:', error.message);
     return 0;
   } finally {
     isAutoCompleting = false;
@@ -314,19 +262,8 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
 }
 
 /**
- * Starts a background interval to automatically mark completed classes and attendance
+ * Kept for backwards compatibility; does not auto-complete schedules.
  */
-export function startScheduleAutoCompleter(intervalMs: number = 60_000): NodeJS.Timeout {
-  // Run on startup shortly after boot
-  setTimeout(() => {
-    autoCompletePastSchedules().catch((err) => {
-      console.error('Initial autoCompletePastSchedules error:', err);
-    });
-  }, 3000);
-
-  return setInterval(() => {
-    autoCompletePastSchedules().catch((err) => {
-      console.error('Interval autoCompletePastSchedules error:', err);
-    });
-  }, intervalMs);
+export function startScheduleAutoCompleter(_intervalMs: number = 60_000): any {
+  return null;
 }

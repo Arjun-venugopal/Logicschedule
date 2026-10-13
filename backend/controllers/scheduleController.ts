@@ -6,7 +6,7 @@ import Student from '../models/Student';
 import { checkIntervalConflict, checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 import { normalizeDateOnlyToUtc } from './batchController';
-import { resolveScheduleAttendance, autoCompletePastSchedules } from '../utils/attendanceHelper';
+import { resolveScheduleAttendance } from '../utils/attendanceHelper';
 
 // @desc    Get all schedules
 // @route   GET /schedules
@@ -21,9 +21,6 @@ export const getSchedules = async (req: any, res: Response) => {
       res.json(cached);
       return;
     }
-
-    // Automatically complete past scheduled classes and mark attendance present (throttled)
-    await autoCompletePastSchedules();
 
     let schedules: any[] = [];
 
@@ -409,16 +406,31 @@ export const getSchedulesByStudent = async (req: Request, res: Response): Promis
       const batchSchedules = await Schedule.find({
         batch: { $in: batchIds }
       })
+        .sort({ date: -1 })
         .populate('teacher', 'name email')
-        .populate('batch', 'name subject');
+        .populate('replacementTeacher', 'name email')
+        .populate('batch', 'name subject timing days meetingLink');
 
       matchingSchedules = batchSchedules.filter((s: any) => {
-        if (!s.attendance || !Array.isArray(s.attendance)) return false;
-        return (s.status === 'Completed' || s.status === 'Cancelled' || s.attendance.length > 0) &&
-          s.attendance.some((a: any) => {
+        // If schedule attendance explicitly lists students, check if this student is present/listed
+        if (s.attendance && Array.isArray(s.attendance) && s.attendance.length > 0) {
+          const hasStudent = s.attendance.some((a: any) => {
             const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
             return id === studentId;
           });
+          if (hasStudent) return true;
+        }
+
+        // If schedule belongs to one of student's current or past batches
+        const schedBatchId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+        return batchIds.includes(schedBatchId);
+      });
+
+      // Sort by date descending
+      matchingSchedules.sort((a: any, b: any) => {
+        const tA = a.date ? new Date(a.date).getTime() : 0;
+        const tB = b.date ? new Date(b.date).getTime() : 0;
+        return tB - tA;
       });
     }
 

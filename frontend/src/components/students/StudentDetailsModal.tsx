@@ -1,20 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, IndianRupee, AlertCircle, Clock, Receipt } from "lucide-react";
+import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, IndianRupee, AlertCircle, Clock, Receipt, Calendar, Video, ExternalLink, ChevronDown, ChevronUp, FileText, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 
-export function StudentDetailsModal({ studentId, onClose }: { studentId: string; onClose: () => void }) {
+function extractLevel(text?: string, fallback = "Level 1"): string {
+  if (!text) return fallback;
+  const match = text.match(/level\s*[-]?\s*(\d+)/i) || text.match(/lvl\s*[-]?\s*(\d+)/i);
+  return match ? `Level ${match[1]}` : fallback;
+}
+
+function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback = "Session"): string {
+  if (!dateVal) return fallback;
+  try {
+    const d = new Date(dateVal);
+    if (isNaN(d.getTime())) return fallback;
+    return format(d, formatStr);
+  } catch {
+    return fallback;
+  }
+}
+
+export function StudentDetailsModal({ 
+  studentId, 
+  onClose,
+  initialOpenAdvance = false,
+}: { 
+  studentId: string; 
+  onClose: () => void;
+  initialOpenAdvance?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [showNextCourseModal, setShowNextCourseModal] = useState(false);
-  const [selectedNextBatch, setSelectedNextBatch] = useState("");
   const [selectedLevel, setSelectedLevel] = useState("");
-  const [customBatchInput, setCustomBatchInput] = useState("");
+  const [numberOfClasses, setNumberOfClasses] = useState("15");
+  const [selectedTeacher, setSelectedTeacher] = useState("");
+  const [startTime, setStartTime] = useState("09:00");
+  const [endTime, setEndTime] = useState("10:00");
+  const [selectedDays, setSelectedDays] = useState<string[]>(["Monday", "Wednesday", "Friday"]);
+  const [meetingLink, setMeetingLink] = useState("");
+  const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [expandedLevels, setExpandedLevels] = useState<Record<string, boolean>>({ current: true });
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [showAdmissionPaymentModal, setShowAdmissionPaymentModal] = useState(false);
 
@@ -23,81 +54,126 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
     queryFn: async () => (await api.get(`/students/${studentId}`)).data,
   });
 
-  // Helper to determine next course level suggestion
-  const getNextLevelSuggestion = () => {
-    const text = `${student?.batch?.name || ''} ${student?.batch?.subject || ''}`.toLowerCase();
-    if (text.includes('level 1') || text.includes('lvl 1') || text.includes('level-1')) return 'Level 2';
-    if (text.includes('level 2') || text.includes('lvl 2') || text.includes('level-2')) return 'Level 3';
-    if (text.includes('level 3') || text.includes('lvl 3') || text.includes('level-3')) return 'Level 4';
-    if (text.includes('level 4') || text.includes('lvl 4') || text.includes('level-4')) return 'Level 5';
-    if (text.includes('level 5') || text.includes('lvl 5') || text.includes('level-5')) return 'Level 6';
-    return 'Level 2';
-  };
-
-  const handleOpenNextCourseModal = () => {
-    const nextLvl = getNextLevelSuggestion();
-    setSelectedLevel(nextLvl);
-    const subject = student?.batch?.subject?.split('-')[0]?.trim() || student?.batch?.name?.split('-')[0]?.trim() || '';
-    if (subject) {
-      setCustomBatchInput(`${subject} - ${nextLvl}`);
-    } else {
-      setCustomBatchInput(nextLvl);
-    }
-    setShowNextCourseModal(true);
-  };
+  const { data: allTeachers = [] } = useQuery({
+    queryKey: ["teachers"],
+    queryFn: async () => (await api.get("/teachers")).data,
+    staleTime: 5 * 60 * 1000,
+  });
 
   const { data: allBatches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
   });
 
-  const updateBatchMutation = useMutation({
-    mutationFn: async ({ batchId, nameInput }: { batchId?: string; nameInput?: string }) => {
-      let finalBatchId = batchId;
-      
-      if (!finalBatchId && nameInput && nameInput.trim()) {
-        const trimmed = nameInput.trim();
-        const existingMatch = allBatches.find(
-          (b: any) => b.name.toLowerCase() === trimmed.toLowerCase() || b.subject.toLowerCase() === trimmed.toLowerCase()
-        );
-        
-        if (existingMatch) {
-          finalBatchId = existingMatch._id;
-        } else {
-          const createRes = await api.post("/batches", {
-            name: trimmed,
-            subject: trimmed.includes("-") ? trimmed.split("-")[0].trim() : trimmed,
-            status: "Active",
-            days: ["Monday"],
-            timing: { startTime: "09:00", endTime: "10:00" },
-          });
-          finalBatchId = createRes.data._id;
-        }
-      }
-      
-      return api.put(`/students/${studentId}`, { batch: finalBatchId });
+  // Helper to determine current level tag
+  const currentLevelTag = student?.currentLevel || 
+    student?.level || 
+    (() => {
+      const str = `${student?.batch?.name || ''} ${student?.batch?.subject || ''}`.toLowerCase();
+      const match = str.match(/level\s*[-]?\s*(\d+)/i) || str.match(/lvl\s*[-]?\s*(\d+)/i);
+      if (match) return `Level ${match[1]}`;
+      const pastCount = student?.pastBatches?.length || 0;
+      if (pastCount > 0) return `Level ${pastCount + 1}`;
+      return "Level 1";
+    })();
+
+  // Helper to determine next course level suggestion
+  const getNextLevelSuggestion = () => {
+    if (student?.currentLevel) {
+      const m = student.currentLevel.match(/(\d+)/);
+      if (m) return `Level ${Number(m[1]) + 1}`;
+    }
+    const text = `${student?.batch?.name || ''} ${student?.batch?.subject || ''}`.toLowerCase();
+    if (text.includes('level 1') || text.includes('lvl 1') || text.includes('level-1')) return 'Level 2';
+    if (text.includes('level 2') || text.includes('lvl 2') || text.includes('level-2')) return 'Level 3';
+    if (text.includes('level 3') || text.includes('lvl 3') || text.includes('level-3')) return 'Level 4';
+    if (text.includes('level 4') || text.includes('lvl 4') || text.includes('level-4')) return 'Level 5';
+    if (text.includes('level 5') || text.includes('lvl 5') || text.includes('level-5')) return 'Level 6';
+    const pastCount = student?.pastBatches?.length || 0;
+    if (pastCount > 0) return `Level ${pastCount + 2}`;
+    return 'Level 2';
+  };
+
+  const handleOpenNextCourseModal = () => {
+    const nextLvl = getNextLevelSuggestion();
+    setSelectedLevel(nextLvl);
+    const defaultClasses = student?.classesNeeded || student?.batch?.numberOfSessions || 15;
+    setNumberOfClasses(String(defaultClasses));
+    const currentTeacherId = student?.batch?.assignedTeacher?._id || 
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
+      (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || '';
+    setSelectedTeacher(currentTeacherId);
+    setStartTime(student?.batch?.timing?.startTime || "09:00");
+    setEndTime(student?.batch?.timing?.endTime || "10:00");
+    setSelectedDays(student?.batch?.days && student.batch.days.length > 0 ? student.batch.days : ["Monday", "Wednesday", "Friday"]);
+    setMeetingLink(student?.batch?.meetingLink || "");
+    setStartDate(format(new Date(), "yyyy-MM-dd"));
+    setShowNextCourseModal(true);
+  };
+
+  useEffect(() => {
+    if (initialOpenAdvance && student && !showNextCourseModal) {
+      handleOpenNextCourseModal();
+    }
+  }, [initialOpenAdvance, student?._id]);
+
+  const advanceLevelMutation = useMutation({
+    mutationFn: async ({
+      level,
+      numberOfClasses,
+      teacherId,
+      timing,
+      days,
+      meetingLink,
+      startDate,
+    }: {
+      level: string;
+      numberOfClasses: number;
+      teacherId?: string;
+      timing?: { startTime: string; endTime: string };
+      days?: string[];
+      meetingLink?: string;
+      startDate?: string;
+    }) => {
+      return api.post(`/students/${studentId}/advance-level`, {
+        level,
+        numberOfClasses,
+        teacherId: teacherId || undefined,
+        timing,
+        days,
+        meetingLink,
+        startDate,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       setShowNextCourseModal(false);
-      setSelectedNextBatch("");
-      setCustomBatchInput("");
       setSelectedLevel("");
+      setSelectedTeacher("");
     },
   });
 
-  const { data: attendanceData, isLoading: attLoading } = useQuery({
-    queryKey: ["student-attendance", studentId],
+  const getTeacherName = (teacherRef: any) => {
+    if (!teacherRef) return "";
+    if (typeof teacherRef === "object") {
+      return teacherRef.name || teacherRef.user?.name || teacherRef.email || "";
+    }
+    const matched = allTeachers.find((t: any) => t._id === teacherRef || t.user?._id === teacherRef);
+    return matched?.name || matched?.user?.name || "";
+  };
+
+  const { data: studentSchedules = [], isLoading: schedsLoading } = useQuery({
+    queryKey: ["student-schedules", studentId],
     queryFn: async () => {
-      if (!student?.batch?._id) return [];
-      const schedules = (await api.get("/schedules")).data;
-      return schedules.filter((s: any) =>
-        s.batch?._id === student.batch._id && s.status === "Completed"
-      );
+      if (!studentId) return [];
+      const res = await api.get(`/schedules/student/${studentId}`);
+      return res.data || [];
     },
-    enabled: !!student?.batch?._id,
+    enabled: !!studentId,
   });
 
   const { data: paymentData } = useQuery({
@@ -116,16 +192,33 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
 
   if (!student) return null;
 
-  // Calculate attendance if available
+  // Calculate attendance if available across completed sessions
   let presentCount = 0;
-  const totalClasses = attendanceData?.length || 0;
-  if (attendanceData) {
-    attendanceData.forEach((cls: any) => {
-      const record = cls.attendance?.find((a: any) => a.studentId === student._id);
-      if (record?.isPresent) presentCount++;
-    });
-  }
-  const attendancePercentage = totalClasses > 0 ? Math.round((presentCount / totalClasses) * 100) : 0;
+  const completedSchedules = studentSchedules.filter((s: any) => s.status === "Completed");
+  completedSchedules.forEach((cls: any) => {
+    if (cls.attendance && Array.isArray(cls.attendance) && cls.attendance.length > 0) {
+      const record = cls.attendance.find((a: any) => {
+        const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+        return id === student._id;
+      });
+      if (record ? record.isPresent : true) presentCount++;
+    } else {
+      presentCount++;
+    }
+  });
+
+  const totalTrackedClasses = Math.max(studentSchedules.length, presentCount, (student.pastBatches?.length || 0) * 15);
+  const attendancePercentage = totalTrackedClasses > 0 ? Math.min(100, Math.round((presentCount / totalTrackedClasses) * 100)) : 100;
+
+  // Current batch live progress calculations
+  const currentBatchId = student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : '');
+  const currentBatchSchedules = studentSchedules.filter((s: any) => {
+    const sBId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+    return sBId === currentBatchId;
+  });
+  const currentCompletedCount = currentBatchSchedules.filter((s: any) => s.status === "Completed").length;
+  const currentClassesNeeded = student.classesNeeded || student.batch?.numberOfSessions || 15;
+  const currentProgressPct = Math.min(100, currentClassesNeeded > 0 ? Math.round((currentCompletedCount / currentClassesNeeded) * 100) : 0);
 
   // Progress Ring Configuration
   const ringCircumference = 2 * Math.PI * 36;
@@ -175,7 +268,13 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
             </motion.div>
 
             <div className="flex-1 pb-1 sm:pb-2">
-              <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">{student.name}</h2>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3">
+                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">{student.name}</h2>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/35 text-amber-300 font-bold text-xs uppercase tracking-wider shadow-sm shadow-amber-500/10">
+                  <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+                  {currentLevelTag}
+                </span>
+              </div>
               <p className="text-amber-500/80 mt-1 flex items-center justify-center sm:justify-start gap-2 font-medium text-xs sm:text-sm">
                 <BookOpen className="w-4 h-4" /> {student.batch?.name || "Unassigned Batch"}
               </p>
@@ -188,10 +287,10 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                 </div>
                 <button
                   onClick={handleOpenNextCourseModal}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold transition-all shadow-sm shadow-amber-500/10"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
                 >
-                  <GraduationCap className="w-4 h-4 text-amber-400" />
-                  Advance / Next Level
+                  <GraduationCap className="w-4 h-4 text-emerald-400" />
+                  Move to Next Level
                 </button>
               </div>
             )}
@@ -281,7 +380,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                 <span>Attendance</span>
               </div>
               <div className="bg-neutral-800/40 rounded-2xl p-4 sm:p-5 border border-neutral-800/50 min-h-[160px] flex items-center justify-center relative overflow-hidden">
-                {attLoading ? (
+                {schedsLoading ? (
                   <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
                 ) : !student.batch ? (
                   <div className="text-center">
@@ -320,7 +419,7 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
                         <p className="text-[10px] uppercase text-neutral-500 font-bold mt-0.5">Attended</p>
                       </div>
                       <div>
-                        <p className="text-lg sm:text-xl font-bold text-neutral-400 leading-none">{totalClasses}</p>
+                        <p className="text-lg sm:text-xl font-bold text-neutral-400 leading-none">{totalTrackedClasses}</p>
                         <p className="text-[10px] uppercase text-neutral-600 font-bold mt-0.5">Total</p>
                       </div>
                     </div>
@@ -330,88 +429,323 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
             </div>
           </div>
 
-          {/* Academic History */}
+          {/* Academic History & Level Progression */}
           <div className="space-y-4 pt-4 mt-6 border-t border-neutral-800/50">
-            <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest px-1">
-              <History className="w-4 h-4 text-amber-500" />
-              <span>Academic History</span>
+            <div className="flex items-center justify-between px-1">
+              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest">
+                <History className="w-4 h-4 text-amber-500" />
+                <span>Academic History & Course Levels</span>
+              </div>
+              <span className="text-[11px] text-neutral-500 hidden sm:inline">
+                Previous & Ongoing Level Progress
+              </span>
             </div>
 
-            <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 overflow-hidden">
-              {student.batch || (student.pastBatches && student.pastBatches.length > 0) ? (
-                <div className="divide-y divide-neutral-800/50">
-                  {/* Current Batch */}
-                  {student.batch && (
-                    <div className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-neutral-800/40 transition-colors relative overflow-hidden group">
-                      <div className="absolute left-0 top-0 bottom-0 w-1 bg-emerald-500 rounded-r" />
-                      <div className="flex items-center gap-3 sm:gap-4 pl-2 min-w-0">
-                        <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-emerald-500/10 flex items-center justify-center shrink-0">
-                          <BookOpen className="w-4 h-4 text-emerald-500" />
+            <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 overflow-hidden divide-y divide-neutral-800/50">
+              {/* Current / Ongoing Level */}
+              {student.batch ? (() => {
+                const currentTeacherName = 
+                  getTeacherName(student.batch?.assignedTeacher) || 
+                  getTeacherName(student.assignedTutor) || 
+                  "Assigned Tutor";
+
+                return (
+                  <div className="p-4 sm:p-5 hover:bg-neutral-800/40 transition-colors relative overflow-hidden group">
+                    <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r" />
+                    <div className="pl-2 space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold uppercase tracking-wider">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            Live · {currentLevelTag}
+                          </span>
+                          <span className="text-[11px] text-neutral-400 font-medium">Ongoing Level</span>
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-sm font-bold text-white group-hover:text-emerald-400 transition-colors truncate">{student.batch.name}</h4>
-                          <p className="text-xs text-neutral-500 font-medium mt-0.5 truncate">{student.batch.subject || "General"}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                            In Progress
+                          </span>
+                          <button
+                            onClick={handleOpenNextCourseModal}
+                            className="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
+                          >
+                            <GraduationCap className="w-3.5 h-3.5" /> Move to Next Level
+                          </button>
                         </div>
                       </div>
-                      <div className="self-start sm:self-auto px-2.5 py-0.5 sm:px-3 sm:py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest shrink-0">
-                        Current
+
+                      <h4 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                        {student.batch.name}
+                      </h4>
+
+                      <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-300">
+                        <span className="flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                          <span>Teacher: <strong className="text-white font-semibold">{currentTeacherName}</strong></span>
+                        </span>
+                        {student.batch.timing?.startTime && (
+                          <span className="flex items-center gap-1.5 text-neutral-400">
+                            <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                            <span>{student.batch.timing.startTime} - {student.batch.timing.endTime}</span>
+                          </span>
+                        )}
+                        {student.batch.days && student.batch.days.length > 0 && (
+                          <span className="flex items-center gap-1.5 text-neutral-400">
+                            <Calendar className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            <span>{student.batch.days.join(", ")}</span>
+                          </span>
+                        )}
+                        {student.batch.meetingLink && (
+                          <a
+                            href={student.batch.meetingLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-emerald-400 hover:underline font-semibold"
+                          >
+                            <Video className="w-3.5 h-3.5" /> Class Link
+                          </a>
+                        )}
                       </div>
+
+                      {/* Live Progress Bar */}
+                      <div className="pt-1.5 w-full max-w-lg">
+                        <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5">
+                          <span className="font-semibold text-emerald-400">Level Progress: {currentProgressPct}%</span>
+                          <span>{currentCompletedCount} of {currentClassesNeeded} classes completed</span>
+                        </div>
+                        <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
+                            style={{ width: `${currentProgressPct}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Live Level Classes list toggle */}
+                      {currentBatchSchedules.length > 0 && (
+                        <div className="pt-2">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedLevels(prev => ({ ...prev, current: !prev.current }))}
+                            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 font-medium transition-colors"
+                          >
+                            {expandedLevels.current ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            <span>{expandedLevels.current ? "Hide" : "View"} Class Schedule & Logs ({currentBatchSchedules.length} Sessions)</span>
+                          </button>
+
+                          {expandedLevels.current && (
+                            <div className="mt-2.5 space-y-2 border-t border-neutral-800/80 pt-2.5">
+                              {currentBatchSchedules.map((cls: any, cIdx: number) => (
+                                <div key={cls._id || cIdx} className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs space-y-1.5">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="font-bold text-white flex items-center gap-1">
+                                        <Calendar className="w-3 h-3 text-neutral-500" />
+                                        {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Session")}
+                                      </span>
+                                      <span className="text-neutral-400 font-mono text-[11px] flex items-center gap-1">
+                                        <Clock className="w-3 h-3 text-neutral-500" />
+                                        {cls.startTime} - {cls.endTime}
+                                      </span>
+                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                        cls.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                      }`}>
+                                        {cls.status}
+                                      </span>
+                                    </div>
+                                    <span className="text-neutral-400 text-[11px]">
+                                      Teacher: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || currentTeacherName}</strong>
+                                    </span>
+                                  </div>
+                                  {(cls.subject || cls.notes) && (
+                                    <div className="bg-neutral-950/60 rounded-lg p-2 border border-neutral-800/60 space-y-1">
+                                      {cls.subject && (
+                                        <div className="flex items-start gap-1.5">
+                                          <span className="text-neutral-500 font-semibold shrink-0">Topic Covered:</span>
+                                          <span className="text-white font-medium">{cls.subject}</span>
+                                        </div>
+                                      )}
+                                      {cls.notes && (
+                                        <div className="flex items-start gap-1.5 text-neutral-400 text-[11px]">
+                                          <span className="text-neutral-500 font-semibold shrink-0">Notes:</span>
+                                          <span>{cls.notes}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
-                  )}
+                  </div>
+                );
+              })() : null}
 
-                  {/* Past Batches */}
-                  {student.pastBatches && student.pastBatches.slice().reverse().map((pb: any, idx: number) => {
-                    const rawBatchId = typeof pb.batch === "object" ? pb.batch?._id : pb.batch;
-                    const matchedBatch = allBatches.find((b: any) => b._id === rawBatchId);
-                    const batchName = pb.batch?.name || pb.batchName || matchedBatch?.name || "Completed Level";
-                    const batchSubject = pb.batch?.subject || pb.batchSubject || matchedBatch?.subject || "General";
-                    let completedDateStr = "";
-                    if (pb.leftAt) {
-                      try {
-                        const dateObj = new Date(pb.leftAt);
-                        if (!isNaN(dateObj.getTime())) {
-                          completedDateStr = format(dateObj, "MMM yyyy");
-                        }
-                      } catch {
-                        completedDateStr = "";
+              {/* Previous Levels */}
+              {student.pastBatches && student.pastBatches.length > 0 ? (
+                student.pastBatches.slice().reverse().map((pb: any, idx: number) => {
+                  const pbKey = pb.batch?._id ? pb.batch._id.toString() : (pb.batch ? pb.batch.toString() : `pb-${idx}`);
+                  const pbBatchId = typeof pb.batch === "object" ? pb.batch?._id : pb.batch;
+                  const matchedBatch = allBatches.find((b: any) => b._id === pbBatchId);
+                  const batchName = pb.batchName || pb.batch?.name || matchedBatch?.name || "Completed Course";
+                  const batchSubject = pb.batchSubject || pb.batch?.subject || matchedBatch?.subject || "General";
+                  const pbLevel = pb.level || extractLevel(batchName, `Level ${student.pastBatches.length - idx}`);
+                  const pbTeacher = pb.teacherName || getTeacherName(pb.teacher) || getTeacherName(matchedBatch?.assignedTeacher) || "Completed Tutor";
+                  const pbClasses = pb.numberOfClasses || matchedBatch?.numberOfSessions || 15;
+
+                  // Find all schedules recorded for this past batch
+                  const pbSchedules = studentSchedules.filter((s: any) => {
+                    const sBId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+                    return (pbBatchId && sBId === pbBatchId) || (pb.batchName && s.batch?.name === pb.batchName);
+                  });
+
+                  const isExpanded = !!expandedLevels[pbKey];
+
+                  let completedDateStr = "";
+                  if (pb.leftAt) {
+                    try {
+                      const dateObj = new Date(pb.leftAt);
+                      if (!isNaN(dateObj.getTime())) {
+                        completedDateStr = format(dateObj, "MMM yyyy");
                       }
+                    } catch {
+                      completedDateStr = "";
                     }
+                  }
 
-                    return (
-                      <div key={idx} className="p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 hover:bg-neutral-800/40 transition-colors relative group">
-                        <div className="flex items-center gap-3 sm:gap-4 pl-2 sm:pl-3 min-w-0">
-                          <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-neutral-800 flex items-center justify-center shrink-0">
-                            <CheckCircle2 className="w-4 h-4 text-neutral-500" />
+                  return (
+                    <div key={pbKey} className="p-4 sm:p-5 hover:bg-neutral-800/30 transition-colors relative group">
+                      <div className="pl-2 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2.5 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-300 text-xs font-bold uppercase tracking-wider">
+                              Previous Level · {pbLevel}
+                            </span>
+                            <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Completed
+                            </span>
+                            {completedDateStr && (
+                              <span className="text-[11px] text-neutral-500">
+                                Finished in {completedDateStr}
+                              </span>
+                            )}
                           </div>
-                          <div className="min-w-0 flex-1">
-                            <h4 className="text-sm font-bold text-neutral-300 group-hover:text-white transition-colors truncate">{batchName}</h4>
-                            <div className="flex items-center gap-2 mt-0.5">
-                              <p className="text-xs text-neutral-500 font-medium truncate">{batchSubject}</p>
-                              {completedDateStr && (
-                                <>
-                                  <span className="w-1 h-1 rounded-full bg-neutral-700 shrink-0" />
-                                  <p className="text-[10px] text-neutral-600 font-medium shrink-0">Completed {completedDateStr}</p>
-                                </>
+                          <span className="px-3 py-1 rounded-xl bg-neutral-800 text-neutral-400 border border-neutral-700 text-xs font-bold uppercase tracking-wider self-start sm:self-auto">
+                            Completed Level
+                          </span>
+                        </div>
+
+                        <h4 className="text-sm sm:text-base font-bold text-neutral-300 group-hover:text-white transition-colors truncate">
+                          {batchName}
+                        </h4>
+
+                        <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-400">
+                          <span className="flex items-center gap-1.5 text-neutral-300">
+                            <User className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                            <span>Taught by: <strong className="text-white font-medium">{pbTeacher}</strong></span>
+                          </span>
+                          <span className="flex items-center gap-1.5">
+                            <BookOpen className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                            <span>{pbClasses} Classes Completed</span>
+                          </span>
+                          <span className="text-neutral-500">Subject: {batchSubject}</span>
+                        </div>
+
+                        {/* Completed Progress Bar */}
+                        <div className="pt-1.5 w-full max-w-lg">
+                          <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
+                            <span className="font-semibold text-emerald-400">100% Completed</span>
+                            <span>{pbClasses} of {pbClasses} classes completed</span>
+                          </div>
+                          <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
+                            <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full w-full" />
+                          </div>
+                        </div>
+
+                        {/* Expandable Previous Classes Record */}
+                        <div className="pt-1.5">
+                          <button
+                            type="button"
+                            onClick={() => setExpandedLevels(prev => ({ ...prev, [pbKey]: !prev[pbKey] }))}
+                            className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 font-semibold transition-colors bg-neutral-800/60 hover:bg-neutral-800 px-3 py-1.5 rounded-lg border border-neutral-700/60"
+                          >
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            <span>{isExpanded ? "Hide" : "View"} Completed Classes Record ({pbSchedules.length > 0 ? pbSchedules.length : pbClasses} Classes)</span>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-3 space-y-2 border-t border-neutral-800/80 pt-3">
+                              {pbSchedules.length > 0 ? (
+                                pbSchedules.map((cls: any, cIdx: number) => (
+                                  <div
+                                    key={cls._id || cIdx}
+                                    className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs space-y-1.5 hover:border-neutral-700 transition-colors"
+                                  >
+                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[11px]">
+                                          Class {pbSchedules.length - cIdx}
+                                        </span>
+                                        <span className="font-bold text-white flex items-center gap-1">
+                                          <Calendar className="w-3 h-3 text-neutral-500" />
+                                          {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Completed Session")}
+                                        </span>
+                                        <span className="text-neutral-400 font-mono text-[11px] flex items-center gap-1">
+                                          <Clock className="w-3 h-3 text-neutral-500" />
+                                          {cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : "Completed Class"}
+                                        </span>
+                                      </div>
+                                      <span className="text-neutral-400 text-[11px]">
+                                        Taught by: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || pbTeacher}</strong>
+                                      </span>
+                                    </div>
+
+                                    {/* Topic covered & notes */}
+                                    <div className="bg-neutral-950/60 rounded-lg p-2.5 border border-neutral-800/60 space-y-1">
+                                      <div className="flex items-start gap-1.5">
+                                        <span className="text-emerald-400 font-semibold shrink-0">Topic Covered:</span>
+                                        <span className="text-white font-medium">{cls.subject || "Topic Covered / Curriculum Session"}</span>
+                                      </div>
+                                      {cls.notes && (
+                                        <div className="flex items-start gap-1.5 text-neutral-300 text-[11px] pt-0.5">
+                                          <span className="text-neutral-500 font-semibold shrink-0">Notes / Remarks:</span>
+                                          <span>{cls.notes}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                <div className="p-3.5 bg-neutral-900/40 rounded-xl border border-neutral-800 text-xs text-neutral-400 space-y-1">
+                                  <p className="font-semibold text-neutral-300">
+                                    ✨ {pbClasses} Sessions Completed under {pbTeacher}
+                                  </p>
+                                  <p className="text-[11px] text-neutral-500">
+                                    All session records, attendance, and coursework for {pbLevel} were successfully completed and archived.
+                                  </p>
+                                </div>
                               )}
                             </div>
-                          </div>
-                        </div>
-                        <div className="self-start sm:self-auto text-[10px] font-bold text-neutral-500 uppercase tracking-widest px-2 shrink-0">
-                          Completed
+                          )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              ) : (
+                    </div>
+                  );
+                })
+              ) : null}
+
+              {!student.batch && (!student.pastBatches || student.pastBatches.length === 0) ? (
                 <div className="p-6 sm:p-8 text-center flex flex-col items-center justify-center">
                   <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mb-3">
                     <History className="w-5 h-5 text-neutral-600" />
                   </div>
-                  <p className="text-sm font-medium text-neutral-400">No academic history available</p>
-                  <p className="text-xs text-neutral-600 mt-1">This student has not been assigned to any batches yet.</p>
+                  <p className="text-sm font-medium text-neutral-400">No academic history recorded yet</p>
+                  <p className="text-xs text-neutral-600 mt-1">Assign a batch to begin tracking course levels and progress.</p>
                 </div>
-              )}
+              ) : null}
             </div>
           </div>
 
@@ -609,157 +943,275 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
           />
         )}
 
-        {/* Choose Next Course Selection Dialog */}
+        {/* Move to Next Level Dialog */}
         {showNextCourseModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-3 sm:p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-3 sm:p-4">
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-md p-4 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                 <div className="flex items-center gap-2">
-                  <GraduationCap className="w-5 h-5 text-emerald-400" />
-                  <h3 className="font-bold text-white text-base">Select Next Course / Batch</h3>
+                  <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    <Sparkles className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-white text-base">Move to Next Level</h3>
+                    <p className="text-xs text-neutral-400">Promote student into their next level</p>
+                  </div>
                 </div>
-                <button onClick={() => setShowNextCourseModal(false)} className="text-neutral-500 hover:text-white">
-                  <X className="w-4 h-4" />
+                <button onClick={() => setShowNextCourseModal(false)} className="text-neutral-500 hover:text-white p-1 rounded-lg">
+                  <X className="w-5 h-5" />
                 </button>
               </div>
 
-              <p className="text-xs text-neutral-400 leading-relaxed">
-                Promote <strong>{student.name}</strong> from <em>{student.batch?.name} ({student.batch?.subject})</em> to their next course level. Their completed batch will be saved in Academic History and their existing student details will be preserved without creating duplicate records.
-              </p>
+              {/* Student & Progression Info */}
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-neutral-400">Student:</span>
+                  <span className="text-white font-semibold">{student.name}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs border-t border-neutral-800/80 pt-2">
+                  <span className="text-neutral-400">Progression:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded bg-neutral-800 text-neutral-300 text-[11px] font-bold">{currentLevelTag}</span>
+                    <span className="text-emerald-400 text-xs">➔</span>
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                      {selectedLevel || getNextLevelSuggestion()}
+                    </span>
+                  </div>
+                </div>
+              </div>
 
+              {/* Target Level */}
               <div>
-                <label className="block text-xs font-semibold text-neutral-300 mb-1.5 uppercase tracking-wider">
-                  Type Next Course / Batch Name
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Target Level</span>
+                  <span className="text-[10px] text-emerald-400 font-medium">Select or Type</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="e.g. Python Level 2, Robotics Level 3"
-                  value={customBatchInput}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    setCustomBatchInput(val);
-                    const match = allBatches.find(
-                      (b: any) => b.name.toLowerCase() === val.toLowerCase() || `${b.name} (${b.subject})`.toLowerCase() === val.toLowerCase()
-                    );
-                    if (match) setSelectedNextBatch(match._id);
-                    else setSelectedNextBatch("");
-                  }}
-                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-sm text-white outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500/30 transition-all placeholder-neutral-500 mb-2"
-                />
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={selectedLevel}
+                    onChange={(e) => setSelectedLevel(e.target.value)}
+                    placeholder="e.g. Level 2"
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-semibold"
+                  />
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {["Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((lvl) => (
+                    <button
+                      key={lvl}
+                      type="button"
+                      onClick={() => setSelectedLevel(lvl)}
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                        (selectedLevel || getNextLevelSuggestion()) === lvl
+                          ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-sm"
+                          : "bg-neutral-800/80 text-neutral-400 border-neutral-700 hover:text-white"
+                      }`}
+                    >
+                      {lvl}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
+              {/* Who is Teaching? */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Who is Teaching? (Teacher / Tutor)</span>
+                  <span className="text-[10px] text-emerald-400 font-medium">Assigned Teacher</span>
+                </label>
                 <select
-                  value={selectedNextBatch}
-                  onChange={(e) => {
-                    setSelectedNextBatch(e.target.value);
-                    const selectedObj = allBatches.find((b: any) => b._id === e.target.value);
-                    if (selectedObj) {
-                      setCustomBatchInput(`${selectedObj.name} (${selectedObj.subject})`);
-                    }
-                  }}
-                  className="w-full bg-neutral-800/80 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-neutral-300 outline-none focus:border-emerald-500 transition-all"
+                  value={selectedTeacher}
+                  onChange={(e) => setSelectedTeacher(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2.5 text-xs text-white outline-none focus:border-emerald-500 transition-all"
                 >
-                  <option value="">Or pick from existing active batches...</option>
-                  {allBatches
-                    .filter((b: any) => b._id !== student.batch?._id && b.status !== "Completed")
-                    .map((b: any) => (
-                      <option key={b._id} value={b._id}>
-                        {b.name} ({b.subject}) — {b.status || "Active"}
-                      </option>
-                    ))}
+                  <option value="">Keep current teacher or select new...</option>
+                  {allTeachers.map((t: any) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name} {t.specialization ? `(${t.specialization})` : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
-              {/* Course Level Selection */}
+              {/* Class Timings */}
               <div>
-                <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">Select Course Level:</label>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Class Timings</span>
+                  </span>
+                  <span className="text-[10px] text-emerald-400 font-medium">Start & End</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">Start Time</span>
+                    <input
+                      type="time"
+                      value={startTime}
+                      onChange={(e) => setStartTime(e.target.value)}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">End Time</span>
+                    <input
+                      type="time"
+                      value={endTime}
+                      onChange={(e) => setEndTime(e.target.value)}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Days of the Week */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Days of Week</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-normal">
+                    {selectedDays.length} day{selectedDays.length !== 1 ? "s" : ""} selected
+                  </span>
+                </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {["Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((lvl) => {
-                    const matchBatch = allBatches.find((b: any) => 
-                      ((b.name || "").toLowerCase().includes(lvl.toLowerCase()) || (b.subject || "").toLowerCase().includes(lvl.toLowerCase())) && b.status !== "Completed"
-                    );
+                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
+                    const isSelected = selectedDays.includes(day);
                     return (
                       <button
-                        key={lvl}
+                        key={day}
                         type="button"
                         onClick={() => {
-                          setSelectedLevel(lvl);
-                          const newName = customBatchInput && !customBatchInput.includes(lvl) 
-                            ? `${customBatchInput.split(" - ")[0]} - ${lvl}` 
-                            : (matchBatch ? `${matchBatch.name}` : `${lvl}`);
-                          setCustomBatchInput(newName);
-                          if (matchBatch) setSelectedNextBatch(matchBatch._id);
+                          if (isSelected) {
+                            setSelectedDays(selectedDays.filter((d) => d !== day));
+                          } else {
+                            setSelectedDays([...selectedDays, day]);
+                          }
                         }}
-                        className={`text-xs px-3 py-1.5 rounded-lg border font-semibold transition-all ${
-                          selectedLevel === lvl || customBatchInput.includes(lvl)
-                            ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-md shadow-emerald-500/20"
-                            : matchBatch
-                            ? "bg-neutral-800 text-neutral-200 border-neutral-700 hover:border-emerald-500/50"
-                            : "bg-neutral-800/60 text-neutral-400 border-neutral-800 hover:border-neutral-700"
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
+                          isSelected
+                            ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-sm"
+                            : "bg-neutral-800/80 text-neutral-400 border-neutral-700 hover:text-white"
                         }`}
                       >
-                        {lvl} {matchBatch ? `(${matchBatch.name})` : ""}
+                        {day.slice(0, 3)}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              {/* Quick Course Options */}
+              {/* Classroom / Meeting Link */}
               <div>
-                <label className="block text-[11px] font-semibold text-neutral-400 uppercase tracking-wider mb-1.5">Quick Select Subject:</label>
-                <div className="flex flex-wrap gap-1.5">
-                  {["Scratch", "Robotics", "Python", "AI"].map((courseName) => {
-                    const matchBatch = allBatches.find((b: any) => 
-                      (b.subject || "").toLowerCase().includes(courseName.toLowerCase()) && 
-                      (selectedLevel ? ((b.name || "").toLowerCase().includes(selectedLevel.toLowerCase()) || (b.subject || "").toLowerCase().includes(selectedLevel.toLowerCase())) : true) &&
-                      b.status !== "Completed"
-                    );
-                    return (
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Meeting / Classroom Link</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-normal">Optional</span>
+                </label>
+                <input
+                  type="url"
+                  value={meetingLink}
+                  onChange={(e) => setMeetingLink(e.target.value)}
+                  placeholder="https://meet.google.com/xyz-abc or Zoom link"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono placeholder:text-neutral-500"
+                />
+              </div>
+
+              {/* Number of Classes Needed & Start Date */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    <span>Number of Classes</span>
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="100"
+                    value={numberOfClasses}
+                    onChange={(e) => setNumberOfClasses(e.target.value)}
+                    placeholder="e.g. 15"
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-semibold mb-1.5"
+                  />
+                  <div className="flex flex-wrap gap-1">
+                    {[8, 12, 15, 20, 24, 30].map((num) => (
                       <button
-                        key={courseName}
+                        key={num}
                         type="button"
-                        onClick={() => {
-                          const newText = selectedLevel ? `${courseName} - ${selectedLevel}` : courseName;
-                          setCustomBatchInput(newText);
-                          if (matchBatch) setSelectedNextBatch(matchBatch._id);
-                          else setSelectedNextBatch("");
-                        }}
-                        className={`text-xs px-2.5 py-1 rounded-lg border font-semibold transition-all ${
-                          customBatchInput.toLowerCase().includes(courseName.toLowerCase())
+                        onClick={() => setNumberOfClasses(String(num))}
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
+                          Number(numberOfClasses) === num
                             ? "bg-emerald-500 text-black border-emerald-400 font-bold"
-                            : matchBatch
-                            ? "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-emerald-500/50"
-                            : "bg-neutral-800/40 text-neutral-400 border-neutral-800"
+                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
                         }`}
                       >
-                        + {courseName} {matchBatch ? `(${matchBatch.name})` : ""}
+                        {num}
                       </button>
-                    );
-                  })}
+                    ))}
+                  </div>
                 </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    <span>Start Date</span>
+                  </label>
+                  <input
+                    type="date"
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                  />
+                  <p className="text-[10px] text-neutral-500 mt-1.5">Auto-generates schedules on selected days</p>
+                </div>
+              </div>
+
+              <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-[11px] text-emerald-300 leading-relaxed">
+                ✨ <strong>Zero duplication:</strong> The student continues under their existing profile. A new live progress bar is created for{" "}
+                <span className="font-bold underline">{selectedLevel || getNextLevelSuggestion()}</span>, and previous classes remain archived in Academic History.
               </div>
 
               <div className="flex gap-3 pt-2 border-t border-neutral-800">
                 <button
+                  type="button"
                   onClick={() => setShowNextCourseModal(false)}
                   className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={() => (selectedNextBatch || customBatchInput.trim()) && updateBatchMutation.mutate({ batchId: selectedNextBatch, nameInput: customBatchInput })}
-                  disabled={(!selectedNextBatch && !customBatchInput.trim()) || updateBatchMutation.isPending}
+                  type="button"
+                  onClick={() => {
+                    const finalLevel = selectedLevel || getNextLevelSuggestion();
+                    advanceLevelMutation.mutate({
+                      level: finalLevel,
+                      numberOfClasses: Math.max(1, Number(numberOfClasses) || 15),
+                      teacherId: selectedTeacher || undefined,
+                      timing: {
+                        startTime: startTime || "09:00",
+                        endTime: endTime || "10:00",
+                      },
+                      days: selectedDays.length > 0 ? selectedDays : ["Monday", "Wednesday", "Friday"],
+                      meetingLink: meetingLink || undefined,
+                      startDate: startDate || format(new Date(), "yyyy-MM-dd"),
+                    });
+                  }}
+                  disabled={advanceLevelMutation.isPending}
                   className="flex-1 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-bold transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-emerald-500/20"
                 >
-                  {updateBatchMutation.isPending ? (
+                  {advanceLevelMutation.isPending ? (
                     <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                   ) : (
-                    <>Assign Next Course</>
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Move to Next Level
+                    </>
                   )}
                 </button>
               </div>
@@ -770,3 +1222,5 @@ export function StudentDetailsModal({ studentId, onClose }: { studentId: string;
     </div>
   );
 }
+
+export default StudentDetailsModal;

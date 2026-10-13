@@ -29,7 +29,7 @@ export function normalizeDateOnlyToUtc(val: any): Date | undefined {
  * Otherwise, generates schedules for 6 months (180 days) so classes are never cut off.
  * Detects conflicts with teacher's other batches and demo sessions in O(1) per date.
  */
-async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0): Promise<number> {
+export async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0, studentId?: string): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
 
   if (!startDate || !days?.length || !timing?.startTime || !timing?.endTime) {
@@ -115,6 +115,7 @@ async function generateSchedulesForBatch(batch: any, preCompletedClasses: number
           conflict: isConflict,
           meetingLink: meetingLink || '',
           notes: isCompleted ? `Auto-generated as Completed (Late join)` : `Auto-generated for batch`,
+          attendance: studentId ? [{ studentId, isPresent: isCompleted, date: new Date(cursorTime) }] : [],
         };
 
         schedulesToCreate.push(newSlot);

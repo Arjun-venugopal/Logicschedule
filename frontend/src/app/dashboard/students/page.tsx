@@ -8,19 +8,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useDebounce } from "@/hooks/useDebounce";
-import dynamic from "next/dynamic";
-
-// Dynamically import heavy modal
-const StudentDetailsModal = dynamic(
-  () => import("@/components/students/StudentDetailsModal").then(m => m.StudentDetailsModal),
-  { ssr: false }
-);
+import { StudentDetailsModal } from "@/components/students/StudentDetailsModal";
 
 export default function StudentsPage() {
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
+  const [openAdvanceDirectly, setOpenAdvanceDirectly] = useState(false);
   const [editStudent, setEditStudent] = useState<any | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [showRoster, setShowRoster] = useState(false);
@@ -117,6 +112,17 @@ export default function StudentsPage() {
     const batchesSet = new Set(students.map((s: any) => s.batch?._id).filter(Boolean));
     return batchesSet.size;
   }, [students]);
+
+  const getStudentLevelTag = (student: any) => {
+    if (student.currentLevel) return student.currentLevel;
+    if (student.level) return student.level;
+    const str = `${student.batch?.name || ''} ${student.batch?.subject || ''}`.toLowerCase();
+    const match = str.match(/level\s*[-]?\s*(\d+)/i) || str.match(/lvl\s*[-]?\s*(\d+)/i);
+    if (match) return `Level ${match[1]}`;
+    const pastCount = student.pastBatches?.length || 0;
+    if (pastCount > 0) return `Level ${pastCount + 1}`;
+    return "Level 1";
+  };
 
   const matchingExistingStudent = useMemo(() => {
     if (!editStudent?.name || editStudent._id) return null;
@@ -347,8 +353,13 @@ export default function StudentsPage() {
                             {student.name.charAt(0)}
                           </div>
                           <div className="min-w-0">
-                            <h4 className="font-semibold text-white text-sm truncate">{student.name}</h4>
-                            <span className="text-xs text-neutral-500 flex items-center gap-1">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <h4 className="font-semibold text-white text-sm truncate">{student.name}</h4>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                {getStudentLevelTag(student)}
+                              </span>
+                            </div>
+                            <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
                               <User className="w-3 h-3" /> Student
                             </span>
                           </div>
@@ -378,10 +389,13 @@ export default function StudentsPage() {
                         <span className="text-neutral-500">Batch:</span>
                         {student.batch?.status === "Completed" ? (
                           <button
-                            onClick={() => setSelectedStudentId(student._id)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold"
+                            onClick={() => {
+                              setSelectedStudentId(student._id);
+                              setOpenAdvanceDirectly(true);
+                            }}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[11px] font-bold hover:bg-emerald-500/30 transition-all"
                           >
-                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance Level
+                            <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Move to Next Level
                           </button>
                         ) : (
                           <div className="flex items-center gap-1.5">
@@ -390,8 +404,11 @@ export default function StudentsPage() {
                             </span>
                             {hasWriteAccess && (
                               <button
-                                onClick={() => setSelectedStudentId(student._id)}
-                                className="text-[10px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-300 border border-neutral-700"
+                                onClick={() => {
+                                  setSelectedStudentId(student._id);
+                                  setOpenAdvanceDirectly(true);
+                                }}
+                                className="text-[10px] px-2 py-0.5 rounded bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 hover:border-emerald-500/40 hover:text-emerald-400 transition-colors font-medium"
                               >
                                 Advance
                               </button>
@@ -416,7 +433,10 @@ export default function StudentsPage() {
                       )}
 
                       <button
-                        onClick={() => setSelectedStudentId(student._id)}
+                        onClick={() => {
+                          setSelectedStudentId(student._id);
+                          setOpenAdvanceDirectly(false);
+                        }}
                         className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 rounded-xl text-xs font-semibold transition-colors text-center"
                       >
                         View Full Details
@@ -448,7 +468,12 @@ export default function StudentsPage() {
                                 <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-neutral-900 rounded-full"></div>
                               </div>
                               <div className="flex flex-col">
-                                <span className="font-semibold text-white">{student.name}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-white">{student.name}</span>
+                                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                    {getStudentLevelTag(student)}
+                                  </span>
+                                </div>
                                 <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
                                   <User className="w-3 h-3" /> Student
                                 </span>
@@ -458,10 +483,13 @@ export default function StudentsPage() {
                           <td className="px-6 py-4">
                             {student.batch?.status === "Completed" ? (
                               <button
-                                onClick={() => setSelectedStudentId(student._id)}
+                                onClick={() => {
+                                  setSelectedStudentId(student._id);
+                                  setOpenAdvanceDirectly(true);
+                                }}
                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-xs font-bold hover:bg-emerald-500/30 transition-all shadow-sm shadow-emerald-500/20"
                               >
-                                <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Advance to Next Level
+                                <GraduationCap className="w-3.5 h-3.5 text-emerald-400" /> Move to Next Level
                               </button>
                             ) : (
                               <div className="flex items-center gap-2">
@@ -470,11 +498,14 @@ export default function StudentsPage() {
                                 </span>
                                 {hasWriteAccess && (
                                   <button
-                                    onClick={() => setSelectedStudentId(student._id)}
-                                    className="text-[11px] px-2 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 font-medium transition-colors"
-                                    title="Promote to next course level"
+                                    onClick={() => {
+                                      setSelectedStudentId(student._id);
+                                      setOpenAdvanceDirectly(true);
+                                    }}
+                                    className="text-[11px] px-2.5 py-1 rounded-md bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 font-medium transition-colors hover:border-emerald-500/40 hover:text-emerald-400"
+                                    title="Move student to next level"
                                   >
-                                    Advance Level
+                                    Move to Next Level
                                   </button>
                                 )}
                               </div>
@@ -491,7 +522,10 @@ export default function StudentsPage() {
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-1.5 opacity-90 group-hover:opacity-100 transition-opacity">
                               <button
-                                onClick={() => setSelectedStudentId(student._id)}
+                                onClick={() => {
+                                  setSelectedStudentId(student._id);
+                                  setOpenAdvanceDirectly(false);
+                                }}
                                 className="px-3 py-1.5 hover:bg-neutral-800 rounded-lg text-neutral-400 hover:text-white transition-colors text-xs font-medium"
                               >
                                 View Details
@@ -531,7 +565,11 @@ export default function StudentsPage() {
         {selectedStudentId && (
           <StudentDetailsModal
             studentId={selectedStudentId}
-            onClose={() => setSelectedStudentId(null)}
+            initialOpenAdvance={openAdvanceDirectly}
+            onClose={() => {
+              setSelectedStudentId(null);
+              setOpenAdvanceDirectly(false);
+            }}
           />
         )}
 
@@ -607,61 +645,6 @@ export default function StudentsPage() {
                       </option>
                     ))}
                   </select>
-                  <div className="space-y-2 mt-2">
-                    <div>
-                      <p className="text-[10px] uppercase font-semibold text-neutral-500 mb-1">Quick Select Course Level:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {["Level 1", "Level 2", "Level 3", "Level 4", "Level 5", "Level 6"].map((lvl) => {
-                          const matchBatch = batches.find((b: any) => 
-                            ((b.name || "").toLowerCase().includes(lvl.toLowerCase()) || (b.subject || "").toLowerCase().includes(lvl.toLowerCase())) && b.status !== "Completed"
-                          );
-                          return (
-                            <button
-                              key={lvl}
-                              type="button"
-                              onClick={() => matchBatch && setEditStudent({ ...editStudent, batch: matchBatch._id })}
-                              disabled={!matchBatch}
-                              className={`text-[11px] px-2 py-0.5 rounded-md border font-medium transition-all ${
-                                matchBatch
-                                  ? editStudent.batch === matchBatch._id
-                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
-                                    : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-neutral-500"
-                                  : "bg-neutral-800/30 text-neutral-600 border-neutral-800 cursor-not-allowed"
-                              }`}
-                            >
-                              {lvl} {matchBatch ? `(${matchBatch.name})` : ""}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="text-[10px] uppercase font-semibold text-neutral-500 mb-1">Quick Select Subject:</p>
-                      <div className="flex flex-wrap gap-1">
-                        {["Scratch", "Robotics", "Python", "AI"].map((courseName) => {
-                          const matchBatch = batches.find((b: any) => (b.subject || "").toLowerCase().includes(courseName.toLowerCase()) && b.status !== "Completed");
-                          return (
-                            <button
-                              key={courseName}
-                              type="button"
-                              onClick={() => matchBatch && setEditStudent({ ...editStudent, batch: matchBatch._id })}
-                              disabled={!matchBatch}
-                              className={`text-[11px] px-2 py-0.5 rounded-md border font-medium transition-all ${
-                                matchBatch
-                                  ? editStudent.batch === matchBatch._id
-                                    ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40 font-bold"
-                                    : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
-                                  : "bg-neutral-800/30 text-neutral-600 border-neutral-800 cursor-not-allowed"
-                              }`}
-                            >
-                              + {courseName} {matchBatch ? `(${matchBatch.name})` : ""}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Parent Name</label>

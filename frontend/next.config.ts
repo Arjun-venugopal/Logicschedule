@@ -20,8 +20,8 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   experimental: {
-    // Tree-shake heavy libraries to reduce build-time & runtime memory consumption
-    optimizePackageImports: ["lucide-react", "date-fns", "framer-motion", "recharts"],
+    // Tree-shake heavy libraries
+    optimizePackageImports: ["lucide-react", "date-fns"],
   },
   allowedDevOrigins: [
     '192.168.1.39',
