@@ -682,7 +682,7 @@ export default function SchedulePage() {
                                   {event.teacher?.name}
                                 </div>
                                 {event.status === "Completed" ? (
-                                  <span className="text-[8px] text-emerald-400 font-semibold shrink-0">✓ Done</span>
+                                  <span className="text-[8px] text-emerald-400 font-semibold shrink-0">✓ Completed</span>
                                 ) : event.status === "Cancelled" ? (
                                   <span className="text-[8px] text-red-400 font-semibold shrink-0">✕ Cancelled</span>
                                 ) : isRescheduled ? (
@@ -780,7 +780,7 @@ export default function SchedulePage() {
                                     </span>
                                     {event.status === "Completed" ? (
                                       <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
-                                        ✓ Finished{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
+                                        ✓ Completed{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
                                       </span>
                                     ) : event.status === "Cancelled" ? (
                                       <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">

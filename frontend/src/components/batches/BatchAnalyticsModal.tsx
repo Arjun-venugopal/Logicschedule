@@ -3,7 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, Users, BookOpen, Clock, CalendarCheck, Calendar } from "lucide-react";
+import { X, Users, BookOpen, Clock, CalendarCheck, Calendar, AlertTriangle } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 
@@ -23,12 +23,13 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
   if (!data) return null;
 
-  const { batch, studentsCount, totalSchedules, completedSchedules, attendanceStats, schedules } = data;
+  const { batch, studentsCount, totalSchedules, completedSchedules, cancelledSchedules = 0, upcomingSchedules = 0, attendanceStats, schedules } = data;
   const targetClasses = (batch?.numberOfSessions && Number(batch.numberOfSessions) > 0)
     ? Number(batch.numberOfSessions)
     : totalSchedules;
   const progress = targetClasses > 0 ? Math.min(100, Math.round((completedSchedules / targetClasses) * 100)) : 0;
-
+  const cancelledCount = cancelledSchedules || (schedules ? schedules.filter((s: any) => s.status === 'Cancelled').length : 0);
+  const remainingCount = Math.max(0, targetClasses - completedSchedules);
 
   const barChartData = attendanceStats.map((stu: any) => ({
     name: stu.name.split(' ')[0], 
@@ -37,9 +38,10 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
   const pieChartData = [
     { name: 'Completed', value: completedSchedules },
-    { name: 'Remaining', value: Math.max(0, targetClasses - completedSchedules) }
+    { name: 'Upcoming/Remaining', value: remainingCount },
+    ...(cancelledCount > 0 ? [{ name: 'Cancelled', value: cancelledCount }] : [])
   ];
-  const PIE_COLORS = ['#10b981', '#3f3f46'];
+  const PIE_COLORS = ['#10b981', '#3b82f6', '#ef4444'];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
@@ -67,36 +69,53 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 sm:space-y-8">
           {/* Top Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-1 sm:mb-2">
-                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Students</span>
-                <Users className="w-4 h-4 text-amber-500" />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Students</span>
+                  <Users className="w-4 h-4 text-amber-500" />
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{studentsCount}</p>
               </div>
-              <p className="text-xl sm:text-2xl font-bold text-white">{studentsCount}</p>
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Total Classes</span>
+                  <Calendar className="w-4 h-4 text-blue-500" />
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{targetClasses}</p>
+              </div>
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Completed</span>
+                  <CalendarCheck className="w-4 h-4 text-emerald-500" />
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{completedSchedules}</p>
+              </div>
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Upcoming</span>
+                  <Clock className="w-4 h-4 text-indigo-400" />
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{remainingCount}</p>
+              </div>
+              <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Dropped / Cancelled</span>
+                  <AlertTriangle className="w-4 h-4 text-rose-500" />
+                </div>
+                <p className="text-xl sm:text-2xl font-bold text-white">{cancelledCount}</p>
+              </div>
             </div>
+
+            {/* Progress Bar */}
             <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-1 sm:mb-2">
-                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Total Classes</span>
-                <Calendar className="w-4 h-4 text-blue-500" />
+              <div className="flex items-center justify-between text-xs font-semibold text-neutral-400 mb-1.5">
+                <span>Course Completion Progress</span>
+                <span className="text-emerald-400">{progress}% ({completedSchedules} of {targetClasses} classes)</span>
               </div>
-              <p className="text-xl sm:text-2xl font-bold text-white">{targetClasses}</p>
-            </div>
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-1 sm:mb-2">
-                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Completed</span>
-                <CalendarCheck className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-xl sm:text-2xl font-bold text-white">{completedSchedules}</p>
-            </div>
-            <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
-              <div className="flex items-center justify-between mb-1 sm:mb-2">
-                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Progress</span>
-                <Clock className="w-4 h-4 text-orange-500" />
-              </div>
-              <p className="text-xl sm:text-2xl font-bold text-white">{progress}%</p>
-              <div className="w-full h-1.5 bg-neutral-700 rounded-full mt-2 overflow-hidden">
-                <div className="h-full brand-gradient" style={{ width: `${progress}%` }} />
+              <div className="w-full h-2 bg-neutral-700 rounded-full overflow-hidden">
+                <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${progress}%` }} />
               </div>
             </div>
           </div>

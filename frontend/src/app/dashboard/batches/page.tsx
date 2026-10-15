@@ -2,9 +2,9 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock3 } from "lucide-react";
+import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock3, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import dynamic from "next/dynamic";
@@ -195,27 +195,73 @@ export default function BatchesPage() {
 
   // No early return for teacher, let them see their batches
 
+  // Determine effective status for a batch
+  const getBatchEffectiveStatus = (b: any): "Ongoing" | "Completed" | "Dropped" | "Upcoming" => {
+    const targetSessions = (b.numberOfSessions && Number(b.numberOfSessions) > 0)
+      ? Number(b.numberOfSessions)
+      : (b.totalClassesCount || 0);
+    const completedCount = b.completedClassesCount || 0;
+    const isClassCompleted = b.status === "Completed" || (targetSessions > 0 && completedCount >= targetSessions);
+    const rawStatus = (b.status || "").toLowerCase();
+
+    if (rawStatus === "dropped" || rawStatus === "cancelled") return "Dropped";
+    if (isClassCompleted || rawStatus === "completed") return "Completed";
+    if (rawStatus === "upcoming") return "Upcoming";
+    return "Ongoing";
+  };
+
+  // Base batches for calculating contextual counts (filtered by teacher and course if selected)
+  const baseBatchesForStats = useMemo(() => {
+    return batches.filter((b: any) => {
+      if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
+      if (filterCourse) {
+        const bSubject = (b.subject || "").toLowerCase();
+        if (!bSubject.includes(filterCourse.toLowerCase())) return false;
+      }
+      return true;
+    });
+  }, [batches, filterTeacher, filterCourse]);
+
+  // Aggregate batch counts for: Total Batches, Ongoing, Completed, Dropped/Cancelled, Upcoming
+  const batchStats = useMemo(() => {
+    let totalBatches = baseBatchesForStats.length;
+    let ongoingBatches = 0;
+    let completedBatches = 0;
+    let droppedBatches = 0;
+    let upcomingBatches = 0;
+
+    baseBatchesForStats.forEach((b: any) => {
+      const effective = getBatchEffectiveStatus(b);
+
+      if (effective === "Completed") {
+        completedBatches++;
+      } else if (effective === "Ongoing") {
+        ongoingBatches++;
+      } else if (effective === "Dropped") {
+        droppedBatches++;
+      } else if (effective === "Upcoming") {
+        upcomingBatches++;
+      }
+    });
+
+    return {
+      totalBatches,
+      ongoingBatches,
+      completedBatches,
+      droppedBatches,
+      upcomingBatches,
+    };
+  }, [baseBatchesForStats]);
+
   const filteredBatches = batches.filter((b: any) => {
     if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
     
     if (filterStatus) {
-      const targetSessions = (b.numberOfSessions && Number(b.numberOfSessions) > 0)
-        ? Number(b.numberOfSessions)
-        : (b.totalClassesCount || 0);
-      const isClassCompleted = b.status === "Completed" || (targetSessions > 0 && (b.completedClassesCount || 0) >= targetSessions);
-      const bStatus = isClassCompleted ? "completed" : (b.status || "").toLowerCase();
-
-      if (filterStatus === "Ongoing") {
-        if (bStatus !== "active" && bStatus !== "ongoing") return false;
-      } else if (filterStatus === "Completed") {
-        if (bStatus !== "completed") return false;
-      } else if (filterStatus === "Dropped") {
-        if (bStatus !== "dropped" && bStatus !== "cancelled") return false;
-      } else if (filterStatus === "Upcoming") {
-        if (bStatus !== "upcoming") return false;
-      } else {
-        if (bStatus !== filterStatus.toLowerCase()) return false;
-      }
+      const effective = getBatchEffectiveStatus(b);
+      if (filterStatus === "Ongoing" && effective !== "Ongoing") return false;
+      if (filterStatus === "Completed" && effective !== "Completed") return false;
+      if (filterStatus === "Dropped" && effective !== "Dropped") return false;
+      if (filterStatus === "Upcoming" && effective !== "Upcoming") return false;
     }
 
     if (filterCourse) {
@@ -259,6 +305,154 @@ export default function BatchesPage() {
         </div>
       </div>
 
+      {/* Overview Count Cards: Batches (Total, Ongoing, Completed, Upcoming, Dropped/Cancelled) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 shrink-0">
+        {/* Total Batches Card */}
+        <div
+          onClick={() => setFilterStatus("")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
+            filterStatus === ""
+              ? "border-amber-500/50 ring-1 ring-amber-500/30 bg-amber-500/5 shadow-lg shadow-amber-500/10"
+              : "border-neutral-800 hover:border-amber-500/30"
+          }`}
+          title="Click to view all batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Total Batches</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.totalBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              filterStatus === "" ? "bg-amber-500/20 text-amber-400" : "bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20"
+            }`}>
+              <BookOpen className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <BookOpen className="w-24 h-24 text-amber-500" />
+          </div>
+        </div>
+
+        {/* Ongoing / Active Card */}
+        <div
+          onClick={() => setFilterStatus(filterStatus === "Ongoing" ? "" : "Ongoing")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
+            filterStatus === "Ongoing"
+              ? "border-emerald-500/50 ring-1 ring-emerald-500/30 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
+              : "border-neutral-800 hover:border-emerald-500/30"
+          }`}
+          title="Click to filter by Ongoing batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Ongoing</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.ongoingBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              filterStatus === "Ongoing" ? "bg-emerald-500/20 text-emerald-400" : "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20"
+            }`}>
+              <Clock3 className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <Clock3 className="w-24 h-24 text-emerald-500" />
+          </div>
+        </div>
+
+        {/* Completed Card */}
+        <div
+          onClick={() => setFilterStatus(filterStatus === "Completed" ? "" : "Completed")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
+            filterStatus === "Completed"
+              ? "border-teal-500/50 ring-1 ring-teal-500/30 bg-teal-500/5 shadow-lg shadow-teal-500/10"
+              : "border-neutral-800 hover:border-teal-500/30"
+          }`}
+          title="Click to filter by Completed batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Completed</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.completedBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              filterStatus === "Completed" ? "bg-teal-500/20 text-teal-400" : "bg-teal-500/10 text-teal-500 group-hover:bg-teal-500/20"
+            }`}>
+              <CheckCircle2 className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <CheckCircle2 className="w-24 h-24 text-teal-500" />
+          </div>
+        </div>
+
+        {/* Upcoming Card */}
+        <div
+          onClick={() => setFilterStatus(filterStatus === "Upcoming" ? "" : "Upcoming")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
+            filterStatus === "Upcoming"
+              ? "border-blue-500/50 ring-1 ring-blue-500/30 bg-blue-500/5 shadow-lg shadow-blue-500/10"
+              : "border-neutral-800 hover:border-blue-500/30"
+          }`}
+          title="Click to filter by Upcoming batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Upcoming</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.upcomingBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              filterStatus === "Upcoming" ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20"
+            }`}>
+              <Calendar className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <Calendar className="w-24 h-24 text-blue-500" />
+          </div>
+        </div>
+
+        {/* Dropped / Cancelled Card */}
+        <div
+          onClick={() => setFilterStatus(filterStatus === "Dropped" ? "" : "Dropped")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
+            filterStatus === "Dropped"
+              ? "border-rose-500/50 ring-1 ring-rose-500/30 bg-rose-500/5 shadow-lg shadow-rose-500/10"
+              : "border-neutral-800 hover:border-rose-500/30"
+          }`}
+          title="Click to filter by Dropped / Cancelled batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Dropped / Cancelled</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.droppedBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
+              filterStatus === "Dropped" ? "bg-rose-500/20 text-rose-400" : "bg-rose-500/10 text-rose-500 group-hover:bg-rose-500/20"
+            }`}>
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <AlertTriangle className="w-24 h-24 text-rose-500" />
+          </div>
+        </div>
+      </div>
+
       {/* Filters */}
       <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 shrink-0 bg-neutral-900 border border-neutral-800 p-3 rounded-2xl">
         {/* Teacher Filter */}
@@ -284,11 +478,11 @@ export default function BatchesPage() {
             onChange={(e) => setFilterStatus(e.target.value)}
             className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
           >
-            <option value="">All Statuses</option>
-            <option value="Ongoing">Ongoing / Active</option>
-            <option value="Completed">Completed</option>
-            <option value="Dropped">Dropped / Cancelled</option>
-            <option value="Upcoming">Upcoming</option>
+            <option value="">All Statuses ({batchStats.totalBatches})</option>
+            <option value="Ongoing">Ongoing / Active ({batchStats.ongoingBatches})</option>
+            <option value="Completed">Completed ({batchStats.completedBatches})</option>
+            <option value="Dropped">Dropped / Cancelled ({batchStats.droppedBatches})</option>
+            <option value="Upcoming">Upcoming ({batchStats.upcomingBatches})</option>
           </select>
         </div>
 
@@ -471,6 +665,21 @@ export default function BatchesPage() {
                         <span>{batchProgress(completedCount, targetSessions)}% completed</span>
                       </div>
                     )}
+
+                    {/* Class Count Breakdown Pills */}
+                    <div className="flex items-center gap-1.5 mt-2.5 pt-2 border-t border-neutral-800/60 text-[10px] text-neutral-400 flex-wrap">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                        ✓ {completedCount} Completed
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+                        🕒 {Math.max(targetSessions - completedCount, 0)} Upcoming
+                      </span>
+                      {batch.cancelledClassesCount && batch.cancelledClassesCount > 0 ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 border border-red-500/20 font-medium">
+                          ✗ {batch.cancelledClassesCount} Dropped
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 )}
 

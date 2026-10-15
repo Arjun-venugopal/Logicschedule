@@ -72,9 +72,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           { icon: Users, label: "Students", href: "/dashboard/students", show: canAccess("students") },
           { icon: Users, label: "Sales People", href: "/dashboard/sales-people", show: canAccess("salesPeople") },
           { icon: Video, label: "Demo Sessions", href: "/dashboard/demo-sessions", show: canAccess("demoSessions") },
+          { icon: CheckCircle, label: "Completed Classes", href: "/dashboard/completed-classes", show: canAccess("completedClasses") },
           { icon: FileText, label: "Class Notes", href: "/dashboard/class-notes", show: canAccess("classNotes") },
           { icon: Users, label: "Attendance", href: "/dashboard/attendance", show: canAccess("attendance") },
-          { icon: CreditCard, label: "Fees & Payments", href: "/dashboard/payments", show: canAccess("payments") || !isTeacher },
+          { icon: CreditCard, label: "Fees & Payments", href: "/dashboard/payments", show: canAccess("payments") },
+          { icon: TrendingUp, label: "Performance", href: "/dashboard/performance", show: canAccess("performance") }
         ]),
     { icon: Settings, label: "Settings", href: "/dashboard/settings", show: canAccess("settings") },
   ].filter(item => item.show);

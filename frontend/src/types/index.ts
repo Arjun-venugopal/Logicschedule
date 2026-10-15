@@ -14,6 +14,12 @@ export interface Batch {
   status: 'Active' | 'Ongoing' | 'Completed' | 'Dropped' | 'Cancelled' | 'Upcoming' | 'Inactive';
   durationType: 'Monthly' | 'Custom';
   numberOfSessions?: number;
+  completedClassesCount?: number;
+  cancelledClassesCount?: number;
+  upcomingClassesCount?: number;
+  totalClassesCount?: number;
+  scheduledClassesCount?: number;
+  isCompleted?: boolean;
   meetingLink?: string;
   createdAt: string;
   updatedAt: string;

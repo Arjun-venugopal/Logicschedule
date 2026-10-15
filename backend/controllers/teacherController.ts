@@ -684,11 +684,9 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       const isPastDate = targetDateStr < kolkata.todayStr;
       const isFutureDate = targetDateStr > kolkata.todayStr;
 
-      const finishedItems = items.filter(i => 
-        isToday 
-          ? (i.endMin < currentTotalMinutes || i.status === 'Completed') 
-          : (isPastDate ? true : i.status === 'Completed')
-      );
+      // Only classes explicitly marked 'Completed' by the teacher count as completed/finished.
+      // Classes are never automatically marked as finished when their time ends.
+      const finishedItems = items.filter(i => i.status === 'Completed');
       if (finishedItems.length > 0) {
         const lastFinished = finishedItems[finishedItems.length - 1];
         lastCompletedClass = {
@@ -697,7 +695,7 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
           type: lastFinished.type,
           startTime: lastFinished.startTime,
           endTime: lastFinished.endTime,
-          status: 'Class Finished'
+          status: 'Completed'
         };
       }
 

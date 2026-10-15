@@ -173,13 +173,21 @@ export const getBatches = async (req: any, res: Response) => {
     });
 
     const completedCountMap: Record<string, number> = {};
+    const cancelledCountMap: Record<string, number> = {};
+    const upcomingCountMap: Record<string, number> = {};
     const totalCountMap: Record<string, number> = {};
     const lastCompletedDateMap: Record<string, Date> = {};
+
+    const kolkata = getKolkataNow();
+    const todayStr = kolkata.todayStr;
 
     allSchedules.forEach((s: any) => {
       const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
       if (!bId) return;
       totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
+
+      const sDateStr = s.date ? normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0] : '';
+
       if (s.status === 'Completed') {
         completedCountMap[bId] = (completedCountMap[bId] || 0) + 1;
         if (s.date) {
@@ -187,6 +195,13 @@ export const getBatches = async (req: any, res: Response) => {
           if (!isNaN(sDate.getTime()) && (!lastCompletedDateMap[bId] || sDate > lastCompletedDateMap[bId])) {
             lastCompletedDateMap[bId] = sDate;
           }
+        }
+      } else if (s.status === 'Cancelled') {
+        cancelledCountMap[bId] = (cancelledCountMap[bId] || 0) + 1;
+      } else {
+        // Scheduled
+        if (!sDateStr || sDateStr >= todayStr) {
+          upcomingCountMap[bId] = (upcomingCountMap[bId] || 0) + 1;
         }
       }
     });
@@ -201,7 +216,7 @@ export const getBatches = async (req: any, res: Response) => {
         : schedCount;
 
       const isClassCompleted = targetSessions > 0 && completedCount >= targetSessions;
-      const effectiveStatus = (isClassCompleted && batchObj.status !== 'Dropped')
+      const effectiveStatus = (isClassCompleted && batchObj.status !== 'Dropped' && batchObj.status !== 'Cancelled')
         ? 'Completed'
         : batchObj.status;
 
@@ -209,6 +224,8 @@ export const getBatches = async (req: any, res: Response) => {
         ...batchObj,
         status: effectiveStatus,
         completedClassesCount: completedCount,
+        cancelledClassesCount: cancelledCountMap[bId] || 0,
+        upcomingClassesCount: upcomingCountMap[bId] || 0,
         totalClassesCount: targetSessions,
         scheduledClassesCount: schedCount,
         isCompleted: isClassCompleted || batchObj.status === 'Completed'
@@ -369,6 +386,8 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     const schedules = await Schedule.find({ batch: batch._id }).sort({ date: 1 });
 
     const completedClasses = schedules.filter((s: any) => s.status === 'Completed');
+    const cancelledClasses = schedules.filter((s: any) => s.status === 'Cancelled');
+    const upcomingClasses = schedules.filter((s: any) => s.status === 'Scheduled');
 
     // Compute attendance statistics per student
     const attendanceStats = students.map((stu: any) => {
@@ -401,6 +420,8 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
       studentsCount: students.length,
       totalSchedules: targetSessions,
       completedSchedules: completedClasses.length,
+      cancelledSchedules: cancelledClasses.length,
+      upcomingSchedules: upcomingClasses.length,
       attendanceStats,
       schedules,
     });

@@ -167,3 +167,29 @@ export const deleteSubAdmin = async (req: Request, res: Response): Promise<void>
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };
+
+// @desc    Bulk update all sub admins permissions
+// @route   PUT /api/users/sub-admins/bulk-permissions
+// @access  Private/Admin
+export const bulkUpdateSubAdminsPermissions = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { permissions } = req.body;
+    if (!permissions || typeof permissions !== 'object') {
+      res.status(400).json({ message: 'Valid permissions object is required' });
+      return;
+    }
+
+    const { data: subAdmins, error } = await getSupabase().from('users').select('_id, data').eq('role', 'Sub Admin');
+    if (error) throw error;
+
+    for (const admin of subAdmins || []) {
+      await User.update(admin._id, { permissions });
+    }
+
+    res.json({ message: `Successfully updated permissions for ${(subAdmins || []).length} sub admin(s)` });
+  } catch (error: any) {
+    console.error('Bulk update sub admins error:', error.message);
+    res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+

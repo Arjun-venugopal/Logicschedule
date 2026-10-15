@@ -1,5 +1,5 @@
 import express from 'express';
-import { getSubAdmins, createSubAdmin, updateSubAdmin, deleteSubAdmin } from '../controllers/userController';
+import { getSubAdmins, createSubAdmin, updateSubAdmin, deleteSubAdmin, bulkUpdateSubAdminsPermissions } from '../controllers/userController';
 import { protect, admin } from '../middleware/authMiddleware';
 
 const router = express.Router();
@@ -7,6 +7,9 @@ const router = express.Router();
 router.route('/sub-admins')
   .get(protect, admin, getSubAdmins)
   .post(protect, admin, createSubAdmin);
+
+router.route('/sub-admins/bulk-permissions')
+  .put(protect, admin, bulkUpdateSubAdminsPermissions);
 
 router.route('/sub-admins/:id')
   .put(protect, admin, updateSubAdmin)

@@ -92,6 +92,7 @@ export default function CompletedClassesPage() {
         const isPast = isBefore(new Date(s.date), todayStart);
         const isCompleted = s.status === "Completed";
         
+        if (s.status === "Cancelled" || s.status === "Rescheduled") return false;
         if (!isPast && !isCompleted) return false;
 
         // Apply student filter via O(1) Map lookup
