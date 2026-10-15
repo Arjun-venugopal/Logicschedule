@@ -8,6 +8,7 @@ import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, Messag
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
+import { ProjectSubmissionsSection } from "./ProjectSubmissionsSection";
 
 function extractLevel(text?: string, fallback = "Level 1"): string {
   if (!text) return fallback;
@@ -579,6 +580,22 @@ export function StudentDetailsModal({
                           )}
                         </div>
                       )}
+
+                      {/* Project Submissions Section (Automatic milestones every 5 completed classes) */}
+                      <div className="pt-3 border-t border-neutral-800/80">
+                        <ProjectSubmissionsSection
+                          student={student}
+                          batchId={currentBatchId}
+                          batchName={student.batch?.name}
+                          courseName={student.batch?.subject}
+                          completedClassesCount={currentCompletedCount}
+                          schedules={currentBatchSchedules}
+                          onSubmissionSuccess={() => {
+                            queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+                            queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+                          }}
+                        />
+                      </div>
                     </div>
                   </div>
                 );
@@ -730,6 +747,22 @@ export function StudentDetailsModal({
                               )}
                             </div>
                           )}
+                        </div>
+
+                        {/* Past Level Project Submissions History */}
+                        <div className="pt-3 border-t border-neutral-800/80">
+                          <ProjectSubmissionsSection
+                            student={student}
+                            batchId={pbBatchId ? pbBatchId.toString() : pbKey}
+                            batchName={batchName}
+                            courseName={batchSubject}
+                            completedClassesCount={pbClasses}
+                            schedules={pbSchedules}
+                            onSubmissionSuccess={() => {
+                              queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+                              queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+                            }}
+                          />
                         </div>
                       </div>
                     </div>

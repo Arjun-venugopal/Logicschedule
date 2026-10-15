@@ -25,6 +25,23 @@ export interface Batch {
   updatedAt: string;
 }
 
+export interface ProjectSubmission {
+  id?: string;
+  milestone: number;
+  batchId?: string;
+  batchName?: string;
+  courseName?: string;
+  projectTitle: string;
+  projectLink: string;
+  submissionDate: string;
+  teacherRemarks?: string;
+  teacherName?: string;
+  teacherId?: string;
+  status: 'Pending' | 'Link Submitted' | 'Reviewed';
+  submittedAt?: string;
+  updatedAt?: string;
+}
+
 export interface Student {
   _id: string;
   name: string;
@@ -37,6 +54,7 @@ export interface Student {
   mobileNumber?: string;
   whatsappNumber?: string;
   email?: string;
+  projectSubmissions?: ProjectSubmission[];
   pastBatches?: {
     batch: string | Batch;
     batchName?: string;

@@ -405,9 +405,12 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
       return {
         studentId: stu._id,
         name: stu.name,
+        email: stu.email,
+        phone: stu.mobileNumber || stu.phone,
         presentCount,
         totalCount,
         percentage: totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0,
+        projectSubmissions: stu.projectSubmissions || [],
       };
     });
 
@@ -423,6 +426,13 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
       cancelledSchedules: cancelledClasses.length,
       upcomingSchedules: upcomingClasses.length,
       attendanceStats,
+      students: students.map((s: any) => ({
+        _id: s._id,
+        name: s.name,
+        email: s.email,
+        phone: s.mobileNumber || s.phone,
+        projectSubmissions: s.projectSubmissions || [],
+      })),
       schedules,
     });
   } catch (error: any) {

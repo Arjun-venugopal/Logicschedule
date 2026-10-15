@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import * as xlsx from 'xlsx';
 import { z } from 'zod';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
+import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
 
@@ -788,3 +790,130 @@ export const deleteStudent = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({ message: 'Failed to delete student' });
   }
 };
+
+export const submitProjectSubmission = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const {
+      milestone,
+      batchId,
+      batchName,
+      courseName,
+      projectTitle,
+      projectLink,
+      submissionDate,
+      teacherRemarks,
+      status,
+    } = req.body;
+
+    const mNum = Number(milestone);
+    if (!mNum || mNum <= 0 || mNum % 5 !== 0) {
+      res.status(400).json({ message: 'Milestone must be a positive multiple of 5 (e.g. 5, 10, 15, ...)' });
+      return;
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found' });
+      return;
+    }
+
+    const existingList: any[] = Array.isArray(student.projectSubmissions) ? [...student.projectSubmissions] : [];
+
+    const targetBatchId = batchId
+      ? batchId.toString()
+      : (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
+
+    const existingIndex = existingList.findIndex((ps: any) => {
+      const psBatchId = ps.batchId ? ps.batchId.toString() : '';
+      return Number(ps.milestone) === mNum && (!targetBatchId || !psBatchId || psBatchId === targetBatchId);
+    });
+
+    const teacherName = req.user?.name || (existingIndex >= 0 ? existingList[existingIndex].teacherName : 'Assigned Teacher');
+    const teacherId = req.user?._id ? req.user._id.toString() : undefined;
+    const subDate = submissionDate || new Date().toISOString().split('T')[0];
+
+    const hasLink = Boolean(projectLink && String(projectLink).trim());
+    let newStatus = status;
+    if (!newStatus) {
+      newStatus = hasLink ? 'Link Submitted' : 'Pending';
+    }
+
+    const submissionEntry = {
+      id: existingIndex >= 0 && existingList[existingIndex].id ? existingList[existingIndex].id : crypto.randomUUID(),
+      milestone: mNum,
+      batchId: targetBatchId,
+      batchName: batchName || (typeof student.batch === 'object' ? student.batch?.name : undefined) || (existingIndex >= 0 ? existingList[existingIndex].batchName : undefined),
+      courseName: courseName || (typeof student.batch === 'object' ? student.batch?.subject : undefined) || (existingIndex >= 0 ? existingList[existingIndex].courseName : undefined),
+      projectTitle: projectTitle !== undefined ? String(projectTitle).trim() : (existingIndex >= 0 ? existingList[existingIndex].projectTitle : ''),
+      projectLink: projectLink !== undefined ? String(projectLink).trim() : (existingIndex >= 0 ? existingList[existingIndex].projectLink : ''),
+      submissionDate: subDate,
+      teacherRemarks: teacherRemarks !== undefined ? String(teacherRemarks).trim() : (existingIndex >= 0 ? existingList[existingIndex].teacherRemarks : ''),
+      teacherName: teacherName,
+      teacherId: teacherId || (existingIndex >= 0 ? existingList[existingIndex].teacherId : undefined),
+      status: newStatus,
+      updatedAt: new Date().toISOString(),
+      submittedAt: existingIndex >= 0 && existingList[existingIndex].submittedAt ? existingList[existingIndex].submittedAt : new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      existingList[existingIndex] = {
+        ...existingList[existingIndex],
+        ...submissionEntry,
+      };
+    } else {
+      existingList.push(submissionEntry);
+    }
+
+    // Sort by milestone ascending
+    existingList.sort((a, b) => Number(a.milestone) - Number(b.milestone));
+
+    student.projectSubmissions = existingList;
+    await student.save();
+
+    serverCache.clearPattern('students_');
+    serverCache.delete(`auth_user_${studentId}`);
+    deleteDiskCache('students_all');
+
+    res.status(200).json({
+      message: 'Project submission saved successfully',
+      projectSubmissions: existingList,
+      student,
+    });
+  } catch (error: any) {
+    console.error('Error saving project submission:', error);
+    res.status(500).json({ message: 'Failed to save project submission', detail: error.message });
+  }
+};
+
+export const deleteProjectSubmission = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const { milestone, batchId } = req.body;
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found' });
+      return;
+    }
+
+    if (Array.isArray(student.projectSubmissions)) {
+      student.projectSubmissions = student.projectSubmissions.filter((ps: any) => {
+        if (Number(ps.milestone) !== Number(milestone)) return true;
+        if (batchId && ps.batchId && ps.batchId.toString() !== batchId.toString()) return true;
+        return false;
+      });
+      await student.save();
+      serverCache.clearPattern('students_');
+      deleteDiskCache('students_all');
+    }
+
+    res.status(200).json({
+      message: 'Project submission reset successfully',
+      projectSubmissions: student.projectSubmissions || [],
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Failed to delete project submission', detail: error.message });
+  }
+};
+
