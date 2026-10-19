@@ -9,6 +9,7 @@ import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { StudentDetailsModal } from "@/components/students/StudentDetailsModal";
+import { EditStudentModal } from "@/components/students/EditStudentModal";
 
 export default function StudentsPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -40,21 +41,6 @@ export default function StudentsPage() {
     refetchOnWindowFocus: false,
   });
 
-  const createMutation = useMutation({
-    mutationFn: (data: any) => api.post("/students", data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students-all"] });
-      setEditStudent(null);
-    }
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/students/${id}`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["students-all"] });
-      setEditStudent(null);
-    }
-  });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/students/${id}`),
@@ -124,12 +110,6 @@ export default function StudentsPage() {
     return "Level 1";
   };
 
-  const matchingExistingStudent = useMemo(() => {
-    if (!editStudent?.name || editStudent._id) return null;
-    const cleanName = editStudent.name.trim().toLowerCase();
-    if (cleanName.length < 2) return null;
-    return students.find((s: any) => (s.name || '').trim().toLowerCase() === cleanName) || null;
-  }, [editStudent?.name, editStudent?._id, students]);
 
   return (
     <div className="flex flex-col gap-6 max-w-7xl 2xl:max-w-full w-full min-w-0 h-full">
@@ -574,144 +554,14 @@ export default function StudentsPage() {
         )}
 
         {editStudent && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-3 sm:p-4">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-md shadow-2xl overflow-y-auto max-h-[92vh] flex flex-col"
-            >
-              <div className="p-4 sm:p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-900 sticky top-0 z-10">
-                <h3 className="font-semibold text-white text-base">
-                  {editStudent._id ? "Edit Student Profile" : "Add New Student"}
-                </h3>
-                <button onClick={() => setEditStudent(null)} className="p-2 text-neutral-500 hover:text-white rounded-lg transition-colors">
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-              <div className="p-4 sm:p-5 space-y-4">
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Student Name</label>
-                  <input
-                    type="text"
-                    value={editStudent.name || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm"
-                    placeholder="Enter student name"
-                  />
-                  {matchingExistingStudent && (
-                    <div className="mt-2.5 p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-200 flex items-start gap-2.5 animate-in fade-in">
-                      <GraduationCap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-bold text-amber-400">Existing Child Found: {matchingExistingStudent.name}</p>
-                        <p className="text-[11px] text-neutral-300 mt-1 leading-relaxed">
-                          Currently in <strong>{matchingExistingStudent.batch?.name || 'Unassigned Batch'}</strong>. Assigning a new batch will advance them to the next level/batch and retain all academic history without duplicating child details.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditStudent({
-                              ...editStudent,
-                              _id: matchingExistingStudent._id,
-                              name: matchingExistingStudent.name,
-                              parentName: matchingExistingStudent.parentName || editStudent.parentName || "",
-                              mobileNumber: matchingExistingStudent.mobileNumber || editStudent.mobileNumber || "",
-                              whatsappNumber: matchingExistingStudent.whatsappNumber || editStudent.whatsappNumber || "",
-                              email: matchingExistingStudent.email || editStudent.email || "",
-                            });
-                          }}
-                          className="mt-2 px-2.5 py-1 rounded-md bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-bold text-[11px] transition-colors inline-flex items-center gap-1"
-                        >
-                          Use Existing Student Profile Details
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>Batch / Course Assignment</span>
-                    {editStudent._id && <span className="text-[10px] text-amber-500 font-bold bg-amber-500/10 px-2 py-0.5 rounded">Promote / Advance</span>}
-                  </label>
-                  <select
-                    value={editStudent.batch || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, batch: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm mb-2"
-                  >
-                    <option value="">Select a batch</option>
-                    {batches.map((b: any) => (
-                      <option key={b._id} value={b._id}>
-                        {b.name} ({b.subject}) {b.status === 'Completed' ? '— [Completed]' : ''}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Parent Name</label>
-                  <input
-                    type="text"
-                    value={editStudent.parentName || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, parentName: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 block">Mobile Number</label>
-                  <input
-                    type="text"
-                    value={editStudent.mobileNumber || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, mobileNumber: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-amber-500 text-sm"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>WhatsApp Number</span>
-                    <span className="text-[10px] text-emerald-500 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">NEW</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={editStudent.whatsappNumber || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, whatsappNumber: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-emerald-500 text-sm"
-                    placeholder="Optional"
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-semibold text-neutral-500 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                    <span>Email Address</span>
-                    <span className="text-[10px] text-blue-500 font-bold bg-blue-500/10 px-1.5 py-0.5 rounded">NEW</span>
-                  </label>
-                  <input
-                    type="email"
-                    value={editStudent.email || ""}
-                    onChange={(e) => setEditStudent({ ...editStudent, email: e.target.value })}
-                    className="w-full px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg text-white focus:outline-none focus:border-blue-500 text-sm"
-                    placeholder="student@example.com"
-                  />
-                </div>
-              </div>
-              <div className="p-4 sm:p-5 border-t border-neutral-800 flex justify-end gap-3 bg-neutral-900 sticky bottom-0 z-10">
-                <button onClick={() => setEditStudent(null)} className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors">Cancel</button>
-                <button
-                  onClick={() => {
-                    if (editStudent._id) {
-                      updateMutation.mutate({ id: editStudent._id, data: editStudent });
-                    } else {
-                      createMutation.mutate(editStudent);
-                    }
-                  }}
-                  disabled={createMutation.isPending || updateMutation.isPending || !editStudent.name || !editStudent.batch}
-                  className="px-4 py-2 brand-gradient text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50 flex items-center gap-2"
-                >
-                  {(createMutation.isPending || updateMutation.isPending) && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Save Student
-                </button>
-              </div>
-            </motion.div>
-          </div>
+          <EditStudentModal
+            student={editStudent}
+            onClose={() => setEditStudent(null)}
+            onSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ["students-all"] });
+              setEditStudent(null);
+            }}
+          />
         )}
 
         {deleteConfirm && (
