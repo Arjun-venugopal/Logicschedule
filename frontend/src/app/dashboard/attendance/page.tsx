@@ -7,6 +7,7 @@ import { format, parseISO } from "date-fns";
 import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Lock, Edit2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
+import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
 
 export default function AttendancePage() {
   const queryClient = useQueryClient();
@@ -178,6 +179,9 @@ export default function AttendancePage() {
 
   return (
     <div className="flex flex-col gap-6 h-full max-w-6xl 2xl:max-w-full w-full min-w-0 mx-auto pb-10 overflow-y-auto">
+      {/* Session Navigation Tabs */}
+      <SessionNavTabs className="shrink-0 px-1 sm:px-2" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0 px-1 sm:px-2">
         <div>

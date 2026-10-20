@@ -7,6 +7,7 @@ import { CheckCircle, Clock, Edit2, X, AlertTriangle, Users, Search, BookOpen, C
 import { useState, useMemo } from "react";
 import { format, parseISO, isBefore } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
+import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
 
 export default function CompletedClassesPage() {
   const queryClient = useQueryClient();
@@ -244,6 +245,9 @@ export default function CompletedClassesPage() {
 
   return (
     <div className="flex flex-col gap-5 h-full">
+      {/* Session Navigation Tabs */}
+      <SessionNavTabs className="shrink-0" />
+
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0">
         <div>

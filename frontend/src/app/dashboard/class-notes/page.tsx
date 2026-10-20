@@ -9,6 +9,7 @@ import { format, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { useDebounce } from "@/hooks/useDebounce";
+import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
 
 export default function ClassNotesPage() {
   const { user } = useAuthStore();
@@ -123,6 +124,9 @@ export default function ClassNotesPage() {
 
   return (
     <div className="flex flex-col gap-6 h-full">
+      {/* Session Navigation Tabs */}
+      <SessionNavTabs className="shrink-0" />
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
         <div>
