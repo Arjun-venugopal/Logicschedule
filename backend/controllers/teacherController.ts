@@ -1,10 +1,12 @@
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/authMiddleware';
 import Teacher from '../models/Teacher';
 import User from '../models/User';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import Student from '../models/Student';
+import RecycleBin from '../models/RecycleBin';
 import { serverCache } from '../utils/cache';
 import { getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 
@@ -156,6 +158,17 @@ export const createTeacher = async (req: Request, res: Response): Promise<void> 
 
     const normalizedEmail = email.toLowerCase();
 
+    // Check if email is held by a deleted user in Recycle Bin
+    const inBin = await RecycleBin.checkEmailInBin(normalizedEmail);
+    if (inBin) {
+      res.status(409).json({
+        message: `This email belongs to deleted ${inBin.entityType} "${inBin.name}". You can restore them or release this email in the Recycle Bin.`,
+        inBin: true,
+        binId: inBin._id,
+      });
+      return;
+    }
+
     // Create or find login User
     let user = await User.findOne({ email: normalizedEmail });
     if (!user) {
@@ -256,7 +269,7 @@ export const updateTeacher = async (req: Request, res: Response): Promise<void> 
 // @desc    Delete a teacher
 // @route   DELETE /teachers/:id
 // @access  Private/Admin
-export const deleteTeacher = async (req: Request, res: Response): Promise<void> => {
+export const deleteTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const teacher = await Teacher.findById(req.params.id as string);
 
@@ -265,11 +278,47 @@ export const deleteTeacher = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
+    // Locate linked login User
+    let linkedUser: any = null;
+    if (teacher.user) {
+      linkedUser = await User.findById(typeof teacher.user === 'object' ? teacher.user._id : teacher.user);
+    }
+    if (!linkedUser && teacher.email) {
+      linkedUser = await User.findOne({ email: teacher.email.toLowerCase() });
+    }
+
+    // Archive into Recycle Bin
+    await RecycleBin.addToBin({
+      entityType: 'teacher',
+      entityId: teacher._id,
+      name: teacher.name || linkedUser?.name || 'Unnamed Teacher',
+      email: teacher.email || linkedUser?.email || undefined,
+      secondaryInfo: teacher.phone || teacher.status || '',
+      itemData: teacher,
+      associatedData: {
+        user: linkedUser ? { ...linkedUser } : undefined,
+      },
+      deletedBy: req.user,
+      emailStatus: 'held',
+    });
+
+    // If user exists, archive email so it doesn't block future accounts unless restored
+    if (linkedUser && linkedUser._id) {
+      try {
+        await User.update(linkedUser._id, {
+          email: `bin_${Date.now()}_${linkedUser.email}`,
+          role: 'Inactive Teacher',
+        });
+      } catch (err: any) {
+        console.warn('Could not rename inactive teacher user email:', err?.message);
+      }
+    }
+
     await Teacher.deleteOne({ _id: teacher._id });
     serverCache.delete('teachers_all');
     serverCache.clearPattern('timings_');
     serverCache.clearPattern('stats_');
-    res.json({ message: 'Teacher removed' });
+    res.json({ message: 'Teacher moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete teacher error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

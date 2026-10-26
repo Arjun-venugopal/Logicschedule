@@ -1,7 +1,8 @@
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/authMiddleware';
 import User from '../models/User';
 import Teacher from '../models/Teacher';
-
+import RecycleBin from '../models/RecycleBin';
 import { getSupabase } from '../config/supabase';
 
 // @desc    Get all sub admins
@@ -65,6 +66,16 @@ export const createSubAdmin = async (req: Request, res: Response): Promise<void>
     const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
       res.status(400).json({ message: 'User with this email already exists' });
+      return;
+    }
+
+    const inBin = await RecycleBin.checkEmailInBin(email.toLowerCase());
+    if (inBin) {
+      res.status(409).json({
+        message: `This email belongs to deleted user "${inBin.name}". You can restore them or release this email in the Recycle Bin.`,
+        inBin: true,
+        binId: inBin._id,
+      });
       return;
     }
 
@@ -142,7 +153,7 @@ export const updateSubAdmin = async (req: Request, res: Response): Promise<void>
 // @desc    Delete sub admin
 // @route   DELETE /api/users/sub-admins/:id
 // @access  Private/Admin
-export const deleteSubAdmin = async (req: Request, res: Response): Promise<void> => {
+export const deleteSubAdmin = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
 
@@ -160,8 +171,20 @@ export const deleteSubAdmin = async (req: Request, res: Response): Promise<void>
       return;
     }
 
+    // Archive user snapshot into Recycle Bin
+    await RecycleBin.addToBin({
+      entityType: 'subAdmin',
+      entityId: user._id!,
+      name: user.name || 'Unnamed Sub Admin',
+      email: user.email,
+      secondaryInfo: 'Role: Sub Admin',
+      itemData: user,
+      deletedBy: req.user,
+      emailStatus: 'held',
+    });
+
     await getSupabase().from('users').delete().eq('_id', id);
-    res.json({ message: 'Sub admin removed' });
+    res.json({ message: 'Sub admin moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete sub admin error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

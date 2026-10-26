@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/authMiddleware';
 import User from '../models/User';
-
+import RecycleBin from '../models/RecycleBin';
 import { getSupabase } from '../config/supabase';
 
 // @desc    Get all sales people
@@ -46,6 +47,16 @@ export const createSalesPerson = async (req: Request, res: Response): Promise<vo
     const userExists = await User.findOne({ email: email.toLowerCase() });
     if (userExists) {
       res.status(400).json({ message: 'User with this email already exists' });
+      return;
+    }
+
+    const inBin = await RecycleBin.checkEmailInBin(email.toLowerCase());
+    if (inBin) {
+      res.status(409).json({
+        message: `This email belongs to deleted user "${inBin.name}". You can restore them or release this email in the Recycle Bin.`,
+        inBin: true,
+        binId: inBin._id,
+      });
       return;
     }
 
@@ -120,7 +131,7 @@ export const updateSalesPerson = async (req: Request, res: Response): Promise<vo
 // @desc    Delete sales person
 // @route   DELETE /api/sales-people/:id
 // @access  Private/Admin
-export const deleteSalesPerson = async (req: Request, res: Response): Promise<void> => {
+export const deleteSalesPerson = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const id = req.params.id as string;
 
@@ -130,8 +141,20 @@ export const deleteSalesPerson = async (req: Request, res: Response): Promise<vo
       return;
     }
 
+    // Archive into Recycle Bin
+    await RecycleBin.addToBin({
+      entityType: 'salesPerson',
+      entityId: user._id!,
+      name: user.name || 'Unnamed Sales Person',
+      email: user.email,
+      secondaryInfo: 'Role: Sales Person',
+      itemData: user,
+      deletedBy: req.user,
+      emailStatus: 'held',
+    });
+
     await getSupabase().from('users').delete().eq('_id', id);
-    res.json({ message: 'Sales person removed' });
+    res.json({ message: 'Sales person moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete sales person error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

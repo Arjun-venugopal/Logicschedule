@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown } from "lucide-react";
+import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -152,6 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             : []),
           { icon: CreditCard, label: "Fees & Payments", href: "/dashboard/payments", show: canAccess("payments") },
           { icon: TrendingUp, label: "Performance", href: "/dashboard/performance", show: canAccess("performance") },
+          { icon: Trash2, label: "Recycle Bin", href: "/dashboard/bin", show: !isTeacher && !isSalesPerson },
         ]),
     { icon: Settings, label: "Settings", href: "/dashboard/settings", show: canAccess("settings") },
   ].filter((item) => item.show);

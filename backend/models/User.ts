@@ -78,8 +78,29 @@ const User = {
     return user;
   },
 
+  async find(query: Record<string, any> = {}): Promise<IUser[]> {
+    let q = getSupabase().from('users').select('*');
+    const keys = Object.keys(query);
+    for (const k of keys) {
+      if (query[k] !== undefined) {
+        q = q.eq(k, query[k]);
+      }
+    }
+    const { data, error } = await q;
+    if (error || !data) return [];
+    return data.map((row: any) => {
+      const user: IUser = {
+        ...(row.data || {}),
+        ...row,
+        _id: row._id,
+      };
+      delete (user as any).data;
+      return user;
+    });
+  },
+
   async create(data: Partial<IUser>): Promise<IUser> {
-    if (data.password) {
+    if (data.password && !data.password.startsWith('$2a$') && !data.password.startsWith('$2b$')) {
       // Work factor 12 for strong cryptographic resistance
       const salt = await bcrypt.genSalt(12);
       data.password = await bcrypt.hash(data.password, salt);
@@ -108,7 +129,7 @@ const User = {
   },
 
   async update(id: string, updateData: Partial<IUser>): Promise<void> {
-    if (updateData.password) {
+    if (updateData.password && !updateData.password.startsWith('$2a$') && !updateData.password.startsWith('$2b$')) {
       const salt = await bcrypt.genSalt(12);
       updateData.password = await bcrypt.hash(updateData.password, salt);
     }
@@ -121,6 +142,11 @@ const User = {
       cleanUpdate.data = { ...(existing as any), ...cleanUpdate };
     }
     await getSupabase().from('users').update(cleanUpdate).eq('_id', id);
+    serverCache.delete(`auth_user_${id}`);
+  },
+
+  async delete(id: string): Promise<void> {
+    await getSupabase().from('users').delete().eq('_id', id);
     serverCache.delete(`auth_user_${id}`);
   }
 };

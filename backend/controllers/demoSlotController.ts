@@ -2,6 +2,7 @@ import { Response } from 'express';
 import DemoSlot from '../models/DemoSlot';
 import DemoSession from '../models/DemoSession';
 import Teacher from '../models/Teacher';
+import RecycleBin from '../models/RecycleBin';
 
 // @desc    Get all demo slots
 // @route   GET /demo-slots
@@ -160,8 +161,17 @@ export const deleteDemoSlot = async (req: any, res: Response): Promise<void> => 
       }
     }
 
+    await RecycleBin.addToBin({
+      entityType: 'demoSlot',
+      entityId: demoSlot._id,
+      name: `Demo Slot (${demoSlot.date || 'Date'} ${demoSlot.startTime || ''}-${demoSlot.endTime || ''})`,
+      secondaryInfo: `Date: ${demoSlot.date || ''} • Time: ${demoSlot.startTime || ''}-${demoSlot.endTime || ''}`,
+      itemData: demoSlot,
+      deletedBy: req.user,
+    });
+
     await demoSlot.deleteOne();
-    res.json({ message: 'Demo slot removed' });
+    res.json({ message: 'Demo slot moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete demo slot error:', error.message);
     res.status(500).json({ message: 'Server error' });

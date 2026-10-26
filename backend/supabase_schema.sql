@@ -173,6 +173,29 @@ CREATE INDEX IF NOT EXISTS idx_payments_student ON public.payments(student);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON public.payments("paymentStatus");
 CREATE INDEX IF NOT EXISTS idx_payments_sales ON public.payments("salesExecutive");
 
+-- 11. Recycle Bin Table ("recycle_bin")
+CREATE TABLE IF NOT EXISTS public.recycle_bin (
+  _id TEXT PRIMARY KEY DEFAULT gen_random_uuid()::text,
+  "entityType" TEXT NOT NULL,
+  "entityId" TEXT NOT NULL,
+  name TEXT,
+  email TEXT,
+  "secondaryInfo" TEXT,
+  "emailStatus" TEXT DEFAULT 'held',
+  status TEXT DEFAULT 'in_bin',
+  "deletedAt" TIMESTAMPTZ DEFAULT NOW(),
+  "deletedBy" JSONB DEFAULT '{}'::jsonb,
+  "itemData" JSONB DEFAULT '{}'::jsonb,
+  "associatedData" JSONB DEFAULT '{}'::jsonb,
+  "createdAt" TIMESTAMPTZ DEFAULT NOW(),
+  "updatedAt" TIMESTAMPTZ DEFAULT NOW(),
+  data JSONB DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS idx_recycle_bin_type ON public.recycle_bin("entityType");
+CREATE INDEX IF NOT EXISTS idx_recycle_bin_status ON public.recycle_bin(status);
+CREATE INDEX IF NOT EXISTS idx_recycle_bin_email ON public.recycle_bin(email);
+
 -- ==============================================================================
 -- Security: Disable RLS for backend service-role access or configure policies
 -- Note: When using SUPABASE_SERVICE_ROLE_KEY from the backend, RLS is automatically bypassed.

@@ -95,6 +95,7 @@ import userRoutes from './routes/userRoutes';
 import salesRoutes from './routes/salesRoutes';
 import demoReportRoutes from './routes/demoReportRoutes';
 import paymentRoutes from './routes/paymentRoutes';
+import recycleBinRoutes from './routes/recycleBinRoutes';
 import { notFound, errorHandler } from './middleware/errorMiddleware';
 
 app.use('/auth', authRoutes);
@@ -109,6 +110,7 @@ app.use('/users', userRoutes);
 app.use('/sales-people', salesRoutes);
 app.use('/demo-reports', demoReportRoutes);
 app.use('/payments', paymentRoutes);
+app.use('/bin', recycleBinRoutes);
 
 app.get('/health', (_req, res) => {
   res.status(200).json({

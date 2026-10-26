@@ -5,6 +5,7 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
+import RecycleBin from '../models/RecycleBin';
 import { getSupabase } from '../config/supabase';
 import {
   getPaymentConfig,
@@ -687,7 +688,7 @@ export const updatePayment = async (req: Request, res: Response): Promise<void> 
 // @desc    Delete fee/payment record
 // @route   DELETE /payments/:id
 // @access  Private (Admin, Super Admin)
-export const deletePayment = async (req: Request, res: Response): Promise<void> => {
+export const deletePayment = async (req: any, res: Response): Promise<void> => {
   try {
     const id = Array.isArray(req.params.id) ? req.params.id[0] : (req.params.id || '');
     const payment = await Payment.safeFindById(id);
@@ -695,6 +696,18 @@ export const deletePayment = async (req: Request, res: Response): Promise<void> 
       res.status(404).json({ message: 'Payment record not found' });
       return;
     }
+
+    const sName = payment.student?.name || (typeof payment.student === 'object' ? payment.student._id : payment.student);
+
+    // Save to Recycle Bin
+    await RecycleBin.addToBin({
+      entityType: 'payment',
+      entityId: payment._id,
+      name: `Payment (${sName || 'Student'} - ₹${payment.totalFee || 0})`,
+      secondaryInfo: `Amount: ₹${payment.totalFee || 0} • Paid: ₹${payment.amountPaid || 0} • Status: ${payment.paymentStatus || 'Pending'}`,
+      itemData: payment,
+      deletedBy: req.user,
+    });
 
     const sId = payment.student?._id || payment.student;
     if (sId) {
@@ -706,7 +719,7 @@ export const deletePayment = async (req: Request, res: Response): Promise<void> 
 
     res.json({
       success: true,
-      message: 'Payment record deleted successfully',
+      message: 'Payment record moved to Recycle Bin successfully',
     });
   } catch (error: any) {
     console.error('Delete payment error:', error);

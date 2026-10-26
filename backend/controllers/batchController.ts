@@ -1,9 +1,11 @@
 import { Request, Response } from 'express';
+import { AuthRequest } from '../middleware/authMiddleware';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import DemoSession from '../models/DemoSession';
+import RecycleBin from '../models/RecycleBin';
 import { checkIntervalConflict, getKolkataNow } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
@@ -346,7 +348,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 // @desc    Delete a batch + its auto-generated schedules
 // @route   DELETE /batches/:id
 // @access  Private/Admin
-export const deleteBatch = async (req: Request, res: Response): Promise<void> => {
+export const deleteBatch = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const batch = await Batch.findById(req.params.id as string);
 
@@ -355,16 +357,32 @@ export const deleteBatch = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    // Capture all auto-generated schedules tied to this batch
+    const schedules = await Schedule.find({ batch: batch._id });
+
+    // Save batch and schedules snapshot to Recycle Bin
+    await RecycleBin.addToBin({
+      entityType: 'batch',
+      entityId: batch._id,
+      name: batch.name || 'Unnamed Batch',
+      secondaryInfo: `${batch.subject || ''} • ${schedules.length} schedule(s)`,
+      itemData: batch,
+      associatedData: {
+        schedules: schedules.map((s: any) => ({ ...s })),
+      },
+      deletedBy: req.user,
+    });
+
     // Remove all auto-generated schedules tied to this batch
     await Schedule.deleteMany({ batch: batch._id });
-    console.log(`🗑️  Removed schedule(s) for deleted batch "${batch.name}"`);
+    console.log(`🗑️  Archived and removed ${schedules.length} schedule(s) for deleted batch "${batch.name}"`);
 
     await Batch.deleteOne({ _id: batch._id });
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
     deleteDiskCache('schedules_all');
-    res.json({ message: 'Batch and its schedules removed' });
+    res.json({ message: 'Batch and its schedules moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete batch error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

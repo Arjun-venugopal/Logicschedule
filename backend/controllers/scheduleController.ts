@@ -3,6 +3,7 @@ import Schedule from '../models/Schedule';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
+import RecycleBin from '../models/RecycleBin';
 import { checkIntervalConflict, checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 import { normalizeDateOnlyToUtc } from './batchController';
@@ -357,18 +358,27 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
 // @desc    Delete a schedule
 // @route   DELETE /schedules/:id
 // @access  Private/Admin
-export const deleteSchedule = async (req: Request, res: Response): Promise<void> => {
+export const deleteSchedule = async (req: any, res: Response): Promise<void> => {
   try {
     const schedule = await Schedule.findById(req.params.id as string);
 
     if (schedule) {
+      await RecycleBin.addToBin({
+        entityType: 'schedule',
+        entityId: schedule._id,
+        name: `Schedule (${schedule.date || 'No Date'} ${schedule.startTime || ''}-${schedule.endTime || ''})`,
+        secondaryInfo: `Date: ${schedule.date || ''} • Time: ${schedule.startTime || ''}-${schedule.endTime || ''}`,
+        itemData: schedule,
+        deletedBy: req.user,
+      });
+
       await Schedule.deleteOne({ _id: schedule._id });
       serverCache.clearPattern('timings_');
       serverCache.clearPattern('stats_');
       serverCache.clearPattern('batches_');
       serverCache.clearPattern('schedules_');
       deleteDiskCache('schedules_all');
-      res.json({ message: 'Schedule removed' });
+      res.json({ message: 'Schedule moved to Recycle Bin' });
     } else {
       res.status(404).json({ message: 'Schedule not found' });
     }

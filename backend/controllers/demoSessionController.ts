@@ -4,6 +4,7 @@ import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
+import RecycleBin from '../models/RecycleBin';
 import { findExistingStudent } from './studentController';
 import { checkTeacherConflict } from '../utils/scheduleHelper';
 import { serverCache } from '../utils/cache';
@@ -476,11 +477,20 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
         return;
       }
 
+      await RecycleBin.addToBin({
+        entityType: 'demoSession',
+        entityId: demoSession._id,
+        name: `Demo (${demoSession.studentName || demoSession.student || 'Session'} - ${demoSession.subject || 'Demo'})`,
+        secondaryInfo: `Date: ${demoSession.date || ''} • Status: ${demoSession.status || ''}`,
+        itemData: demoSession,
+        deletedBy: req.user,
+      });
+
       await DemoSession.deleteOne({ _id: demoSession._id });
       serverCache.clearPattern('demo_sessions_');
       serverCache.delete('teachers_all');
       serverCache.clearPattern('stats_');
-      res.json({ message: 'Demo session removed' });
+      res.json({ message: 'Demo session moved to Recycle Bin' });
     } else {
       res.status(404).json({ message: 'Demo session not found' });
     }

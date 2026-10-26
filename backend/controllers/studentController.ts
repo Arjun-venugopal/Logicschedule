@@ -8,6 +8,7 @@ import Teacher from '../models/Teacher';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
+import RecycleBin from '../models/RecycleBin';
 
 export function extractLevel(text?: string, fallback = 'Level 1'): string {
   if (!text) return fallback;
@@ -772,7 +773,7 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
   }
 };
 
-export const deleteStudent = async (req: Request, res: Response): Promise<void> => {
+export const deleteStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const student = await Student.findById(req.params.id as string);
     if (!student) {
@@ -781,11 +782,27 @@ export const deleteStudent = async (req: Request, res: Response): Promise<void> 
     }
 
     if (student.batch) {
-      await Batch.findByIdAndUpdate(student.batch, { $inc: { studentsCount: -1 } });
+      try {
+        await Batch.findByIdAndUpdate(student.batch, { $inc: { studentsCount: -1 } });
+      } catch {
+        // ignore
+      }
     }
 
+    // Save to Recycle Bin before deleting
+    await RecycleBin.addToBin({
+      entityType: 'student',
+      entityId: student._id,
+      name: student.name || 'Unnamed Student',
+      email: student.email || undefined,
+      secondaryInfo: student.phone || student.mobileNumber || (student.batch ? `Batch: ${student.batch}` : ''),
+      itemData: student,
+      deletedBy: req.user,
+    });
+
     await student.deleteOne();
-    res.status(200).json({ message: 'Student removed successfully' });
+    serverCache.clearPattern('students_');
+    res.status(200).json({ message: 'Student moved to Recycle Bin successfully' });
   } catch (error) {
     res.status(500).json({ message: 'Failed to delete student' });
   }

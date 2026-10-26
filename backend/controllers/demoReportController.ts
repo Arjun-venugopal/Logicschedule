@@ -2,6 +2,7 @@ import { Response } from 'express';
 import DemoReport from '../models/DemoReport';
 import DemoSession from '../models/DemoSession';
 import Teacher from '../models/Teacher';
+import RecycleBin from '../models/RecycleBin';
 
 // @desc    Get all demo reports (filtered by role)
 // @route   GET /demo-reports
@@ -298,8 +299,17 @@ export const deleteDemoReport = async (req: any, res: Response): Promise<void> =
       return;
     }
 
+    await RecycleBin.addToBin({
+      entityType: 'demoReport',
+      entityId: report._id,
+      name: `Demo Report (${report.session || 'Session'})`,
+      secondaryInfo: `Status: ${report.status || ''}`,
+      itemData: report,
+      deletedBy: req.user,
+    });
+
     await DemoReport.deleteOne({ _id: report._id });
-    res.json({ message: 'Report removed' });
+    res.json({ message: 'Report moved to Recycle Bin' });
   } catch (error: any) {
     console.error('Delete demo report error:', error.message);
     res.status(500).json({ message: 'Server error' });
