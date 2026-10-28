@@ -108,6 +108,11 @@ export interface Schedule {
   meetingLink?: string;
   subject?: string;
   notes?: string;
+  isExtraClass?: boolean;
+  extraClassReason?: string;
+  nextExtraClassDate?: string;
+  nextExtraClassStartTime?: string;
+  nextExtraClassEndTime?: string;
   attendance?: AttendanceRecord[];
   createdAt: string;
   updatedAt: string;

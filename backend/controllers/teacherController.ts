@@ -488,6 +488,37 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
     });
     totalHoursTaught = Math.round(totalHoursTaught * 10) / 10;
 
+    const completedExtraClassesList = completedSchedulesList.filter((s: any) => Boolean(s.isExtraClass));
+    const extraClassesCount = completedExtraClassesList.length;
+    let extraHoursTaught = 0;
+    completedExtraClassesList.forEach((s: any) => {
+      if (s.startTime && s.endTime) {
+        const [sh, sm] = s.startTime.split(':').map(Number);
+        const [eh, em] = s.endTime.split(':').map(Number);
+        let diff = (eh + em / 60) - (sh + sm / 60);
+        if (diff < 0) diff += 24;
+        extraHoursTaught += diff;
+      }
+    });
+    extraHoursTaught = Math.round(extraHoursTaught * 10) / 10;
+
+    const extraClassRecords = allSchedulesList
+      .filter((s: any) => Boolean(s.isExtraClass))
+      .map((s: any) => ({
+        _id: s._id,
+        date: s.date,
+        batchName: s.batch?.name || s.subject || 'Extra Class',
+        subject: s.subject || 'Extra Class',
+        startTime: s.startTime,
+        endTime: s.endTime,
+        status: s.status,
+        nextExtraClassDate: s.nextExtraClassDate || null,
+        nextExtraClassStartTime: s.nextExtraClassStartTime || s.startTime || null,
+        nextExtraClassEndTime: s.nextExtraClassEndTime || s.endTime || null,
+        extraClassReason: s.extraClassReason || '',
+        notes: s.notes || '',
+      }));
+
     let totalPresent = 0;
     let totalEnrolled = 0;
     completedSchedulesList.forEach((s: any) => {
@@ -571,10 +602,13 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
         totalDemos,
         completedDemos,
         demoConversionRate,
+        extraClassesCount,
+        extraHoursTaught,
       },
       demoSessions,
       assignedStudents,
       recentFeedback,
+      extraClassRecords,
       filteredBatches: matchedBatches,
       filteredSchedules: allSchedulesList,
     });
@@ -691,7 +725,8 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
           endMin,
           status: s.status,
           meetingLink: s.meetingLink || '',
-          isReplacement: s.replacementTeacher && (s.replacementTeacher._id || s.replacementTeacher).toString() === teacherIdStr
+          isReplacement: s.replacementTeacher && (s.replacementTeacher._id || s.replacementTeacher).toString() === teacherIdStr,
+          isExtraClass: Boolean(s.isExtraClass),
         });
       });
 

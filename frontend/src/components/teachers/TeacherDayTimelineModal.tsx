@@ -15,6 +15,7 @@ interface TimelineItem {
   status: string;
   meetingLink?: string;
   isReplacement?: boolean;
+  isExtraClass?: boolean;
 }
 
 interface TeacherDayTimelineModalProps {
@@ -133,13 +134,20 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
                           <span className="text-xs font-mono font-medium text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-lg border border-amber-500/20 inline-block">
                             {formatTime(item.startTime)} - {formatTime(item.endTime)}
                           </span>
-                          <span className={`text-[10px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded ${
-                            item.status === "Completed"
-                              ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
-                              : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
-                          }`}>
-                            {item.status === "Completed" ? "✓ Completed" : item.status}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {item.isExtraClass && (
+                              <span className="text-[10px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                ⭐ Extra Class
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-bold inline-flex items-center gap-1 px-2 py-0.5 rounded ${
+                              item.status === "Completed"
+                                ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                                : "bg-amber-500/10 text-amber-400 border border-amber-500/20"
+                            }`}>
+                              {item.status === "Completed" ? "✓ Completed" : item.status}
+                            </span>
+                          </div>
                         </div>
                       </div>
 

@@ -215,9 +215,22 @@ export default function ClassNotesPage() {
                         </div>
                         <div>
                           <h4 className="font-semibold text-white text-sm">{cls.teacher?.name || "Unknown Teacher"}</h4>
-                          <p className="text-xs text-amber-400 font-medium">
-                            {cls.batch?.name}
-                          </p>
+                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                            <p className="text-xs text-amber-400 font-medium">
+                              {cls.batch?.name}
+                            </p>
+                            {cls.isExtraClass && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40">
+                                ⭐ Extra Class
+                              </span>
+                            )}
+                          </div>
+                          {cls.isExtraClass && cls.extraClassReason && (
+                            <div className="mt-1 text-xs text-purple-200 bg-purple-950/40 px-2 py-1 rounded-lg border border-purple-500/20">
+                              <span className="text-purple-400 font-semibold">Reason: </span>
+                              <span className="italic">{cls.extraClassReason}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                       

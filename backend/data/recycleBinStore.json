@@ -1,1 +1,142 @@
-[]
+[
+  {
+    "_id": "5fb3d272-bfa7-4b3f-998c-62ad0011003c",
+    "entityType": "payment",
+    "entityId": "0e183616-f3c3-4ad1-8cfc-500e997d98a8",
+    "name": "Payment (d8G24DzmJXvuJSOHmDFn - ₹20000)",
+    "secondaryInfo": "Amount: ₹20000 • Paid: ₹10000 • Status: Partially Paid",
+    "itemData": {
+      "_id": "0e183616-f3c3-4ad1-8cfc-500e997d98a8",
+      "batch": "TUoubGyIOUGubZV6OpiT",
+      "notes": null,
+      "student": "d8G24DzmJXvuJSOHmDFn",
+      "closedBy": "Arjun venugopal",
+      "totalFee": 20000,
+      "createdAt": "2026-10-27T04:29:13.555+00:00",
+      "updatedAt": "2026-10-27T04:29:13.555+00:00",
+      "amountPaid": 10000,
+      "demoSession": null,
+      "paymentType": "Custom Payment",
+      "paymentStatus": "Partially Paid",
+      "paymentHistory": [
+        {
+          "id": "4ee27b85-b0f7-4ad6-a67b-4ac8662f9735",
+          "notes": "",
+          "amount": 2000,
+          "closedBy": "Arjun venugopal",
+          "createdAt": "2026-10-27T04:29:13.252Z",
+          "recordedBy": "Super Admin",
+          "paymentDate": "2026-08-13",
+          "paymentType": "Initial Payment",
+          "paymentMethod": "UPI",
+          "transactionId": "",
+          "salesExecutive": "Arjun venugopal",
+          "remainingBalance": 18000
+        },
+        {
+          "id": "a7da9e57-963f-4d40-8f35-db4625acef1a",
+          "notes": "",
+          "amount": 8000,
+          "createdAt": "2026-10-27T04:29:42.060Z",
+          "recordedBy": "Super Admin",
+          "paymentDate": "2026-10-26",
+          "paymentType": "Installment",
+          "paymentMethod": "UPI",
+          "transactionId": "",
+          "remainingBalance": 10000
+        }
+      ],
+      "salesExecutive": "Arjun venugopal",
+      "assignedClasses": 25,
+      "dueAfterClasses": 12,
+      "remainingAmount": 10000,
+      "reminderBeforeClasses": 2
+    },
+    "associatedData": {},
+    "deletedAt": "2026-10-28T11:43:55.652Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "76d503d0-8bfc-4759-bbc6-a98823460c07",
+    "entityType": "payment",
+    "entityId": "pay_1791281101713_pc4b9",
+    "name": "Payment (QriFewcHTTBLMWPeaO6C - ₹27000)",
+    "secondaryInfo": "Amount: ₹27000 • Paid: ₹13000 • Status: Overdue",
+    "itemData": {
+      "_id": "pay_1791281101713_pc4b9",
+      "batch": "4005d263-44bd-4b35-b5a6-4f645fe678fa",
+      "notes": "",
+      "student": "QriFewcHTTBLMWPeaO6C",
+      "closedBy": "Arjun venugopal",
+      "totalFee": 27000,
+      "createdAt": "2026-10-06T10:05:01.713+00:00",
+      "updatedAt": "2026-10-06T10:13:04.615+00:00",
+      "amountPaid": 13000,
+      "demoSession": "692fa079-8fff-4f37-a4bb-b6e1f55befcd",
+      "paymentType": "Custom Payment",
+      "paymentStatus": "Overdue",
+      "paymentHistory": [
+        {
+          "id": "87050812-cbd8-4138-8ee9-7c486cbe0a86",
+          "notes": "",
+          "amount": 3000,
+          "closedBy": "Arjun venugopal",
+          "createdAt": "2026-10-06T10:09:08.475Z",
+          "recordedBy": "Super Admin",
+          "paymentDate": "2026-08-06",
+          "paymentType": "Initial Payment",
+          "paymentMethod": "Bank Transfer",
+          "transactionId": "",
+          "salesExecutive": "Arjun venugopal",
+          "remainingBalance": 24000
+        },
+        {
+          "id": "fa11db01-b513-49d8-836f-7d052520c516",
+          "notes": "",
+          "amount": 3000,
+          "closedBy": "Arjun venugopal",
+          "createdAt": "2026-10-06T10:05:01.293Z",
+          "recordedBy": "Super Admin",
+          "paymentDate": "2026-08-09",
+          "paymentType": "Initial Payment",
+          "paymentMethod": "Bank Transfer",
+          "transactionId": "",
+          "salesExecutive": "Arjun venugopal",
+          "remainingBalance": 24000
+        },
+        {
+          "id": "9860033c-7db3-4070-a5a9-eba5de65c0ad",
+          "notes": "",
+          "amount": 10000,
+          "createdAt": "2026-10-06T10:13:04.178Z",
+          "recordedBy": "Super Admin",
+          "paymentDate": "2026-09-24",
+          "paymentType": "Installment",
+          "paymentMethod": "UPI",
+          "transactionId": "",
+          "remainingBalance": 14000
+        }
+      ],
+      "salesExecutive": "Arjun venugopal",
+      "assignedClasses": 25,
+      "dueAfterClasses": 12,
+      "remainingAmount": 14000,
+      "reminderBeforeClasses": 2
+    },
+    "associatedData": {},
+    "deletedAt": "2026-10-28T11:43:39.481Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  }
+]

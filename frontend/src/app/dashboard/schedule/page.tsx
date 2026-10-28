@@ -5,7 +5,7 @@ import { api } from "@/lib/axios";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
-import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, Users, BookOpen, Calendar, AlignLeft, Info, Loader2, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, Users, BookOpen, Calendar, AlignLeft, Info, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 
@@ -72,6 +72,11 @@ type ScheduleEntry = {
   rescheduleDate?: string;
   rescheduleStartTime?: string;
   rescheduleEndTime?: string;
+  isExtraClass?: boolean;
+  extraClassReason?: string;
+  nextExtraClassStartTime?: string;
+  nextExtraClassEndTime?: string;
+  nextExtraClassDate?: string;
 };
 
 type PopulatedScheduleEntry = {
@@ -90,6 +95,11 @@ type PopulatedScheduleEntry = {
   rescheduleDate?: string;
   rescheduleStartTime?: string;
   rescheduleEndTime?: string;
+  isExtraClass?: boolean;
+  extraClassReason?: string;
+  nextExtraClassStartTime?: string;
+  nextExtraClassEndTime?: string;
+  nextExtraClassDate?: string;
 };
 
 const emptyForm = (): ScheduleEntry => ({
@@ -107,6 +117,11 @@ const emptyForm = (): ScheduleEntry => ({
   rescheduleDate: "",
   rescheduleStartTime: "",
   rescheduleEndTime: "",
+  isExtraClass: false,
+  extraClassReason: "",
+  nextExtraClassStartTime: "09:00",
+  nextExtraClassEndTime: "10:00",
+  nextExtraClassDate: "",
 });
 
 const getSafeDateOnly = (val: any): string => {
@@ -205,6 +220,8 @@ export default function SchedulePage() {
     mutationFn: (data: ScheduleEntry) => api.post("/schedules", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["my-performance"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       closeModal();
     },
   });
@@ -213,6 +230,8 @@ export default function SchedulePage() {
     mutationFn: ({ id, data }: { id: string; data: ScheduleEntry }) => api.put(`/schedules/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["my-performance"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       closeModal();
     },
   });
@@ -221,13 +240,24 @@ export default function SchedulePage() {
     mutationFn: (id: string) => api.delete(`/schedules/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["my-performance"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       setDeleteConfirm(null);
     },
   });
 
   // Helpers
   const openCreate = (prefillDate?: string) => {
-    setForm({ ...emptyForm(), date: prefillDate || format(new Date(), "yyyy-MM-dd") });
+    let defaultTeacher = "";
+    if (isTeacher && user?._id) {
+      const myTeacher = teachers.find((t: any) => t.user === user._id || (t.user as any)?._id === user._id || t._id === user._id || t.email === user.email);
+      if (myTeacher) defaultTeacher = myTeacher._id;
+    }
+    setForm({
+      ...emptyForm(),
+      teacher: defaultTeacher,
+      date: prefillDate || format(new Date(), "yyyy-MM-dd")
+    });
     setEditingId(null);
     setFormError(null);
     setModal({ open: true, mode: "create", prefillDate });
@@ -267,6 +297,11 @@ export default function SchedulePage() {
       })(),
       rescheduleStartTime: s.rescheduleStartTime || s.startTime || "09:00",
       rescheduleEndTime: s.rescheduleEndTime || s.endTime || "10:00",
+      isExtraClass: Boolean(s.isExtraClass),
+      extraClassReason: s.extraClassReason || "",
+      nextExtraClassStartTime: s.nextExtraClassStartTime || s.startTime || "09:00",
+      nextExtraClassEndTime: s.nextExtraClassEndTime || s.endTime || "10:00",
+      nextExtraClassDate: s.nextExtraClassDate ? (typeof s.nextExtraClassDate === "string" ? s.nextExtraClassDate.split("T")[0] : "") : "",
     });
     setEditingId(s._id);
     setModal({ open: true, mode: "edit" });
@@ -286,7 +321,7 @@ export default function SchedulePage() {
     const isAfterToday = Boolean(formDateStr && formDateStr > todayStr);
 
     // Requirement: strictly after today, status must always be Scheduled (cannot be Completed)
-    let effectiveForm = { ...form };
+    const effectiveForm = { ...form };
     if (isAfterToday && effectiveForm.status === "Completed") {
       effectiveForm.status = "Scheduled";
     }
@@ -362,7 +397,7 @@ export default function SchedulePage() {
         updateSchedule.mutate({ id: editingId, data: { ...effectiveForm, attendance: [] } });
       }
     } else {
-      let createData = { ...effectiveForm };
+      const createData = { ...effectiveForm };
       if (effectiveForm.status === "Completed") {
         createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: true })) : [];
       } else {
@@ -558,7 +593,7 @@ export default function SchedulePage() {
           >
             Today
           </button>
-          {!isTeacher && hasWriteAccess && (
+          {(hasWriteAccess || isTeacher) && (
             <button
               onClick={() => openCreate()}
               className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 text-xs sm:text-sm shadow-lg shadow-amber-500/20 cursor-pointer"
@@ -647,14 +682,14 @@ export default function SchedulePage() {
                       key={i} 
                       className={`border-b border-r border-neutral-800/40 p-1.5 md:p-2 flex flex-col group cursor-pointer hover:bg-neutral-800/40 transition-colors ${isCurrentMonth ? 'bg-transparent' : 'bg-neutral-950/50'}`}
                       onClick={() => {
-                        if (!isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
+                        if (hasWriteAccess || isTeacher) openCreate(format(dayDate, "yyyy-MM-dd"));
                       }}
                     >
                       <div className="flex justify-between items-start mb-1.5 pl-1">
                         <span className={`text-xs font-bold w-7 h-7 flex items-center justify-center rounded-full transition-transform ${isToday ? 'brand-gradient text-black shadow-lg shadow-amber-500/20 scale-110' : isCurrentMonth ? 'text-neutral-300' : 'text-neutral-600'}`}>
                           {format(dayDate, "d")}
                         </span>
-                        {!isTeacher && hasWriteAccess && (
+                        {(hasWriteAccess || isTeacher) && (
                           <div className="opacity-0 group-hover:opacity-100 p-1 rounded-full hover:bg-neutral-700/50 text-neutral-500 hover:text-white transition-all mt-0.5 mr-0.5">
                             <Plus className="w-3.5 h-3.5" />
                           </div>
@@ -681,13 +716,20 @@ export default function SchedulePage() {
                                   <User className="w-2.5 h-2.5" />
                                   {event.teacher?.name}
                                 </div>
-                                {event.status === "Completed" ? (
-                                  <span className="text-[8px] text-emerald-400 font-semibold shrink-0">✓ Completed</span>
-                                ) : event.status === "Cancelled" ? (
-                                  <span className="text-[8px] text-red-400 font-semibold shrink-0">✕ Cancelled</span>
-                                ) : isRescheduled ? (
-                                  <span className="text-[8px] text-purple-300 font-semibold shrink-0 flex items-center gap-0.5">⟳ Rescheduled</span>
-                                ) : null}
+                                <div className="flex items-center gap-1 shrink-0">
+                                  {event.isExtraClass && (
+                                    <span className="text-[8px] px-1 py-0.2 rounded font-bold bg-purple-500/30 text-purple-200 border border-purple-500/40">
+                                      ⭐ Extra Class
+                                    </span>
+                                  )}
+                                  {event.status === "Completed" ? (
+                                    <span className="text-[8px] text-emerald-400 font-semibold">✓ Completed</span>
+                                  ) : event.status === "Cancelled" ? (
+                                    <span className="text-[8px] text-red-400 font-semibold">✕ Cancelled</span>
+                                  ) : isRescheduled ? (
+                                    <span className="text-[8px] text-purple-300 font-semibold flex items-center gap-0.5">⟳ Rescheduled</span>
+                                  ) : null}
+                                </div>
                               </div>
                               {isRescheduled && rescheduledInfo && (
                                 <div className="mt-1 px-1.5 py-0.5 rounded bg-purple-950/70 border border-purple-500/40 text-[9px] text-purple-200 font-medium truncate flex items-center gap-1 shadow-sm">
@@ -757,7 +799,7 @@ export default function SchedulePage() {
                         key={dayIdx}
                         className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer min-h-[76px]"
                         onClick={() => {
-                          if (events.length === 0 && !isTeacher && hasWriteAccess) openCreate(format(dayDate, "yyyy-MM-dd"));
+                          if (events.length === 0 && (hasWriteAccess || isTeacher)) openCreate(format(dayDate, "yyyy-MM-dd"));
                         }}
                       >
                         {events.length > 0 ? (
@@ -778,19 +820,26 @@ export default function SchedulePage() {
                                     <span className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
                                       {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
                                     </span>
-                                    {event.status === "Completed" ? (
-                                      <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
-                                        ✓ Completed{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
-                                      </span>
-                                    ) : event.status === "Cancelled" ? (
-                                      <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
-                                        ✕ Cancelled
-                                      </span>
-                                    ) : isRescheduled ? (
-                                      <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40 flex items-center gap-1">
-                                        <Clock className="w-2.5 h-2.5 text-purple-300" /> Rescheduled
-                                      </span>
-                                    ) : null}
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      {event.isExtraClass && (
+                                        <span className="text-[8px] px-1 py-0.5 rounded font-bold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40">
+                                          ⭐ Extra Class {event.startTime && event.endTime ? `(${event.startTime}–${event.endTime})` : ""}
+                                        </span>
+                                      )}
+                                      {event.status === "Completed" ? (
+                                        <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
+                                          ✓ Completed{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
+                                        </span>
+                                      ) : event.status === "Cancelled" ? (
+                                        <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
+                                          ✕ Cancelled
+                                        </span>
+                                      ) : isRescheduled ? (
+                                        <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40 flex items-center gap-1">
+                                          <Clock className="w-2.5 h-2.5 text-purple-300" /> Rescheduled
+                                        </span>
+                                      ) : null}
+                                    </div>
                                   </div>
 
                                   <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
@@ -991,7 +1040,17 @@ export default function SchedulePage() {
                             <select
                               required
                               value={form.batch}
-                              onChange={(e) => setForm({ ...form, batch: e.target.value })}
+                              onChange={(e) => {
+                                const bId = e.target.value;
+                                const selBatch = batches.find((b: Batch) => b._id === bId);
+                                const teacherId = selBatch?.assignedTeacher ? (typeof selBatch.assignedTeacher === 'object' ? (selBatch.assignedTeacher as any)._id : selBatch.assignedTeacher) : form.teacher;
+                                setForm({
+                                  ...form,
+                                  batch: bId,
+                                  teacher: form.teacher || teacherId || "",
+                                  meetingLink: form.meetingLink || selBatch?.meetingLink || ""
+                                });
+                              }}
                               className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white appearance-none focus:outline-none focus:border-amber-500 transition-colors"
                             >
                               <option value="">Select batch...</option>
@@ -1228,6 +1287,88 @@ export default function SchedulePage() {
                         className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl pl-10 pr-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500 transition-colors placeholder:text-neutral-600"
                       />
                     </div>
+                  </div>
+
+                  {/* Extra Class Section */}
+                  <div className="rounded-xl bg-purple-500/10 border border-purple-500/30 p-3.5 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center">
+                          <Sparkles className="w-4 h-4 text-purple-400" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-purple-200">Mark as Extra Class</p>
+                          <p className="text-[11px] text-purple-300/70">Designate as an extra makeup / revision class for student</p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(form.isExtraClass)}
+                          onChange={(e) => setForm({ ...form, isExtraClass: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-neutral-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-['] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-purple-600"></div>
+                      </label>
+                    </div>
+
+                    {Boolean(form.isExtraClass) && (
+                      <div className="pt-2 border-t border-purple-500/20 space-y-3">
+                        {/* Next Extra Class Date & Timing */}
+                        <div className="p-2.5 rounded-xl bg-neutral-800/60 border border-neutral-700/60 space-y-2">
+                          <label className="block text-xs font-semibold text-purple-200 flex items-center justify-between">
+                            <span className="flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Student's Next Extra Class (Different Date)</span>
+                            </span>
+                            <span className="text-[10px] text-purple-400 font-normal">Optional</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={form.nextExtraClassDate || ""}
+                            onChange={(e) => setForm({ ...form, nextExtraClassDate: e.target.value })}
+                            className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-mono text-neutral-300"
+                          />
+                          <p className="text-[10px] text-purple-300/60">If the student has another extra class on a different date, mention it here to schedule and reflect in teacher performance.</p>
+
+                          {form.nextExtraClassDate && (
+                            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-700/40">
+                              <div>
+                                <span className="text-[10px] text-neutral-400 block mb-0.5">Next Start Time</span>
+                                <input
+                                  type="time"
+                                  value={form.nextExtraClassStartTime || "09:00"}
+                                  onChange={(e) => setForm({ ...form, nextExtraClassStartTime: e.target.value })}
+                                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                                />
+                              </div>
+                              <div>
+                                <span className="text-[10px] text-neutral-400 block mb-0.5">Next End Time</span>
+                                <input
+                                  type="time"
+                                  value={form.nextExtraClassEndTime || "10:00"}
+                                  onChange={(e) => setForm({ ...form, nextExtraClassEndTime: e.target.value })}
+                                  className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-purple-200 mb-1">
+                            Reason / Focus for Extra Class
+                          </label>
+                          <input
+                            type="text"
+                            value={form.extraClassReason || ""}
+                            onChange={(e) => setForm({ ...form, extraClassReason: e.target.value })}
+                            placeholder="e.g. Doubt clearing, makeup class, exam revision"
+                            className="w-full bg-neutral-800/60 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 placeholder:text-neutral-600"
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Subject / Topic Covered */}

@@ -16,6 +16,7 @@ export default function CompletedClassesPage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [selectedTeacherId, setSelectedTeacherId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>("");
+  const [filterExtraOnly, setFilterExtraOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
   
@@ -24,11 +25,25 @@ export default function CompletedClassesPage() {
     notes: string;
     status: string;
     attendance: any[];
+    isExtraClass: boolean;
+    startTime: string;
+    endTime: string;
+    nextExtraClassDate: string;
+    nextExtraClassStartTime: string;
+    nextExtraClassEndTime: string;
+    extraClassReason: string;
   }>({
     subject: "",
     notes: "",
     status: "Completed",
     attendance: [],
+    isExtraClass: false,
+    startTime: "09:00",
+    endTime: "10:00",
+    nextExtraClassDate: "",
+    nextExtraClassStartTime: "09:00",
+    nextExtraClassEndTime: "10:00",
+    extraClassReason: "",
   });
 
   const isTeacher = user?.role === "Teacher";
@@ -72,6 +87,8 @@ export default function CompletedClassesPage() {
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/schedules/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["my-performance"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       setModal(null);
       setFormError(null);
     },
@@ -135,13 +152,17 @@ export default function CompletedClassesPage() {
           if (scheduleDate !== selectedDate) return false;
         }
 
+        // Apply extra class filter
+        if (filterExtraOnly && !s.isExtraClass) return false;
+
         // Apply text search
         if (q) {
           const batchName = (s.batch?.name || (typeof s.batch === "string" ? batches.find((b: any) => b._id === s.batch)?.name : "") || "").toLowerCase();
           const subject = (s.subject || "").toLowerCase();
           const teacherName = (s.teacher?.name || "").toLowerCase();
           const notes = (s.notes || "").toLowerCase();
-          if (!batchName.includes(q) && !subject.includes(q) && !teacherName.includes(q) && !notes.includes(q)) {
+          const extraReason = (s.extraClassReason || "").toLowerCase();
+          if (!batchName.includes(q) && !subject.includes(q) && !teacherName.includes(q) && !notes.includes(q) && !extraReason.includes(q)) {
             return false;
           }
         }
@@ -153,7 +174,17 @@ export default function CompletedClassesPage() {
         const timeB = typeof b.date === "number" ? b.date : new Date(b.date).getTime();
         return timeB - timeA;
       });
-  }, [schedules, selectedStudentId, selectedTeacherId, selectedDate, searchQuery, studentBatchMap, batches]);
+  }, [schedules, selectedStudentId, selectedTeacherId, selectedDate, searchQuery, studentBatchMap, batches, filterExtraOnly]);
+
+  const allCompletedExtraCount = useMemo(() => {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    return schedules.filter((s: any) => {
+      const scheduleDateStr = typeof s.date === "string" ? s.date.split("T")[0] : format(new Date(s.date), "yyyy-MM-dd");
+      if (scheduleDateStr > todayStr) return false;
+      if (s.status === "Cancelled" || s.status === "Rescheduled") return false;
+      return Boolean(s.isExtraClass);
+    }).length;
+  }, [schedules]);
 
   if (!hasAccess) {
     return (
@@ -186,6 +217,13 @@ export default function CompletedClassesPage() {
       notes: cls.notes || "",
       status: "Completed",
       attendance: initialAttendance,
+      isExtraClass: Boolean(cls.isExtraClass),
+      startTime: cls.startTime || "09:00",
+      endTime: cls.endTime || "10:00",
+      nextExtraClassDate: cls.nextExtraClassDate ? (typeof cls.nextExtraClassDate === "string" ? cls.nextExtraClassDate.split("T")[0] : "") : "",
+      nextExtraClassStartTime: cls.nextExtraClassStartTime || cls.startTime || "09:00",
+      nextExtraClassEndTime: cls.nextExtraClassEndTime || cls.endTime || "10:00",
+      extraClassReason: cls.extraClassReason || "",
     });
     setFormError(null);
     setModal(cls);
@@ -241,7 +279,7 @@ export default function CompletedClassesPage() {
     return null;
   };
 
-  const hasActiveFilters = Boolean(searchQuery || selectedTeacherId || selectedStudentId || selectedDate);
+  const hasActiveFilters = Boolean(searchQuery || selectedTeacherId || selectedStudentId || selectedDate || filterExtraOnly);
 
   return (
     <div className="flex flex-col gap-5 h-full">
@@ -251,16 +289,21 @@ export default function CompletedClassesPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 shrink-0">
         <div>
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2.5 flex-wrap">
             <h1 className="text-xl sm:text-2xl font-bold text-white">Completed Classes</h1>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               {pastOrCompletedClasses.length} {pastOrCompletedClasses.length === 1 ? "Class" : "Classes"}
             </span>
+            {allCompletedExtraCount > 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                ⭐ {allCompletedExtraCount} Extra {allCompletedExtraCount === 1 ? "Session" : "Sessions"}
+              </span>
+            )}
           </div>
           <p className="text-neutral-400 text-xs sm:text-sm mt-0.5">
             {isTeacher 
-              ? "Manage your completed classes, attendance records, topics covered, and notes."
-              : "Review past completed classes, student attendance, and teacher remarks."}
+              ? "Manage your completed classes, extra class sessions & reasons, attendance records, and notes."
+              : "Review past completed classes, extra class reasons, student attendance, and teacher remarks."}
           </p>
         </div>
 
@@ -332,6 +375,22 @@ export default function CompletedClassesPage() {
             )}
           </div>
 
+          {/* Extra Classes Filter Toggle */}
+          <button
+            type="button"
+            onClick={() => setFilterExtraOnly(!filterExtraOnly)}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all ${
+              filterExtraOnly
+                ? "bg-purple-600 text-white border-purple-400 shadow-sm shadow-purple-600/30 font-bold"
+                : "bg-neutral-900 text-neutral-400 border-neutral-800 hover:text-purple-300 hover:border-purple-500/40"
+            }`}
+          >
+            <span>⭐ Extra Classes</span>
+            <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${filterExtraOnly ? "bg-white/20 text-white" : "bg-neutral-800 text-neutral-300"}`}>
+              {allCompletedExtraCount}
+            </span>
+          </button>
+
           {/* Reset Filters */}
           {hasActiveFilters && (
             <button
@@ -340,6 +399,7 @@ export default function CompletedClassesPage() {
                 setSelectedTeacherId("");
                 setSelectedStudentId("");
                 setSelectedDate("");
+                setFilterExtraOnly(false);
               }}
               className="inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-medium text-amber-400 hover:text-amber-300 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 transition-all"
             >
@@ -376,6 +436,7 @@ export default function CompletedClassesPage() {
                   setSelectedTeacherId("");
                   setSelectedStudentId("");
                   setSelectedDate("");
+                  setFilterExtraOnly(false);
                 }}
                 className="mt-4 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold rounded-xl border border-neutral-700 transition-colors"
               >
@@ -426,8 +487,13 @@ export default function CompletedClassesPage() {
 
                       {/* Batch Column */}
                       <td className="px-5 py-4">
-                        <div className="font-bold text-white text-sm">
-                          {batchName}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-white text-sm">{batchName}</span>
+                          {cls.isExtraClass && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/40 shrink-0">
+                              ⭐ Extra Class
+                            </span>
+                          )}
                         </div>
                         {batchSubject && (
                           <div className="text-xs text-neutral-400 mt-0.5 max-w-[180px] truncate" title={batchSubject}>
@@ -479,32 +545,64 @@ export default function CompletedClassesPage() {
 
                       {/* Class Notes Column */}
                       <td className="px-5 py-4 max-w-xs">
-                        {cls.notes ? (
-                          <p className="text-neutral-300 text-xs sm:text-sm line-clamp-2" title={cls.notes}>
-                            {cls.notes}
-                          </p>
-                        ) : (
-                          <span className="text-neutral-500 italic text-xs">
-                            No remarks recorded
-                          </span>
-                        )}
+                        <div className="space-y-1">
+                          {cls.isExtraClass && cls.extraClassReason && (
+                            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              <span className="text-purple-400 font-bold">Extra Reason:</span>
+                              <span className="truncate max-w-[180px]" title={cls.extraClassReason}>{cls.extraClassReason}</span>
+                            </div>
+                          )}
+                          {cls.notes ? (
+                            <p className="text-neutral-300 text-xs sm:text-sm line-clamp-2" title={cls.notes}>
+                              {cls.notes}
+                            </p>
+                          ) : (
+                            <span className="text-neutral-500 italic text-xs block">
+                              No remarks recorded
+                            </span>
+                          )}
+                        </div>
                       </td>
 
                       {/* Status Column */}
-                      <td className="px-5 py-4 whitespace-nowrap">
-                        {isFullyCompleted ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Completed
-                          </span>
-                        ) : cls.status === "Completed" ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Completed
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
-                            <Clock className="w-3.5 h-3.5 text-amber-400" /> Needs Remarks
-                          </span>
-                        )}
+                      <td className="px-5 py-4">
+                        <div className="flex flex-col gap-1.5 min-w-[200px]">
+                          {cls.isExtraClass && (
+                            <div className="flex flex-col gap-1 p-2 rounded-xl bg-purple-500/10 border border-purple-500/30">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-200 border border-purple-500/40">
+                                  ⭐ Extra Class ({cls.startTime}–{cls.endTime})
+                                </span>
+                                {cls.nextExtraClassDate && (
+                                  <span className="text-[10px] text-purple-300/80 font-medium">
+                                    · Next: {formatDateDisplay(cls.nextExtraClassDate)}
+                                  </span>
+                                )}
+                              </div>
+                              {cls.extraClassReason && (
+                                <div className="text-xs text-purple-200/95 flex items-start gap-1 font-medium bg-purple-950/40 px-2 py-1 rounded-lg border border-purple-500/20">
+                                  <span className="text-purple-400 font-bold shrink-0">Reason:</span>
+                                  <span className="italic">{cls.extraClassReason}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {isFullyCompleted ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Completed
+                              </span>
+                            ) : cls.status === "Completed" ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-400" /> Completed
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                                <Clock className="w-3.5 h-3.5 text-amber-400" /> Needs Remarks
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </td>
 
                       {/* Action Column */}
@@ -623,6 +721,115 @@ export default function CompletedClassesPage() {
                       <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
                       {formError}
                     </p>
+                  )}
+                </div>
+
+                {/* Extra Class Section */}
+                <div className="rounded-xl bg-purple-500/10 border border-purple-500/30 p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-bold text-purple-300">Mark as Extra Class</span>
+                      <p className="text-[11px] text-purple-300/70">Extra makeup or doubt-clearing session for student</p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={form.isExtraClass}
+                      onChange={(e) => setForm({ ...form, isExtraClass: e.target.checked })}
+                      className="w-4 h-4 rounded text-purple-600 focus:ring-purple-500 bg-neutral-800 border-neutral-700 cursor-pointer"
+                    />
+                  </div>
+
+                  {form.isExtraClass && (
+                    <div className="pt-2 border-t border-purple-500/20 space-y-3">
+                      {/* Class Time Section */}
+                      <div>
+                        <label className="block text-xs font-semibold text-purple-200 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Clock className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Extra Class Timing (Start & End Time)</span>
+                          </span>
+                          <span className="text-[10px] text-purple-400 font-normal">Reflects in Performance</span>
+                        </label>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block mb-0.5">Start Time</span>
+                            <input
+                              type="time"
+                              required={form.isExtraClass}
+                              value={form.startTime}
+                              onChange={(e) => setForm({ ...form, startTime: e.target.value })}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-neutral-400 block mb-0.5">End Time</span>
+                            <input
+                              type="time"
+                              required={form.isExtraClass}
+                              value={form.endTime}
+                              onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[10px] text-purple-300/60 mt-1">Teaching hours on this date directly update your performance report.</p>
+                      </div>
+
+                      {/* Next Extra Class Date & Timing */}
+                      <div className="p-2.5 rounded-xl bg-neutral-800/60 border border-neutral-700/60 space-y-2">
+                        <label className="block text-xs font-semibold text-purple-200 flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                            <span>Student's Next Extra Class (Different Date)</span>
+                          </span>
+                          <span className="text-[10px] text-purple-400 font-normal">Optional</span>
+                        </label>
+                        <input
+                          type="date"
+                          value={form.nextExtraClassDate}
+                          min={format(new Date(), "yyyy-MM-dd")}
+                          onChange={(e) => setForm({ ...form, nextExtraClassDate: e.target.value })}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 font-mono text-neutral-300"
+                        />
+                        <p className="text-[10px] text-purple-300/60">If the student has another session on a different date, select it here.</p>
+
+                        {form.nextExtraClassDate && (
+                          <div className="grid grid-cols-2 gap-2 pt-1 border-t border-neutral-700/40">
+                            <div>
+                              <span className="text-[10px] text-neutral-400 block mb-0.5">Next Start Time</span>
+                              <input
+                                type="time"
+                                value={form.nextExtraClassStartTime}
+                                onChange={(e) => setForm({ ...form, nextExtraClassStartTime: e.target.value })}
+                                className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                              />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-neutral-400 block mb-0.5">Next End Time</span>
+                              <input
+                                type="time"
+                                value={form.nextExtraClassEndTime}
+                                onChange={(e) => setForm({ ...form, nextExtraClassEndTime: e.target.value })}
+                                className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-purple-500 font-mono"
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-purple-200 mb-1">
+                          Reason / Topic Focus
+                        </label>
+                        <input
+                          type="text"
+                          value={form.extraClassReason}
+                          onChange={(e) => setForm({ ...form, extraClassReason: e.target.value })}
+                          placeholder="e.g. Doubt clearing, missed topic revision, exam preparation"
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 placeholder-neutral-600"
+                        />
+                      </div>
+                    </div>
                   )}
                 </div>
 

@@ -5,6 +5,8 @@ import { z } from 'zod';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
+import Payment from '../models/Payment';
+import { calculateDueAfterClasses, calculatePaymentStatus } from '../utils/paymentRules';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
@@ -605,6 +607,7 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       days,
       meetingLink,
       startDate,
+      paymentDetails,
     } = req.body;
 
     const oldBatchId = student.batch?._id 
@@ -756,10 +759,83 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       }
     }
 
+    // 5. Next Level Payment Details (if provided)
+    if (paymentDetails && paymentDetails.recordPayment && Number(paymentDetails.totalFee) > 0) {
+      try {
+        const totalFee = Number(paymentDetails.totalFee) || 0;
+        const amountPaid = Math.max(0, Number(paymentDetails.amountPaid) || 0);
+        const remainingAmount = Math.max(0, totalFee - amountPaid);
+        const rawType = paymentDetails.paymentType || (amountPaid >= totalFee ? 'Full Payment' : amountPaid > 0 ? 'Half Payment' : 'Custom Payment');
+        const paymentMethod = paymentDetails.paymentMethod || 'Bank Transfer';
+        const paymentDate = paymentDetails.paymentDate 
+          ? (normalizeDateOnlyToUtc(paymentDetails.paymentDate) || new Date(paymentDetails.paymentDate)).toISOString() 
+          : new Date().toISOString();
+        const paymentNotes = paymentDetails.notes || '';
+        const dueAfterClasses = calculateDueAfterClasses(targetSessions);
+        const paymentStatus = calculatePaymentStatus({
+          totalFee,
+          amountPaid,
+          completedClasses: 0,
+          dueAfterClasses,
+        });
+
+        const newTx = {
+          _id: `tx_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`,
+          amount: amountPaid,
+          paymentDate,
+          paymentMethod,
+          paymentType: rawType === 'Full Payment' ? 'Full Payment' : 'Initial Payment',
+          level: finalLevelTag,
+          notes: paymentNotes ? `[${finalLevelTag}] ${paymentNotes}` : `Fee payment for ${finalLevelTag}`,
+          createdAt: new Date().toISOString(),
+        };
+
+        let existingPayment = await Payment.safeFindOne({ student: studentId });
+        if (!existingPayment && student.payment) {
+          existingPayment = student.payment;
+        }
+
+        const paymentPayload: any = {
+          student: studentId,
+          batch: targetBatchId,
+          totalFee,
+          amountPaid,
+          remainingAmount,
+          paymentType: rawType === 'Pending' ? 'Custom Payment' : rawType,
+          paymentStatus,
+          assignedClasses: targetSessions,
+          dueAfterClasses,
+          reminderBeforeClasses: 2,
+          notes: paymentNotes ? `[${finalLevelTag}] ${paymentNotes}` : `Fee for ${finalLevelTag}`,
+          paymentHistory: existingPayment 
+            ? (amountPaid > 0 ? [newTx, ...(existingPayment.paymentHistory || [])] : (existingPayment.paymentHistory || []))
+            : (amountPaid > 0 ? [newTx] : []),
+        };
+
+        let savedPayment: any = null;
+        if (existingPayment && existingPayment._id) {
+          savedPayment = await Payment.safeFindByIdAndUpdate(existingPayment._id, {
+            $set: paymentPayload,
+          });
+        } else {
+          savedPayment = await Payment.safeCreate(paymentPayload);
+        }
+
+        if (savedPayment) {
+          student.payment = savedPayment;
+          await student.save();
+        }
+      } catch (payErr: any) {
+        console.error('[advanceStudentLevel] Error recording next level payment:', payErr.message);
+      }
+    }
+
+
     serverCache.clearPattern('students_');
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('schedules_');
     serverCache.clearPattern('stats_');
+    serverCache.clearPattern('payments_');
     deleteDiskCache('schedules_all');
 
     const updated = await Student.findById(studentId)

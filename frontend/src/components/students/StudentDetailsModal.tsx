@@ -50,6 +50,28 @@ export function StudentDetailsModal({
   const [showRecordPaymentModal, setShowRecordPaymentModal] = useState(false);
   const [showAdmissionPaymentModal, setShowAdmissionPaymentModal] = useState(false);
 
+  // Next Level Payment State
+  const [recordNextLevelPayment, setRecordNextLevelPayment] = useState(true);
+  const [nextLevelTotalFee, setNextLevelTotalFee] = useState<number>(15000);
+  const [nextLevelAmountPaid, setNextLevelAmountPaid] = useState<number>(15000);
+  const [nextLevelPaymentType, setNextLevelPaymentType] = useState<"Full Payment" | "Half Payment" | "Custom Payment" | "Pending">("Full Payment");
+  const [nextLevelPaymentMethod, setNextLevelPaymentMethod] = useState<string>("Bank Transfer");
+  const [nextLevelPaymentDate, setNextLevelPaymentDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [nextLevelPaymentNotes, setNextLevelPaymentNotes] = useState<string>("");
+  const [showPaymentHistoryInModal, setShowPaymentHistoryInModal] = useState<boolean>(true);
+
+  // Extra Class State
+  const [showScheduleExtraClassModal, setShowScheduleExtraClassModal] = useState(false);
+  const [extraClassDate, setExtraClassDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [extraClassStartTime, setExtraClassStartTime] = useState("09:00");
+  const [extraClassEndTime, setExtraClassEndTime] = useState("10:00");
+  const [extraClassSubject, setExtraClassSubject] = useState("");
+  const [extraClassReason, setExtraClassReason] = useState("");
+  const [extraClassTeacher, setExtraClassTeacher] = useState("");
+  const [extraClassMeetingLink, setExtraClassMeetingLink] = useState("");
+  const [extraClassError, setExtraClassError] = useState("");
+  const [togglingScheduleId, setTogglingScheduleId] = useState<string | null>(null);
+
   const { data: student, isLoading } = useQuery({
     queryKey: ["student", studentId],
     queryFn: async () => (await api.get(`/students/${studentId}`)).data,
@@ -109,6 +131,18 @@ export function StudentDetailsModal({
     setSelectedDays(student?.batch?.days && student.batch.days.length > 0 ? student.batch.days : ["Monday", "Wednesday", "Friday"]);
     setMeetingLink(student?.batch?.meetingLink || "");
     setStartDate(format(new Date(), "yyyy-MM-dd"));
+
+    // Pre-populate next level payment details from previous payment or defaults
+    const prevFee = paymentData?.payment?.totalFee || 15000;
+    setNextLevelTotalFee(prevFee);
+    setNextLevelAmountPaid(prevFee);
+    setNextLevelPaymentType("Full Payment");
+    setNextLevelPaymentMethod("Bank Transfer");
+    setNextLevelPaymentDate(format(new Date(), "yyyy-MM-dd"));
+    setNextLevelPaymentNotes("");
+    setRecordNextLevelPayment(true);
+    setShowPaymentHistoryInModal(true);
+
     setShowNextCourseModal(true);
   };
 
@@ -127,6 +161,7 @@ export function StudentDetailsModal({
       days,
       meetingLink,
       startDate,
+      paymentDetails,
     }: {
       level: string;
       numberOfClasses: number;
@@ -135,6 +170,7 @@ export function StudentDetailsModal({
       days?: string[];
       meetingLink?: string;
       startDate?: string;
+      paymentDetails?: any;
     }) => {
       return api.post(`/students/${studentId}/advance-level`, {
         level,
@@ -144,19 +180,138 @@ export function StudentDetailsModal({
         days,
         meetingLink,
         startDate,
+        paymentDetails,
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-payment", studentId] });
       queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["payments"] });
       setShowNextCourseModal(false);
       setSelectedLevel("");
       setSelectedTeacher("");
     },
   });
+
+  const toggleExtraClassMutation = useMutation({
+    mutationFn: async ({
+      scheduleId,
+      isExtraClass,
+      extraClassReason,
+    }: {
+      scheduleId: string;
+      isExtraClass: boolean;
+      extraClassReason?: string;
+    }) => {
+      return api.put(`/schedules/${scheduleId}`, {
+        isExtraClass,
+        extraClassReason: extraClassReason !== undefined ? extraClassReason : undefined,
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-today-schedules"] });
+      setTogglingScheduleId(null);
+    },
+    onError: (err: any) => {
+      setTogglingScheduleId(null);
+      alert(err.response?.data?.message || "Failed to update extra class status");
+    },
+  });
+
+  const scheduleExtraClassMutation = useMutation({
+    mutationFn: async (payload: {
+      teacher: string;
+      batch: string;
+      date: string;
+      startTime: string;
+      endTime: string;
+      status: string;
+      subject?: string;
+      meetingLink?: string;
+      isExtraClass: boolean;
+      extraClassReason?: string;
+    }) => {
+      return api.post("/schedules", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-today-schedules"] });
+      setShowScheduleExtraClassModal(false);
+      setExtraClassSubject("");
+      setExtraClassReason("");
+      setExtraClassError("");
+    },
+    onError: (err: any) => {
+      setExtraClassError(err.response?.data?.message || "Failed to schedule extra class");
+    },
+  });
+
+  const handleOpenScheduleExtraClass = () => {
+    setExtraClassDate(format(new Date(), "yyyy-MM-dd"));
+    setExtraClassStartTime(student?.batch?.timing?.startTime || "09:00");
+    setExtraClassEndTime(student?.batch?.timing?.endTime || "10:00");
+    setExtraClassSubject(`${student?.batch?.subject || student?.name || "Student"} - Extra Class`);
+    setExtraClassReason("");
+    setExtraClassMeetingLink(student?.batch?.meetingLink || "");
+    const currentTeacherId = student?.batch?.assignedTeacher?._id || 
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
+      (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || '';
+    setExtraClassTeacher(currentTeacherId);
+    setExtraClassError("");
+    setShowScheduleExtraClassModal(true);
+  };
+
+  const handleSubmitExtraClass = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setExtraClassError("");
+
+    const targetBatchId = student?.batch?._id ? student.batch._id.toString() : (student?.batch ? student.batch.toString() : "");
+    if (!targetBatchId) {
+      setExtraClassError("Student does not have an active batch assigned. Please assign a batch first.");
+      return;
+    }
+
+    if (!extraClassDate) {
+      setExtraClassError("Please select a valid date for the extra class.");
+      return;
+    }
+
+    if (!extraClassStartTime || !extraClassEndTime) {
+      setExtraClassError("Please specify start and end times.");
+      return;
+    }
+
+    const teacherToUse = extraClassTeacher || 
+      student?.batch?.assignedTeacher?._id || 
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
+      (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || 
+      (allTeachers.length > 0 ? allTeachers[0]._id : "");
+
+    if (!teacherToUse) {
+      setExtraClassError("Please select a teacher for this extra class.");
+      return;
+    }
+
+    scheduleExtraClassMutation.mutate({
+      teacher: teacherToUse,
+      batch: targetBatchId,
+      date: extraClassDate,
+      startTime: extraClassStartTime,
+      endTime: extraClassEndTime,
+      status: "Scheduled",
+      subject: extraClassSubject || `${student?.batch?.subject || "Curriculum"} - Extra Class`,
+      meetingLink: extraClassMeetingLink || student?.batch?.meetingLink || "",
+      isExtraClass: true,
+      extraClassReason: extraClassReason || "Extra session for student",
+    });
+  };
 
   const getTeacherName = (teacherRef: any) => {
     if (!teacherRef) return "";
@@ -220,6 +375,7 @@ export function StudentDetailsModal({
   const currentCompletedCount = currentBatchSchedules.filter((s: any) => s.status === "Completed").length;
   const currentClassesNeeded = student.classesNeeded || student.batch?.numberOfSessions || 15;
   const currentProgressPct = Math.min(100, currentClassesNeeded > 0 ? Math.round((currentCompletedCount / currentClassesNeeded) * 100) : 0);
+  const currentExtraClassCount = currentBatchSchedules.filter((s: any) => s.isExtraClass).length;
 
   // Progress Ring Configuration
   const ringCircumference = 2 * Math.PI * 36;
@@ -512,7 +668,15 @@ export function StudentDetailsModal({
                       <div className="pt-1.5 w-full max-w-lg">
                         <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5">
                           <span className="font-semibold text-emerald-400">Level Progress: {currentProgressPct}%</span>
-                          <span>{currentCompletedCount} of {currentClassesNeeded} classes completed</span>
+                          <div className="flex items-center gap-2">
+                            <span>{currentCompletedCount} of {currentClassesNeeded} classes completed</span>
+                            {currentExtraClassCount > 0 && (
+                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                {currentExtraClassCount} Extra
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
                           <div
@@ -522,9 +686,9 @@ export function StudentDetailsModal({
                         </div>
                       </div>
 
-                      {/* Live Level Classes list toggle */}
-                      {currentBatchSchedules.length > 0 && (
-                        <div className="pt-2">
+                      {/* Live Level Classes list & Extra Class Action */}
+                      <div className="pt-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                           <button
                             type="button"
                             onClick={() => setExpandedLevels(prev => ({ ...prev, current: !prev.current }))}
@@ -532,11 +696,40 @@ export function StudentDetailsModal({
                           >
                             {expandedLevels.current ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
                             <span>{expandedLevels.current ? "Hide" : "View"} Class Schedule & Logs ({currentBatchSchedules.length} Sessions)</span>
+                            {currentExtraClassCount > 0 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 ml-1">
+                                <Sparkles className="w-2.5 h-2.5" />
+                                {currentExtraClassCount} Extra
+                              </span>
+                            )}
                           </button>
 
-                          {expandedLevels.current && (
-                            <div className="mt-2.5 space-y-2 border-t border-neutral-800/80 pt-2.5">
-                              {currentBatchSchedules.map((cls: any, cIdx: number) => (
+                          <button
+                            type="button"
+                            onClick={handleOpenScheduleExtraClass}
+                            className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm shadow-purple-600/30 transition-all hover:scale-105"
+                          >
+                            <Sparkles className="w-3 h-3" />
+                            <span>+ Schedule Extra Class</span>
+                          </button>
+                        </div>
+
+                        {expandedLevels.current && (
+                          <div className="mt-2.5 space-y-2 border-t border-neutral-800/80 pt-2.5">
+                            {currentBatchSchedules.length === 0 ? (
+                              <div className="p-3 bg-neutral-900/50 rounded-xl border border-neutral-800 text-xs text-neutral-400 flex items-center justify-between">
+                                <span>No classes scheduled yet for this level.</span>
+                                <button
+                                  type="button"
+                                  onClick={handleOpenScheduleExtraClass}
+                                  className="text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
+                                >
+                                  <Sparkles className="w-3 h-3" />
+                                  Schedule Extra Class
+                                </button>
+                              </div>
+                            ) : (
+                              currentBatchSchedules.map((cls: any, cIdx: number) => (
                                 <div key={cls._id || cIdx} className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs space-y-1.5">
                                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                     <div className="flex items-center gap-2 flex-wrap">
@@ -553,13 +746,52 @@ export function StudentDetailsModal({
                                       }`}>
                                         {cls.status}
                                       </span>
+                                      {cls.isExtraClass && (
+                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                          <Sparkles className="w-2.5 h-2.5" />
+                                          Extra Class
+                                        </span>
+                                      )}
                                     </div>
-                                    <span className="text-neutral-400 text-[11px]">
-                                      Teacher: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || currentTeacherName}</strong>
-                                    </span>
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-neutral-400 text-[11px]">
+                                        Teacher: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || currentTeacherName}</strong>
+                                      </span>
+                                      <button
+                                        type="button"
+                                        title={cls.isExtraClass ? "Click to unmark as Extra Class" : "Click to mark as Extra Class"}
+                                        disabled={togglingScheduleId === cls._id}
+                                        onClick={() => {
+                                          setTogglingScheduleId(cls._id);
+                                          toggleExtraClassMutation.mutate({
+                                            scheduleId: cls._id,
+                                            isExtraClass: !cls.isExtraClass,
+                                            extraClassReason: !cls.isExtraClass ? "Extra class for student" : "",
+                                          });
+                                        }}
+                                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${
+                                          cls.isExtraClass
+                                            ? "bg-purple-950/60 text-purple-300 border-purple-500/40 hover:bg-purple-900/60"
+                                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-purple-300 hover:border-purple-500/40"
+                                        }`}
+                                      >
+                                        {togglingScheduleId === cls._id ? (
+                                          <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                        ) : (
+                                          <Sparkles className="w-2.5 h-2.5" />
+                                        )}
+                                        <span>{cls.isExtraClass ? "Extra Class ✓" : "+ Mark Extra"}</span>
+                                      </button>
+                                    </div>
                                   </div>
-                                  {(cls.subject || cls.notes) && (
+                                  {(cls.subject || cls.notes || (cls.isExtraClass && cls.extraClassReason)) && (
                                     <div className="bg-neutral-950/60 rounded-lg p-2 border border-neutral-800/60 space-y-1">
+                                      {cls.isExtraClass && cls.extraClassReason && (
+                                        <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
+                                          <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
+                                          <span>{cls.extraClassReason}</span>
+                                        </div>
+                                      )}
                                       {cls.subject && (
                                         <div className="flex items-start gap-1.5">
                                           <span className="text-neutral-500 font-semibold shrink-0">Topic Covered:</span>
@@ -575,11 +807,11 @@ export function StudentDetailsModal({
                                     </div>
                                   )}
                                 </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
 
                       {/* Project Submissions Section (Automatic milestones every 5 completed classes) */}
                       <div className="pt-3 border-t border-neutral-800/80">
@@ -703,9 +935,19 @@ export function StudentDetailsModal({
                                   >
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold text-[11px]">
-                                          Class {pbSchedules.length - cIdx}
+                                        <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
+                                          cls.isExtraClass
+                                            ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
+                                            : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
+                                        }`}>
+                                          {cls.isExtraClass ? "Extra Class" : `Class ${pbSchedules.length - cIdx}`}
                                         </span>
+                                        {cls.isExtraClass && (
+                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                                            <Sparkles className="w-2.5 h-2.5" />
+                                            Extra
+                                          </span>
+                                        )}
                                         <span className="font-bold text-white flex items-center gap-1">
                                           <Calendar className="w-3 h-3 text-neutral-500" />
                                           {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Completed Session")}
@@ -722,6 +964,12 @@ export function StudentDetailsModal({
 
                                     {/* Topic covered & notes */}
                                     <div className="bg-neutral-950/60 rounded-lg p-2.5 border border-neutral-800/60 space-y-1">
+                                      {cls.isExtraClass && cls.extraClassReason && (
+                                        <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
+                                          <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
+                                          <span>{cls.extraClassReason}</span>
+                                        </div>
+                                      )}
                                       <div className="flex items-start gap-1.5">
                                         <span className="text-emerald-400 font-semibold shrink-0">Topic Covered:</span>
                                         <span className="text-white font-medium">{cls.subject || "Topic Covered / Curriculum Session"}</span>
@@ -983,7 +1231,7 @@ export function StudentDetailsModal({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar"
+              className="bg-neutral-900 border border-emerald-500/40 rounded-2xl w-full max-w-xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto custom-scrollbar"
             >
               <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
                 <div className="flex items-center gap-2">
@@ -1205,6 +1453,271 @@ export function StudentDetailsModal({
                 </div>
               </div>
 
+              {/* Previous Payment History */}
+              <div className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <History className="w-4 h-4 text-amber-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Previous Payment History</span>
+                  </div>
+                  {paymentData?.hasPayment && (
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                      paymentData.payment.paymentStatus === 'Paid'
+                        ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
+                        : paymentData.payment.paymentStatus === 'Due' || paymentData.payment.paymentStatus === 'Overdue'
+                        ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                        : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                    }`}>
+                      Status: {paymentData.payment.paymentStatus}
+                    </span>
+                  )}
+                </div>
+
+                {paymentData?.hasPayment ? (
+                  <div className="space-y-2.5">
+                    {/* Previous Fee Metrics */}
+                    <div className="grid grid-cols-3 gap-2 p-2 bg-neutral-900/60 rounded-lg border border-neutral-800/60 text-center">
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block">Total Fee</span>
+                        <span className="text-xs font-bold text-white">₹{Number(paymentData.payment.totalFee || 0).toLocaleString("en-IN")}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block">Paid</span>
+                        <span className="text-xs font-bold text-emerald-400">₹{Number(paymentData.payment.amountPaid || 0).toLocaleString("en-IN")}</span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 block">Balance</span>
+                        <span className={`text-xs font-bold ${Number(paymentData.payment.remainingAmount || 0) > 0 ? "text-amber-400" : "text-neutral-400"}`}>
+                          ₹{Number(paymentData.payment.remainingAmount || 0).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Previous Transactions List */}
+                    {paymentData.payment.paymentHistory && paymentData.payment.paymentHistory.length > 0 ? (
+                      <div className="max-h-36 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
+                        {paymentData.payment.paymentHistory.map((tx: any, idx: number) => (
+                          <div
+                            key={tx._id || tx.id || idx}
+                            className="p-2 bg-neutral-900/80 border border-neutral-800 rounded-lg flex items-center justify-between text-xs"
+                          >
+                            <div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-white text-[11px]">
+                                  {tx.level ? `[${tx.level}] ` : ""}Payment #{paymentData.payment.paymentHistory.length - idx}
+                                </span>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded bg-neutral-800 text-neutral-400">
+                                  {tx.paymentMethod || "Payment"}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-neutral-400 mt-0.5">
+                                {tx.paymentDate ? format(new Date(tx.paymentDate), "dd MMM yyyy") : "-"}
+                                {tx.notes ? ` · ${tx.notes}` : ""}
+                              </p>
+                            </div>
+                            <span className="font-bold text-emerald-400 text-xs shrink-0">
+                              +₹{Number(tx.amount || 0).toLocaleString("en-IN")}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-neutral-400 italic text-center py-1">
+                        No individual transaction receipts recorded yet.
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-2.5 px-3 bg-neutral-900/40 rounded-lg border border-neutral-800/60">
+                    <p className="text-xs text-neutral-400">No previous payment records found for this student.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Next Level Payment Details */}
+              <div className="bg-neutral-800/40 border border-emerald-500/30 rounded-xl p-3.5 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CreditCard className="w-4 h-4 text-emerald-400" />
+                    <span className="text-xs font-bold text-white uppercase tracking-wider">Next Level Payment Details</span>
+                  </div>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={recordNextLevelPayment}
+                      onChange={(e) => setRecordNextLevelPayment(e.target.checked)}
+                      className="w-3.5 h-3.5 rounded border-neutral-700 text-emerald-500 focus:ring-emerald-500 bg-neutral-800"
+                    />
+                    <span className="text-[11px] text-emerald-300 font-medium">Record Payment</span>
+                  </label>
+                </div>
+
+                {recordNextLevelPayment && (
+                  <div className="space-y-3 pt-1">
+                    {/* Course Total Fee */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1 flex items-center justify-between">
+                        <span>Course Fee (₹)</span>
+                        <span className="text-[10px] text-emerald-400 font-medium">Total Fee for Level</span>
+                      </label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-2 text-xs text-neutral-500 font-bold">₹</span>
+                        <input
+                          type="number"
+                          min="0"
+                          value={nextLevelTotalFee}
+                          onChange={(e) => {
+                            const val = Math.max(0, Number(e.target.value) || 0);
+                            setNextLevelTotalFee(val);
+                            if (nextLevelPaymentType === "Full Payment") setNextLevelAmountPaid(val);
+                            else if (nextLevelPaymentType === "Half Payment") setNextLevelAmountPaid(Math.round(val / 2));
+                            else if (nextLevelPaymentType === "Pending") setNextLevelAmountPaid(0);
+                          }}
+                          placeholder="e.g. 15000"
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl pl-7 pr-3 py-2 text-xs text-white outline-none focus:border-emerald-500 font-semibold"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-1 mt-1.5">
+                        {[10000, 12000, 15000, 18000, 20000, 25000].map((fee) => (
+                          <button
+                            key={fee}
+                            type="button"
+                            onClick={() => {
+                              setNextLevelTotalFee(fee);
+                              if (nextLevelPaymentType === "Full Payment") setNextLevelAmountPaid(fee);
+                              else if (nextLevelPaymentType === "Half Payment") setNextLevelAmountPaid(Math.round(fee / 2));
+                              else if (nextLevelPaymentType === "Pending") setNextLevelAmountPaid(0);
+                            }}
+                            className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
+                              nextLevelTotalFee === fee
+                                ? "bg-emerald-500 text-black border-emerald-400 font-bold"
+                                : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
+                            }`}
+                          >
+                            ₹{fee.toLocaleString("en-IN")}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Payment Option */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                        Payment Option
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {[
+                          { id: "Full Payment", label: "Full Payment", sub: "100% Upfront" },
+                          { id: "Half Payment", label: "Half Payment", sub: "50% Upfront" },
+                          { id: "Custom Payment", label: "Custom", sub: "Specific amount" },
+                          { id: "Pending", label: "Pay Later", sub: "Pending" },
+                        ].map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => {
+                              setNextLevelPaymentType(opt.id as any);
+                              if (opt.id === "Full Payment") setNextLevelAmountPaid(nextLevelTotalFee);
+                              else if (opt.id === "Half Payment") setNextLevelAmountPaid(Math.round(nextLevelTotalFee / 2));
+                              else if (opt.id === "Pending") setNextLevelAmountPaid(0);
+                            }}
+                            className={`p-2 rounded-xl border text-left transition-all ${
+                              nextLevelPaymentType === opt.id
+                                ? "bg-emerald-500/20 border-emerald-500/60 text-white shadow-sm"
+                                : "bg-neutral-800/80 border-neutral-700 text-neutral-400 hover:text-white"
+                            }`}
+                          >
+                            <span className="block text-[11px] font-bold">{opt.label}</span>
+                            <span className="block text-[9px] text-neutral-400">{opt.sub}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Amount Paid Now & Balance */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                          Amount Paid Now (₹)
+                        </label>
+                        <div className="relative">
+                          <span className="absolute left-3 top-2 text-xs text-neutral-500 font-bold">₹</span>
+                          <input
+                            type="number"
+                            min="0"
+                            max={nextLevelTotalFee}
+                            value={nextLevelAmountPaid}
+                            onChange={(e) => {
+                              const val = Math.max(0, Number(e.target.value) || 0);
+                              setNextLevelAmountPaid(val);
+                              setNextLevelPaymentType("Custom Payment");
+                            }}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl pl-7 pr-3 py-2 text-xs text-white outline-none focus:border-emerald-500 font-semibold font-mono"
+                          />
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                          Remaining Balance
+                        </label>
+                        <div className="bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between">
+                          <span className="text-neutral-400">Due:</span>
+                          <span className={Math.max(0, nextLevelTotalFee - nextLevelAmountPaid) > 0 ? "text-amber-400" : "text-emerald-400"}>
+                            ₹{Math.max(0, nextLevelTotalFee - nextLevelAmountPaid).toLocaleString("en-IN")}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Payment Method & Date */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                          Payment Method
+                        </label>
+                        <select
+                          value={nextLevelPaymentMethod}
+                          onChange={(e) => setNextLevelPaymentMethod(e.target.value)}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500"
+                        >
+                          <option value="Bank Transfer">Bank Transfer (NEFT/IMPS)</option>
+                          <option value="UPI">UPI (GPay / PhonePe / Paytm)</option>
+                          <option value="Cash">Cash</option>
+                          <option value="Credit Card">Credit / Debit Card</option>
+                          <option value="Cheque">Cheque</option>
+                          <option value="Other">Other</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                          Payment Date
+                        </label>
+                        <input
+                          type="date"
+                          value={nextLevelPaymentDate}
+                          onChange={(e) => setNextLevelPaymentDate(e.target.value)}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 font-mono"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Payment Notes */}
+                    <div>
+                      <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1">
+                        Payment Reference / Notes
+                      </label>
+                      <input
+                        type="text"
+                        value={nextLevelPaymentNotes}
+                        onChange={(e) => setNextLevelPaymentNotes(e.target.value)}
+                        placeholder="e.g. Transaction Ref #, GPay UPI ID, or installment note"
+                        className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 placeholder:text-neutral-500"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
               <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3 text-[11px] text-emerald-300 leading-relaxed">
                 ✨ <strong>Zero duplication:</strong> The student continues under their existing profile. A new live progress bar is created for{" "}
                 <span className="font-bold underline">{selectedLevel || getNextLevelSuggestion()}</span>, and previous classes remain archived in Academic History.
@@ -1233,6 +1746,15 @@ export function StudentDetailsModal({
                       days: selectedDays.length > 0 ? selectedDays : ["Monday", "Wednesday", "Friday"],
                       meetingLink: meetingLink || undefined,
                       startDate: startDate || format(new Date(), "yyyy-MM-dd"),
+                      paymentDetails: recordNextLevelPayment ? {
+                        recordPayment: true,
+                        totalFee: Number(nextLevelTotalFee) || 0,
+                        amountPaid: Number(nextLevelAmountPaid) || 0,
+                        paymentType: nextLevelPaymentType,
+                        paymentMethod: nextLevelPaymentMethod,
+                        paymentDate: nextLevelPaymentDate,
+                        notes: nextLevelPaymentNotes,
+                      } : undefined,
                     });
                   }}
                   disabled={advanceLevelMutation.isPending}
@@ -1244,6 +1766,202 @@ export function StudentDetailsModal({
                     <>
                       <Sparkles className="w-4 h-4" />
                       Move to Next Level
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Schedule Extra Class Modal */}
+        {showScheduleExtraClassModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-neutral-900 border border-purple-500/30 rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Schedule Extra Class</h3>
+                    <p className="text-xs text-neutral-400">Add an extra or makeup session for {student.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleExtraClassModal(false)}
+                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {extraClassError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-xs text-red-400">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{extraClassError}</span>
+                </div>
+              )}
+
+              {/* Notice callout */}
+              <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-3 flex items-start gap-2.5">
+                <Sparkles className="w-4 h-4 text-purple-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-purple-200/90 leading-relaxed">
+                  <strong>⭐ Extra Class Session:</strong> This session will automatically be marked as an extra class and tracked alongside regular curriculum sessions for batch <strong className="text-white">{student.batch?.name || "Active Batch"}</strong>.
+                </div>
+              </div>
+
+              {/* Date */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                  Class Date
+                </label>
+                <input
+                  type="date"
+                  value={extraClassDate}
+                  onChange={(e) => setExtraClassDate(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all font-mono"
+                />
+              </div>
+
+              {/* Timings */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Class Timings</span>
+                  </span>
+                  <span className="text-[10px] text-purple-400 font-medium">Start & End</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">Start Time</span>
+                    <input
+                      type="time"
+                      value={extraClassStartTime}
+                      onChange={(e) => setExtraClassStartTime(e.target.value)}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">End Time</span>
+                    <input
+                      type="time"
+                      value={extraClassEndTime}
+                      onChange={(e) => setExtraClassEndTime(e.target.value)}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Teacher */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span>Assigned Teacher</span>
+                </label>
+                <select
+                  value={extraClassTeacher}
+                  onChange={(e) => setExtraClassTeacher(e.target.value)}
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all"
+                >
+                  <option value="">Select teacher...</option>
+                  {allTeachers.map((t: any) => (
+                    <option key={t._id} value={t._id}>
+                      {t.name} {t.specialization ? `(${t.specialization})` : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Subject / Topic */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                  Topic / Subject Covered
+                </label>
+                <input
+                  type="text"
+                  value={extraClassSubject}
+                  onChange={(e) => setExtraClassSubject(e.target.value)}
+                  placeholder="e.g. Doubt Clearing, Extra Practice, Project Revision"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all"
+                />
+              </div>
+
+              {/* Reason for Extra Class */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                  Reason for Extra Class
+                </label>
+                <input
+                  type="text"
+                  value={extraClassReason}
+                  onChange={(e) => setExtraClassReason(e.target.value)}
+                  placeholder="e.g. Missed session catch-up, Doubts clearing, Exam readiness"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all mb-1.5"
+                />
+                <div className="flex flex-wrap gap-1">
+                  {["Doubt Clearing", "Makeup Class", "Exam Prep", "Topic Catch-up", "Special Request"].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      onClick={() => setExtraClassReason(r)}
+                      className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
+                        extraClassReason === r
+                          ? "bg-purple-600 text-white border-purple-400 font-bold"
+                          : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Meeting Link */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Video className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Meeting / Classroom Link</span>
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-normal">Optional</span>
+                </label>
+                <input
+                  type="url"
+                  value={extraClassMeetingLink}
+                  onChange={(e) => setExtraClassMeetingLink(e.target.value)}
+                  placeholder="https://meet.google.com/xyz-abc or Zoom link"
+                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-purple-500 transition-all font-mono placeholder:text-neutral-500"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setShowScheduleExtraClassModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmitExtraClass()}
+                  disabled={scheduleExtraClassMutation.isPending}
+                  className="flex-1 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-purple-600/30"
+                >
+                  {scheduleExtraClassMutation.isPending ? (
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <Sparkles className="w-4 h-4" />
+                      Confirm Extra Class
                     </>
                   )}
                 </button>

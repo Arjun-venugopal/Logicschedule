@@ -503,13 +503,20 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                           <p className="text-sm font-semibold text-white">
                             {format(parseISO(s.date), "MMM d, yyyy")}
                           </p>
-                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
-                            s.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400' :
-                            s.status === 'Cancelled' ? 'bg-red-500/10 text-red-400' :
-                            'bg-amber-500/10 text-amber-400'
-                          }`}>
-                            {s.status}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            {s.isExtraClass && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                Extra Class
+                              </span>
+                            )}
+                            <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold ${
+                              s.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400' :
+                              s.status === 'Cancelled' ? 'bg-red-500/10 text-red-400' :
+                              'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              {s.status}
+                            </span>
+                          </div>
                         </div>
                         <p className="text-xs text-neutral-400 mb-1">{s.startTime} – {s.endTime}</p>
                         {s.subject && <p className="text-[11px] text-amber-200 bg-amber-500/10 px-2 py-0.5 rounded inline-block">Topic: {s.subject}</p>}

@@ -101,15 +101,25 @@ export const getSchedules = async (req: any, res: Response) => {
 // @access  Private/Admin
 export const createSchedule = async (req: any, res: Response): Promise<void> => {
   try {
-    const { teacher, batch, date, startTime, endTime, status, replacementTeacher, meetingLink, subject, notes } = req.body;
+    const { teacher, batch, date, startTime, endTime, status, replacementTeacher, meetingLink, subject, notes, isExtraClass, extraClassReason, nextExtraClassDate, nextExtraClassStartTime, nextExtraClassEndTime } = req.body;
 
-    if (!teacher || !batch || !date || !startTime || !endTime) {
+    let targetTeacherId = teacher;
+    if (req.user && req.user.role === 'Teacher') {
+      const teacherProfile = await Teacher.findOne({ user: req.user._id });
+      if (!teacherProfile) {
+        res.status(403).json({ message: 'Teacher profile not found' });
+        return;
+      }
+      targetTeacherId = teacherProfile._id;
+    }
+
+    if (!targetTeacherId || !batch || !date || !startTime || !endTime) {
       res.status(400).json({ message: 'Please provide teacher, batch, date, startTime and endTime' });
       return;
     }
 
     const normalizedDate = normalizeDateOnlyToUtc(date) || new Date(date);
-    const activeTeacherId = (replacementTeacher || teacher)?._id?.toString() || (replacementTeacher || teacher)?.toString();
+    const activeTeacherId = (replacementTeacher || targetTeacherId)?._id?.toString() || (replacementTeacher || targetTeacherId)?.toString();
 
     // Check for interval conflict across both regular schedules and demo sessions using binary search sweep
     const conflictResult = await checkTeacherConflict({
@@ -149,7 +159,7 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
     });
 
     const schedule = await Schedule.create({
-      teacher,
+      teacher: targetTeacherId,
       batch,
       date: normalizedDate,
       startTime,
@@ -162,8 +172,46 @@ export const createSchedule = async (req: any, res: Response): Promise<void> => 
       notes: notes || '',
       attendance: resolvedAttendance,
       cancellationReason: req.body.cancellationReason || '',
+      isExtraClass: Boolean(isExtraClass),
+      extraClassReason: extraClassReason || '',
+      nextExtraClassDate: nextExtraClassDate || '',
+      nextExtraClassStartTime: nextExtraClassStartTime || '',
+      nextExtraClassEndTime: nextExtraClassEndTime || '',
     });
 
+
+    if (Boolean(isExtraClass) && nextExtraClassDate) {
+      try {
+        const nextDateUtc = normalizeDateOnlyToUtc(nextExtraClassDate);
+        if (nextDateUtc) {
+          const existingNext = await Schedule.findOne({
+            teacher: targetTeacherId,
+            batch,
+            date: nextDateUtc,
+            isExtraClass: true,
+          });
+          if (!existingNext) {
+            const nextStart = nextExtraClassStartTime || startTime || '09:00';
+            const nextEnd = nextExtraClassEndTime || endTime || '10:00';
+            await Schedule.create({
+              teacher: targetTeacherId,
+              batch,
+              date: nextDateUtc,
+              startTime: nextStart,
+              endTime: nextEnd,
+              status: 'Scheduled',
+              subject: subject ? `${subject} (Extra Class)` : 'Extra Class',
+              notes: `Follow-up extra class scheduled after extra session on ${formatDateToYYYYMMDD(normalizedDate)}`,
+              isExtraClass: true,
+              extraClassReason: extraClassReason || 'Follow-up extra session',
+              attendance: [],
+            });
+          }
+        }
+      } catch (nextErr: any) {
+        console.error('[createSchedule] Error auto-scheduling next extra class:', nextErr.message);
+      }
+    }
 
     const populated = await schedule.populate([
       { path: 'teacher', select: 'name email' },
@@ -261,8 +309,15 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.rescheduleDate !== undefined) (schedule as any).rescheduleDate = req.body.rescheduleDate;
         if (req.body.rescheduleStartTime !== undefined) (schedule as any).rescheduleStartTime = req.body.rescheduleStartTime;
         if (req.body.rescheduleEndTime !== undefined) (schedule as any).rescheduleEndTime = req.body.rescheduleEndTime;
+        if (req.body.isExtraClass !== undefined) (schedule as any).isExtraClass = Boolean(req.body.isExtraClass);
+        if (req.body.extraClassReason !== undefined) (schedule as any).extraClassReason = req.body.extraClassReason;
+        if (req.body.nextExtraClassStartTime !== undefined) (schedule as any).nextExtraClassStartTime = req.body.nextExtraClassStartTime;
+        if (req.body.nextExtraClassEndTime !== undefined) (schedule as any).nextExtraClassEndTime = req.body.nextExtraClassEndTime;
+        if (req.body.nextExtraClassDate !== undefined) (schedule as any).nextExtraClassDate = req.body.nextExtraClassDate;
       } else {
-        // Teacher edits: only allowed to change status, subject, completed class note (notes), meetingLink, attendance, and cancellationReason
+        // Teacher edits: allowed to change status, subject, completed class note (notes), meetingLink, attendance, cancellationReason, isExtraClass, timings
+        if (req.body.startTime !== undefined) schedule.startTime = req.body.startTime;
+        if (req.body.endTime !== undefined) schedule.endTime = req.body.endTime;
         if (req.body.status !== undefined) schedule.status = req.body.status;
         if (req.body.subject !== undefined) (schedule as any).subject = req.body.subject;
         if (req.body.notes !== undefined) schedule.notes = req.body.notes;
@@ -273,6 +328,11 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.rescheduleDate !== undefined) (schedule as any).rescheduleDate = req.body.rescheduleDate;
         if (req.body.rescheduleStartTime !== undefined) (schedule as any).rescheduleStartTime = req.body.rescheduleStartTime;
         if (req.body.rescheduleEndTime !== undefined) (schedule as any).rescheduleEndTime = req.body.rescheduleEndTime;
+        if (req.body.isExtraClass !== undefined) (schedule as any).isExtraClass = Boolean(req.body.isExtraClass);
+        if (req.body.extraClassReason !== undefined) (schedule as any).extraClassReason = req.body.extraClassReason;
+        if (req.body.nextExtraClassStartTime !== undefined) (schedule as any).nextExtraClassStartTime = req.body.nextExtraClassStartTime;
+        if (req.body.nextExtraClassEndTime !== undefined) (schedule as any).nextExtraClassEndTime = req.body.nextExtraClassEndTime;
+        if (req.body.nextExtraClassDate !== undefined) (schedule as any).nextExtraClassDate = req.body.nextExtraClassDate;
       }
 
       // Final safeguard: any schedule strictly after today must be Scheduled
@@ -318,6 +378,42 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
       }
 
       const updatedSchedule = await schedule.save();
+
+      // If marked as Extra Class and nextExtraClassDate is specified, schedule the next extra class if not already scheduled
+      if (Boolean((schedule as any).isExtraClass) && (schedule as any).nextExtraClassDate) {
+        try {
+          const nextDateUtc = normalizeDateOnlyToUtc((schedule as any).nextExtraClassDate);
+          if (nextDateUtc) {
+            const batchId = schedule.batch?._id || schedule.batch;
+            const teacherId = schedule.teacher?._id || schedule.teacher;
+            const existingNext = await Schedule.findOne({
+              batch: batchId,
+              teacher: teacherId,
+              date: nextDateUtc,
+              isExtraClass: true,
+            });
+            if (!existingNext) {
+              const nextStart = req.body.nextExtraClassStartTime || (schedule as any).nextExtraClassStartTime || schedule.startTime || '09:00';
+              const nextEnd = req.body.nextExtraClassEndTime || (schedule as any).nextExtraClassEndTime || schedule.endTime || '10:00';
+              await Schedule.create({
+                teacher: teacherId,
+                batch: batchId,
+                date: nextDateUtc,
+                startTime: nextStart,
+                endTime: nextEnd,
+                status: 'Scheduled',
+                subject: schedule.subject ? `${schedule.subject} (Extra Class)` : 'Extra Class',
+                notes: `Follow-up extra class scheduled after extra session on ${formatDateToYYYYMMDD(new Date(schedule.date))}`,
+                isExtraClass: true,
+                extraClassReason: (schedule as any).extraClassReason || 'Follow-up extra session',
+                attendance: [],
+              });
+            }
+          }
+        } catch (nextErr: any) {
+          console.error('[updateSchedule] Error auto-scheduling next extra class:', nextErr.message);
+        }
+      }
 
       // Sync batch status if all classes are completed
       if (updatedSchedule.batch) {

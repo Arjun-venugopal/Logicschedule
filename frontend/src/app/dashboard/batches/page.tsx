@@ -129,6 +129,8 @@ export default function BatchesPage() {
   const createBatch = useMutation({
     mutationFn: (data: BatchForm) => api.post("/batches", {
       ...data,
+      preCompletedClasses: data.preCompletedClasses !== "" && data.preCompletedClasses !== undefined ? Number(data.preCompletedClasses) : 0,
+      numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
       timing: { startTime: data.startTime, endTime: data.endTime },
     }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
@@ -137,6 +139,8 @@ export default function BatchesPage() {
   const updateBatch = useMutation({
     mutationFn: ({ id, data }: { id: string; data: BatchForm }) => api.put(`/batches/${id}`, {
       ...data,
+      preCompletedClasses: data.preCompletedClasses !== "" && data.preCompletedClasses !== undefined ? Number(data.preCompletedClasses) : 0,
+      numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
       timing: { startTime: data.startTime, endTime: data.endTime },
     }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
@@ -163,7 +167,7 @@ export default function BatchesPage() {
       startDate: getSafeDateOnly(b.startDate),
       status: b.status || "Upcoming",
       numberOfSessions: b.numberOfSessions || "",
-      preCompletedClasses: b.preCompletedClasses || "",
+      preCompletedClasses: b.preCompletedClasses !== undefined && b.preCompletedClasses !== null && b.preCompletedClasses !== "" ? b.preCompletedClasses : (b.completedClassesCount || ""),
     });
     setEditingId(b._id);
     setModal(true);
@@ -224,7 +228,7 @@ export default function BatchesPage() {
 
   // Aggregate batch counts for: Total Batches, Ongoing, Completed, Dropped/Cancelled, Upcoming
   const batchStats = useMemo(() => {
-    let totalBatches = baseBatchesForStats.length;
+    const totalBatches = baseBatchesForStats.length;
     let ongoingBatches = 0;
     let completedBatches = 0;
     let droppedBatches = 0;
@@ -865,27 +869,29 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Pre-completed classes (if start date is in the past or batch is Completed) */}
-                {((form.startDate && new Date(form.startDate) < new Date(new Date().setHours(0,0,0,0))) || form.status === "Completed") && (
-                  <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
+                {/* Classes Already Completed */}
+                <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-sm font-medium text-neutral-300">
                       {form.status === "Completed" ? "Total Completed Classes" : "Classes Already Completed"}
                     </label>
-                    <input
-                      type="number"
-                      min={0}
-                      placeholder="e.g. 5"
-                      value={form.preCompletedClasses}
-                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
-                    />
-                    <p className="text-xs text-neutral-500 mt-1.5">
-                      {form.status === "Completed"
-                        ? "Specify how many classes were completed for this batch."
-                        : "Because the start date is in the past, specify how many classes have already been completed."}
-                    </p>
+                    <span className="text-[11px] text-neutral-500">Optional</span>
                   </div>
-                )}
+                  <input
+                    type="number"
+                    min={0}
+                    max={form.numberOfSessions ? Number(form.numberOfSessions) : undefined}
+                    placeholder="e.g. 5"
+                    value={form.preCompletedClasses}
+                    onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
+                  />
+                  <p className="text-xs text-neutral-500 mt-1.5">
+                    {form.status === "Completed"
+                      ? "Specify how many classes were completed for this batch."
+                      : "If this batch has already completed classes prior to today, specify how many here."}
+                  </p>
+                </div>
 
                 {/* Status */}
                 <div>

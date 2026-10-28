@@ -31,7 +31,11 @@ export function normalizeDateOnlyToUtc(val: any): Date | undefined {
  * Otherwise, generates schedules for 6 months (180 days) so classes are never cut off.
  * Detects conflicts with teacher's other batches and demo sessions in O(1) per date.
  */
-export async function generateSchedulesForBatch(batch: any, preCompletedClasses: number = 0, studentId?: string): Promise<number> {
+export async function generateSchedulesForBatch(
+  batch: any,
+  rawPreCompletedClasses: number = 0,
+  studentId?: string
+): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
 
   if (!startDate || !days?.length || !timing?.startTime || !timing?.endTime) {
@@ -41,23 +45,25 @@ export async function generateSchedulesForBatch(batch: any, preCompletedClasses:
   const cursor = normalizeDateOnlyToUtc(startDate);
   if (!cursor) return 0;
 
+  const preCompletedClasses = Math.max(0, Number(rawPreCompletedClasses) || Number(batch.preCompletedClasses) || 0);
+  const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
   const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
 
-  // Pre-fetch all schedules for this batch from startDate onwards
-  const existingSchedules = await Schedule.find({
-    batch: _id,
-    date: { $gte: cursor }
-  }).select('date');
+  const kolkata = getKolkataNow();
+  const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
 
+  // Pre-fetch all schedules for this batch
+  const existingSchedules = await Schedule.find({ batch: _id });
   const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
+  const existingCompletedCount = existingSchedules.filter((s: any) => s.status === 'Completed').length;
 
   // Pre-fetch teacher's other schedules and demo sessions to detect conflicts
   const teacherSlotsByDate = new Map<string, any[]>();
   if (assignedTeacher) {
     const teacherId = assignedTeacher._id ? assignedTeacher._id.toString() : assignedTeacher.toString();
     const [tScheds, tDemos] = await Promise.all([
-      Schedule.find({ teacher: teacherId, date: { $gte: cursor }, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch'),
-      DemoSession.find({ teacher: teacherId, date: { $gte: cursor }, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
+      Schedule.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch'),
+      DemoSession.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
     ]);
 
     const addToMap = (items: any[]) => {
@@ -77,30 +83,88 @@ export async function generateSchedulesForBatch(batch: any, preCompletedClasses:
     addToMap(tDemos);
   }
 
+  // Pre-fetch students of this batch so attendance can be marked for pre-completed classes
+  let batchStudentIds: string[] = [];
+  try {
+    const studentsInBatch = await Student.find({ batch: _id }).select('_id');
+    batchStudentIds = studentsInBatch.map((s: any) => s._id.toString());
+  } catch {
+    // ignore
+  }
+  if (studentId && !batchStudentIds.includes(studentId)) {
+    batchStudentIds.push(studentId);
+  }
+
   const schedulesToCreate: any[] = [];
-  const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
+  const neededCompleted = Math.max(0, preCompletedClasses - existingCompletedCount);
+
+  // Step 1: If preCompletedClasses > 0 and we need more completed schedules:
+  // Generate neededCompleted schedules in the past (dates <= todayStr)
+  if (neededCompleted > 0) {
+    const baseTimestamp = Math.min(cursor.getTime(), todayEnd.getTime());
+    const backCursor = new Date(baseTimestamp);
+    let backDaysScanned = 0;
+
+    while (schedulesToCreate.length < neededCompleted && backDaysScanned < 365) {
+      if (selectedDayIndexes.has(backCursor.getUTCDay())) {
+        const backTime = backCursor.getTime();
+        const dateKey = backCursor.toISOString().split('T')[0];
+
+        if (dateKey <= kolkata.todayStr && !existingTimes.has(backTime)) {
+          const daySlots = teacherSlotsByDate.get(dateKey) || [];
+          const isConflict = checkIntervalConflict(daySlots, {
+            startTime: timing.startTime,
+            endTime: timing.endTime,
+          });
+
+          const completedSlot = {
+            teacher: assignedTeacher || undefined,
+            batch: _id,
+            date: new Date(backTime),
+            startTime: timing.startTime,
+            endTime: timing.endTime,
+            status: 'Completed',
+            conflict: isConflict,
+            meetingLink: meetingLink || '',
+            notes: 'Auto-generated as Completed (Classes Already Completed)',
+            attendance: batchStudentIds.map((sId) => ({
+              studentId: sId,
+              isPresent: true,
+              date: new Date(backTime),
+            })),
+          };
+
+          schedulesToCreate.unshift(completedSlot); // Keep in chronological order
+          existingTimes.add(backTime);
+          daySlots.push(completedSlot);
+          teacherSlotsByDate.set(dateKey, daySlots);
+        }
+      }
+      backCursor.setUTCDate(backCursor.getUTCDate() - 1);
+      backDaysScanned++;
+    }
+  }
+
+  // Step 2: Generate remaining upcoming/scheduled classes forward from startDate onwards
+  const totalCompletedSoFar = existingCompletedCount + schedulesToCreate.length;
+  const forwardCursor = new Date(cursor.getTime());
+  let forwardDaysScanned = 0;
+  let scheduledCount = existingSchedules.filter((s: any) => s.status !== 'Completed').length;
   const maxScanDays = 365;
-  let daysScanned = 0;
-  let matchingDaysCount = existingSchedules.length;
 
-  while (daysScanned < maxScanDays) {
-    if (targetSessions > 0 && matchingDaysCount >= targetSessions) {
+  while (forwardDaysScanned < maxScanDays) {
+    if (targetSessions > 0 && (totalCompletedSoFar + scheduledCount) >= targetSessions) {
       break;
     }
-    if (targetSessions === 0 && daysScanned >= 180) {
+    if (targetSessions === 0 && forwardDaysScanned >= 180) {
       break;
     }
 
-    if (selectedDayIndexes.has(cursor.getUTCDay())) {
-      const cursorTime = cursor.getTime();
+    if (selectedDayIndexes.has(forwardCursor.getUTCDay())) {
+      const forwardTime = forwardCursor.getTime();
 
-      if (!existingTimes.has(cursorTime)) {
-        const dateKey = cursor.toISOString().split('T')[0];
-        const kolkata = getKolkataNow();
-        // Crucial requirement: only today and previous days can ever be marked Completed.
-        // Any class strictly after today (dateKey > kolkata.todayStr) MUST ALWAYS be 'Scheduled'.
-        const isPastOrToday = dateKey <= kolkata.todayStr;
-        const isCompleted = isPastOrToday && (schedulesToCreate.length < preCompletedClasses);
+      if (!existingTimes.has(forwardTime)) {
+        const dateKey = forwardCursor.toISOString().split('T')[0];
         const daySlots = teacherSlotsByDate.get(dateKey) || [];
         const isConflict = checkIntervalConflict(daySlots, {
           startTime: timing.startTime,
@@ -110,26 +174,26 @@ export async function generateSchedulesForBatch(batch: any, preCompletedClasses:
         const newSlot = {
           teacher: assignedTeacher || undefined,
           batch: _id,
-          date: new Date(cursorTime),
+          date: new Date(forwardTime),
           startTime: timing.startTime,
           endTime: timing.endTime,
-          status: isCompleted ? 'Completed' : 'Scheduled',
+          status: 'Scheduled',
           conflict: isConflict,
           meetingLink: meetingLink || '',
-          notes: isCompleted ? `Auto-generated as Completed (Late join)` : `Auto-generated for batch`,
-          attendance: studentId ? [{ studentId, isPresent: isCompleted, date: new Date(cursorTime) }] : [],
+          notes: 'Auto-generated for batch',
+          attendance: studentId ? [{ studentId, isPresent: false, date: new Date(forwardTime) }] : [],
         };
 
         schedulesToCreate.push(newSlot);
-        existingTimes.add(cursorTime);
+        existingTimes.add(forwardTime);
         daySlots.push(newSlot);
         teacherSlotsByDate.set(dateKey, daySlots);
+        scheduledCount++;
       }
-      matchingDaysCount++;
     }
 
-    cursor.setUTCDate(cursor.getUTCDate() + 1);
-    daysScanned++;
+    forwardCursor.setUTCDate(forwardCursor.getUTCDate() + 1);
+    forwardDaysScanned++;
   }
 
   if (schedulesToCreate.length > 0) {

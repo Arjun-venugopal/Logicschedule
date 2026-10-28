@@ -5,8 +5,9 @@ import { api } from "@/lib/axios";
 import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, AlertTriangle } from "lucide-react";
+import { Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, AlertTriangle, Sparkles, Calendar } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { format, parseISO } from "date-fns";
 
 export default function TeacherPerformancePage() {
   const { user } = useAuthStore();
@@ -49,7 +50,7 @@ export default function TeacherPerformancePage() {
     );
   }
 
-  const { teacher, stats } = performance;
+  const { teacher, stats, extraClassRecords = [] } = performance;
 
   const pieChartData = [
     { name: "Completed", value: stats.completedClasses },
@@ -66,7 +67,7 @@ export default function TeacherPerformancePage() {
       </div>
 
       {/* Key Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs uppercase font-semibold text-neutral-500">My Batches</span>
@@ -111,6 +112,16 @@ export default function TeacherPerformancePage() {
           </div>
         </div>
       </div>
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs uppercase font-semibold text-neutral-500">Extra Classes</span>
+            <Sparkles className="w-5 h-5 text-purple-400" />
+          </div>
+          <div>
+            <p className="text-2xl sm:text-3xl font-bold text-white">{stats.extraClassesCount || 0}</p>
+            <p className="text-[10px] text-purple-300/80 mt-1">{stats.extraHoursTaught || 0} hrs makeup & doubts</p>
+          </div>
+        </div>
 
       {/* Middle Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6">
@@ -191,6 +202,100 @@ export default function TeacherPerformancePage() {
         </div>
       </div>
 
+
+      {/* Extra Classes Conducted & Scheduled Dates Section */}
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-neutral-800 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-300 flex items-center justify-center border border-purple-500/30">
+              <Sparkles className="w-4 h-4 text-purple-400" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-white text-base">Extra Classes & Performance Dates</h3>
+              <p className="text-neutral-400 text-xs mt-0.5">Makeup sessions, doubt-clearing, and upcoming scheduled dates</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-xs text-neutral-400">
+            <span className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
+              Total Extra Classes: {stats.extraClassesCount || 0}
+            </span>
+            <span className="px-2.5 py-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
+              Extra Hours: {stats.extraHoursTaught || 0} hrs
+            </span>
+          </div>
+        </div>
+
+        {extraClassRecords.length === 0 ? (
+          <div className="text-center py-8 text-neutral-500 text-xs flex flex-col items-center gap-2">
+            <Sparkles className="w-6 h-6 text-neutral-600 opacity-60" />
+            <p>No extra classes recorded yet. Extra classes updated in Completed Classes or Schedule will appear here.</p>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="border-b border-neutral-800 text-neutral-400">
+                  <th className="py-2.5 px-3 font-semibold">Date & Class Time</th>
+                  <th className="py-2.5 px-3 font-semibold">Batch / Student</th>
+                  <th className="py-2.5 px-3 font-semibold">Next Extra Class Date & Time</th>
+                  <th className="py-2.5 px-3 font-semibold">Subject / Remarks</th>
+                  <th className="py-2.5 px-3 font-semibold text-right">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-neutral-800/60">
+                {extraClassRecords.map((item: any) => {
+                  const formattedDate = item.date ? format(parseISO(item.date), "MMM d, yyyy") : "—";
+                  const nextDateStr = item.nextExtraClassDate ? format(parseISO(item.nextExtraClassDate), "MMM d, yyyy") : "—";
+                  return (
+                    <tr key={item._id} className="hover:bg-neutral-800/30 transition-colors">
+                      <td className="py-3 px-3 text-white font-medium whitespace-nowrap">
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-purple-400" />
+                          <span>{formattedDate}</span>
+                        </div>
+                        <span className="text-[10px] text-neutral-500 ml-5 block">{item.startTime} – {item.endTime}</span>
+                      </td>
+                      <td className="py-3 px-3 text-neutral-200 font-medium">
+                        {item.batchName}
+                      </td>
+                      <td className="py-3 px-3 text-neutral-300 whitespace-nowrap">
+                        {item.nextExtraClassDate ? (
+                          <div>
+                            <span className="inline-flex items-center gap-1 text-purple-300 font-medium">
+                              <Calendar className="w-3 h-3 text-purple-400" />
+                              {nextDateStr}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 block ml-4">
+                              {item.nextExtraClassStartTime || item.startTime} – {item.nextExtraClassEndTime || item.endTime}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-neutral-500 italic">None scheduled</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-neutral-300 max-w-xs truncate">
+                        <span className="text-white block font-medium truncate">{item.subject}</span>
+                        {item.extraClassReason && (
+                          <span className="text-[10px] text-neutral-400 block truncate">Focus: {item.extraClassReason}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-3 text-right whitespace-nowrap">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold ${
+                          item.status === "Completed"
+                            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"
+                            : "bg-blue-500/20 text-blue-400 border border-blue-500/30"
+                        }`}>
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

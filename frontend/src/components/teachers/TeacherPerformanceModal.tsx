@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, Calendar, Phone, Filter, Video } from "lucide-react";
+import { X, Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, Calendar, Phone, Filter, Video, Sparkles } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 
@@ -20,7 +20,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
   const [studentId, setStudentId] = useState("all");
   const [selectedDay, setSelectedDay] = useState("all");
   const [specificDate, setSpecificDate] = useState("");
-  const [activeDetailView, setActiveDetailView] = useState<'demos' | 'batches' | 'classes' | 'students'>('demos');
+  const [activeDetailView, setActiveDetailView] = useState<'demos' | 'batches' | 'classes' | 'students' | 'extraClasses'>('demos');
 
   const clearFilters = () => {
     setTimeRange("all");
@@ -65,7 +65,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
     );
   }
 
-  const { teacher, stats, demoSessions = [], assignedStudents = [], filteredBatches = [], filteredSchedules = [] } = data;
+  const { teacher, stats, demoSessions = [], assignedStudents = [], filteredBatches = [], filteredSchedules = [], extraClassRecords = [] } = data;
 
   const filteredDemoSessions = (demoSessions || []).filter((demo: any) => {
     if (selectedDay !== "all") {
@@ -213,7 +213,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
         {/* Content */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 space-y-6 sm:space-y-8">
           {/* Key Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 sm:gap-4">
             <div 
               onClick={() => setActiveDetailView('batches')}
               className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'batches' ? 'border-amber-500 bg-amber-500/5' : 'border-neutral-800 hover:border-amber-500/50'}`}
@@ -260,6 +260,17 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
               <span className="text-[10px] text-neutral-500 mt-1">
                 {stats.completedDemos} of {stats.totalDemos} completed
               </span>
+            </div>
+            <div 
+              onClick={() => setActiveDetailView('extraClasses')}
+              className={`bg-neutral-800/50 border rounded-xl p-3 sm:p-4 flex flex-col justify-between cursor-pointer transition-colors ${activeDetailView === 'extraClasses' ? 'border-purple-500 bg-purple-500/10' : 'border-neutral-800 hover:border-purple-500/50'}`}
+            >
+              <div className="flex items-center justify-between mb-1 sm:mb-2">
+                <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Extra Classes</span>
+                <Sparkles className="w-4 h-4 text-purple-400" />
+              </div>
+              <p className="text-xl sm:text-2xl font-bold text-white">{stats.extraClassesCount || 0}</p>
+              <span className="text-[10px] text-purple-300/80 mt-1">{stats.extraHoursTaught || 0} hrs extra</span>
             </div>
           </div>
 
@@ -394,9 +405,21 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                     filteredSchedules.map((schedule: any) => (
                       <div key={schedule._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                         <div className="min-w-0">
-                          <h4 className="text-sm font-bold text-white mb-1 truncate">{schedule.batch?.name || "Unknown Batch"}</h4>
-                          <p className="text-xs text-neutral-400 flex items-center gap-2">
-                            <Calendar className="w-3 h-3 shrink-0" /> {schedule.date ? format(parseISO(schedule.date), "MMM d, yyyy") : ""}
+                          <h4 className="text-sm font-bold text-white mb-1 truncate flex items-center gap-2">
+                            <span>{schedule.batch?.name || "Unknown Batch"}</span>
+                            {schedule.isExtraClass && (
+                              <span className="text-[9px] px-1.5 py-0.5 rounded font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                ⭐ Extra Class
+                              </span>
+                            )}
+                          </h4>
+                          <p className="text-xs text-neutral-400 flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 shrink-0" /> {schedule.date ? format(parseISO(schedule.date), "MMM d, yyyy") : ""}
+                            </span>
+                            {schedule.nextExtraClassDate && (
+                              <span className="text-purple-300 text-[10px]">· Next Extra: {format(parseISO(schedule.nextExtraClassDate), "MMM d, yyyy")} ({schedule.nextExtraClassStartTime || schedule.startTime} - {schedule.nextExtraClassEndTime || schedule.endTime})</span>
+                            )}
                           </p>
                         </div>
                         <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1">
@@ -500,6 +523,68 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
                             </p>
                           </div>
                         )}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+
+            {activeDetailView === 'extraClasses' && (
+              <>
+                <div className="flex items-center justify-between pb-2">
+                  <h3 className="font-semibold text-white flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-purple-400" /> Extra Classes & Performance Dates ({extraClassRecords.length})
+                  </h3>
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="px-2 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 font-medium">
+                      Completed: {stats.extraClassesCount || 0}
+                    </span>
+                    <span className="px-2 py-0.5 rounded bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
+                      {stats.extraHoursTaught || 0} hrs
+                    </span>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  {extraClassRecords.length === 0 ? (
+                    <div className="py-6 text-center text-neutral-500 bg-neutral-800/20 rounded-xl border border-neutral-850 text-sm">
+                      No extra classes recorded for this teacher yet.
+                    </div>
+                  ) : (
+                    extraClassRecords.map((item: any) => (
+                      <div key={item._id} className="bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 mb-1 flex-wrap">
+                            <h4 className="text-sm font-bold text-white truncate">{item.batchName}</h4>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                              Extra Class
+                            </span>
+                          </div>
+                          <p className="text-xs text-neutral-400 flex items-center gap-2 flex-wrap">
+                            <span className="flex items-center gap-1 text-white">
+                              <Calendar className="w-3 h-3 text-purple-400 shrink-0" />
+                              {item.date ? format(parseISO(item.date), "MMM d, yyyy") : "—"}
+                            </span>
+                            <span>· {item.startTime} - {item.endTime}</span>
+                            {item.nextExtraClassDate && (
+                              <span className="text-purple-300 font-medium flex items-center gap-1">
+                                · Next Session: {format(parseISO(item.nextExtraClassDate), "MMM d, yyyy")} ({item.nextExtraClassStartTime || item.startTime} - {item.nextExtraClassEndTime || item.endTime})
+                              </span>
+                            )}
+                          </p>
+                          {item.extraClassReason && (
+                            <p className="text-[11px] text-neutral-400 mt-1">Focus: {item.extraClassReason}</p>
+                          )}
+                        </div>
+                        <div className="sm:text-right shrink-0 flex sm:flex-col items-center sm:items-end justify-between gap-1">
+                          <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold ${
+                            item.status === 'Completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                            item.status === 'Scheduled' ? 'bg-blue-500/10 text-blue-400 border border-blue-500/20' :
+                            'bg-neutral-500/10 text-neutral-400 border border-neutral-500/20'
+                          }`}>
+                            {item.status}
+                          </span>
+                        </div>
                       </div>
                     ))
                   )}
