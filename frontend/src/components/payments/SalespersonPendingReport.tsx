@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   CreditCard,
   History,
@@ -58,6 +58,7 @@ interface SalespersonPendingReportProps {
   onRecordPayment: (payment: any) => void;
   onViewHistory: (payment: any) => void;
   onExportCsv: () => void;
+  externalSearch?: string;
 }
 
 export function SalespersonPendingReport({
@@ -68,9 +69,16 @@ export function SalespersonPendingReport({
   onRecordPayment,
   onViewHistory,
   onExportCsv,
+  externalSearch = "",
 }: SalespersonPendingReportProps) {
-  const [localSearch, setLocalSearch] = useState("");
+  const [localSearch, setLocalSearch] = useState(externalSearch);
   const [statusFilter, setStatusFilter] = useState<"all" | "overdue" | "due">("all");
+
+  useEffect(() => {
+    if (externalSearch !== undefined) {
+      setLocalSearch(externalSearch);
+    }
+  }, [externalSearch]);
 
   // Calculate counts per salesperson
   const countsBySalesperson = useMemo(() => {
@@ -105,14 +113,14 @@ export function SalespersonPendingReport({
       }
 
       // Search filter
-      if (localSearch) {
-        const q = localSearch.toLowerCase();
-        const matchesName = item.studentName.toLowerCase().includes(q);
-        const matchesParent = item.parentName.toLowerCase().includes(q);
-        const matchesPhone = item.contactNumber.toLowerCase().includes(q);
-        const matchesEmail = item.email.toLowerCase().includes(q);
-        const matchesCourse = item.courseName.toLowerCase().includes(q);
-        const matchesSales = item.salesperson.toLowerCase().includes(q);
+      const activeSearch = (localSearch || "").trim().toLowerCase();
+      if (activeSearch) {
+        const matchesName = (item.studentName || "").toLowerCase().includes(activeSearch);
+        const matchesParent = (item.parentName || "").toLowerCase().includes(activeSearch);
+        const matchesPhone = (item.contactNumber || "").toLowerCase().includes(activeSearch);
+        const matchesEmail = (item.email || "").toLowerCase().includes(activeSearch);
+        const matchesCourse = (item.courseName || "").toLowerCase().includes(activeSearch);
+        const matchesSales = (item.salesperson || "").toLowerCase().includes(activeSearch);
         if (!matchesName && !matchesParent && !matchesPhone && !matchesEmail && !matchesCourse && !matchesSales) {
           return false;
         }

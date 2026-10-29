@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -76,6 +76,13 @@ export default function RecycleBinPage() {
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebounce(searchQuery, 250);
+  const { searchQuery: globalSearch, setSearchQuery: setGlobalSearch } = useSearchStore();
+
+  useEffect(() => {
+    if (globalSearch !== undefined && globalSearch !== searchQuery) {
+      setSearchQuery(globalSearch);
+    }
+  }, [globalSearch]);
 
   // Modals state
   const [restoreWithEmailModal, setRestoreWithEmailModal] = useState<BinItem | null>(null);
@@ -547,7 +554,10 @@ export default function RecycleBinPage() {
           <input
             type="text"
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setGlobalSearch(e.target.value);
+            }}
             placeholder={
               activeTab === "emails"
                 ? "Search emails or users..."
@@ -557,7 +567,10 @@ export default function RecycleBinPage() {
           />
           {searchQuery && (
             <button
-              onClick={() => setSearchQuery("")}
+              onClick={() => {
+                setSearchQuery("");
+                setGlobalSearch("");
+              }}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-neutral-300"
             >
               <X className="w-3.5 h-3.5" />

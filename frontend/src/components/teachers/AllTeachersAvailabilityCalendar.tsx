@@ -149,10 +149,13 @@ export function AllTeachersAvailabilityCalendar() {
   // Filtered teachers list
   const filteredTeachers = useMemo(() => {
     return teachers.filter((teacher) => {
+      const q = (searchQuery || "").trim().toLowerCase();
       const matchesSearch =
-        teacher.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        teacher.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        teacher.subjectExpertise?.some((s) => s.toLowerCase().includes(searchQuery.toLowerCase()));
+        !q ||
+        (teacher.name || "").toLowerCase().includes(q) ||
+        (teacher.email || "").toLowerCase().includes(q) ||
+        (teacher.phone || "").toLowerCase().includes(q) ||
+        Boolean(teacher.subjectExpertise?.some((s: string) => (s || "").toLowerCase().includes(q)));
 
       const matchesTeacher =
         selectedTeacherId === "ALL" || teacher._id === selectedTeacherId;

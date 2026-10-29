@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock3, CheckCircle2 } from "lucide-react";
+import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import dynamic from "next/dynamic";
@@ -12,13 +12,13 @@ import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 
 const BatchAnalyticsModal = dynamic(
-  () => import("@/components/batches/BatchAnalyticsModal").then((m) => m.BatchAnalyticsModal),
-  { ssr: false }
+  () => import("@/components/batches/BatchAnalyticsModal"),
+  { ssr: false, loading: () => null }
 );
 
 const ActiveBatchesAnalyticsModal = dynamic(
-  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then((m) => m.ActiveBatchesAnalyticsModal),
-  { ssr: false }
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal"),
+  { ssr: false, loading: () => null }
 );
 
 const STATUS_COLORS: Record<string, string> = {
@@ -62,6 +62,61 @@ const formatSafeDisplayDate = (val: any): string => {
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
+const computeEndTime = (startTime?: string, durationMinutes = 60): string => {
+  if (!startTime) return "10:00";
+  const parts = startTime.split(":");
+  if (parts.length < 2) return startTime;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return startTime;
+  const totalMin = hours * 60 + minutes + durationMinutes;
+  const endHours = Math.floor((totalMin / 60) % 24);
+  const endMin = totalMin % 60;
+  return `${String(endHours).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
+};
+
+const formatTime12h = (time24?: string): string => {
+  if (!time24) return "—";
+  const [hStr, mStr] = time24.split(":");
+  const h = parseInt(hStr, 10);
+  const m = parseInt(mStr || "0", 10);
+  if (isNaN(h)) return time24;
+  const period = h >= 12 ? "PM" : "AM";
+  const h12 = h % 12 === 0 ? 12 : h % 12;
+  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
+};
+
+const formatBatchTiming = (batch: any): string => {
+  if (batch?.dayTimings && typeof batch.dayTimings === "object") {
+    const keys = Object.keys(batch.dayTimings);
+    if (keys.length > 0) {
+      const days = batch.days && batch.days.length > 0 ? batch.days : keys;
+      const relevantEntries = days
+        .map((d: string) => ({
+          day: d,
+          start: batch.dayTimings[d]?.startTime,
+        }))
+        .filter((e: any) => Boolean(e.start));
+
+      if (relevantEntries.length > 0) {
+        const uniqueTimes = Array.from(new Set<string>(relevantEntries.map((e: any) => String(e.start))));
+        if (uniqueTimes.length === 1) {
+          const shortDays = relevantEntries.map((e: any) => e.day.slice(0, 3)).join(", ");
+          return `${shortDays}: ${formatTime12h(uniqueTimes[0])}`;
+        }
+        return relevantEntries
+          .map((e: any) => `${e.day.slice(0, 3)}: ${formatTime12h(e.start)}`)
+          .join(" • ");
+      }
+    }
+  }
+
+  if (batch?.timing?.startTime) {
+    return `${formatTime12h(batch.timing.startTime)}${batch.timing.endTime ? ` - ${formatTime12h(batch.timing.endTime)}` : ""}`;
+  }
+  return "—";
+};
+
 type BatchForm = {
   name: string;
   subject: string;
@@ -70,6 +125,8 @@ type BatchForm = {
   startTime: string;
   endTime: string;
   days: string[];
+  timeMode: "same" | "different";
+  dayTimings: Record<string, { startTime: string; endTime: string }>;
   meetingLink: string;
   durationType: string;
   startDate: string;
@@ -86,6 +143,8 @@ const emptyForm = (): BatchForm => ({
   startTime: "09:00",
   endTime: "10:00",
   days: [],
+  timeMode: "same",
+  dayTimings: {},
   meetingLink: "",
   durationType: "Custom",
   startDate: "",
@@ -111,6 +170,7 @@ export default function BatchesPage() {
   const [filterTeacher, setFilterTeacher] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterCourse, setFilterCourse] = useState<string>("");
+  const [formError, setFormError] = useState<string | null>(null);
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -126,23 +186,61 @@ export default function BatchesPage() {
     refetchOnWindowFocus: false,
   });
 
-  const createBatch = useMutation({
-    mutationFn: (data: BatchForm) => api.post("/batches", {
+  const validateAndPreparePayload = (data: BatchForm) => {
+    if (!data.name || !data.name.trim()) {
+      throw new Error("Batch name is required.");
+    }
+    if (!data.days || data.days.length === 0) {
+      throw new Error("Please select at least one class day.");
+    }
+
+    const preparedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+
+    if (data.timeMode === "different") {
+      for (const day of data.days) {
+        const t = data.dayTimings?.[day];
+        if (!t || !t.startTime) {
+          throw new Error(`Please select a start time for ${day}.`);
+        }
+        preparedDayTimings[day] = {
+          startTime: t.startTime,
+          endTime: t.endTime || computeEndTime(t.startTime, 60),
+        };
+      }
+    } else {
+      if (!data.startTime) {
+        throw new Error("Please select a class start time.");
+      }
+      const sharedEnd = data.endTime || computeEndTime(data.startTime, 60);
+      for (const day of data.days) {
+        preparedDayTimings[day] = {
+          startTime: data.startTime,
+          endTime: sharedEnd,
+        };
+      }
+    }
+
+    const firstDay = data.days[0];
+    const primaryStart = data.timeMode === "different" && firstDay ? preparedDayTimings[firstDay]?.startTime : (data.startTime || "09:00");
+    const primaryEnd = data.timeMode === "different" && firstDay ? preparedDayTimings[firstDay]?.endTime : (data.endTime || computeEndTime(primaryStart, 60));
+
+    return {
       ...data,
       preCompletedClasses: data.preCompletedClasses !== "" && data.preCompletedClasses !== undefined ? Number(data.preCompletedClasses) : 0,
       numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
-      timing: { startTime: data.startTime, endTime: data.endTime },
-    }),
+      timing: { startTime: primaryStart, endTime: primaryEnd },
+      timeMode: data.timeMode,
+      dayTimings: preparedDayTimings,
+    };
+  };
+
+  const createBatch = useMutation({
+    mutationFn: (data: any) => api.post("/batches", data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
   });
 
   const updateBatch = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: BatchForm }) => api.put(`/batches/${id}`, {
-      ...data,
-      preCompletedClasses: data.preCompletedClasses !== "" && data.preCompletedClasses !== undefined ? Number(data.preCompletedClasses) : 0,
-      numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
-      timing: { startTime: data.startTime, endTime: data.endTime },
-    }),
+    mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/batches/${id}`, data),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
   });
 
@@ -151,17 +249,53 @@ export default function BatchesPage() {
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); setDeleteConfirm(null); },
   });
 
-  const openCreate = () => { setForm(emptyForm()); setEditingId(null); setModal(true); };
+  const openCreate = () => {
+    setForm(emptyForm());
+    setFormError(null);
+    setEditingId(null);
+    setModal(true);
+  };
 
   const openEdit = (b: any) => {
+    const bDays = Array.isArray(b.days) ? b.days : [];
+    const existingDayTimings = (b.dayTimings && typeof b.dayTimings === "object") ? { ...b.dayTimings } : {};
+    const fallbackStart = b.timing?.startTime || "09:00";
+    const fallbackEnd = b.timing?.endTime || computeEndTime(fallbackStart, 60);
+
+    let inferredMode: "same" | "different" = b.timeMode || "same";
+    const dayTimingValues = Object.values(existingDayTimings) as Array<{ startTime: string; endTime: string }>;
+    if (!b.timeMode && dayTimingValues.length > 1) {
+      const distinctStarts = new Set(dayTimingValues.map((v) => v.startTime).filter(Boolean));
+      if (distinctStarts.size > 1) {
+        inferredMode = "different";
+      }
+    }
+
+    const populatedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+    bDays.forEach((day: string) => {
+      if (existingDayTimings[day] && existingDayTimings[day].startTime) {
+        populatedDayTimings[day] = {
+          startTime: existingDayTimings[day].startTime,
+          endTime: existingDayTimings[day].endTime || computeEndTime(existingDayTimings[day].startTime, 60),
+        };
+      } else {
+        populatedDayTimings[day] = {
+          startTime: fallbackStart,
+          endTime: fallbackEnd,
+        };
+      }
+    });
+
     setForm({
-      name: b.name,
-      subject: b.subject,
+      name: b.name || "",
+      subject: b.subject || "",
       studentsCount: b.studentsCount || 0,
       assignedTeacher: b.assignedTeacher?._id || b.assignedTeacher || "",
-      startTime: b.timing?.startTime || "09:00",
-      endTime: b.timing?.endTime || "10:00",
-      days: b.days || [],
+      startTime: fallbackStart,
+      endTime: fallbackEnd,
+      days: bDays,
+      timeMode: inferredMode,
+      dayTimings: populatedDayTimings,
       meetingLink: b.meetingLink || "",
       durationType: b.durationType || "Custom",
       startDate: getSafeDateOnly(b.startDate),
@@ -169,23 +303,54 @@ export default function BatchesPage() {
       numberOfSessions: b.numberOfSessions || "",
       preCompletedClasses: b.preCompletedClasses !== undefined && b.preCompletedClasses !== null && b.preCompletedClasses !== "" ? b.preCompletedClasses : (b.completedClassesCount || ""),
     });
+    setFormError(null);
     setEditingId(b._id);
     setModal(true);
   };
 
-  const closeModal = () => { setModal(false); setForm(emptyForm()); setEditingId(null); };
+  const closeModal = () => {
+    setModal(false);
+    setForm(emptyForm());
+    setFormError(null);
+    setEditingId(null);
+  };
 
   const toggleDay = (day: string) => {
-    setForm((f) => ({
-      ...f,
-      days: f.days.includes(day) ? f.days.filter((d) => d !== day) : [...f.days, day],
-    }));
+    setForm((f) => {
+      const isSelected = f.days.includes(day);
+      const updatedDays = isSelected ? f.days.filter((d) => d !== day) : [...f.days, day];
+      const updatedDayTimings = { ...f.dayTimings };
+
+      if (isSelected) {
+        delete updatedDayTimings[day];
+      } else {
+        if (!updatedDayTimings[day]) {
+          const defaultStart = f.startTime || "09:00";
+          updatedDayTimings[day] = {
+            startTime: defaultStart,
+            endTime: f.endTime || computeEndTime(defaultStart, 60),
+          };
+        }
+      }
+
+      return {
+        ...f,
+        days: updatedDays,
+        dayTimings: updatedDayTimings,
+      };
+    });
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (editingId) updateBatch.mutate({ id: editingId, data: form });
-    else createBatch.mutate(form);
+    setFormError(null);
+    try {
+      const payload = validateAndPreparePayload(form);
+      if (editingId) updateBatch.mutate({ id: editingId, data: payload as any });
+      else createBatch.mutate(payload as any);
+    } catch (err: any) {
+      setFormError(err.message || "Please check form errors");
+    }
   };
 
   const copyLink = (link: string, id: string) => {
@@ -204,7 +369,7 @@ export default function BatchesPage() {
     const targetSessions = (b.numberOfSessions && Number(b.numberOfSessions) > 0)
       ? Number(b.numberOfSessions)
       : (b.totalClassesCount || 0);
-    const completedCount = b.completedClassesCount || 0;
+    const completedCount = Math.max(b.completedClassesCount || 0, Number(b.preCompletedClasses) || 0);
     const isClassCompleted = b.status === "Completed" || (targetSessions > 0 && completedCount >= targetSessions);
     const rawStatus = (b.status || "").toLowerCase();
 
@@ -542,7 +707,7 @@ export default function BatchesPage() {
               ? Number(batch.numberOfSessions)
               : (batch.totalClassesCount || 0);
 
-            const completedCount = batch.completedClassesCount || 0;
+            const completedCount = Math.max(batch.completedClassesCount || 0, Number(batch.preCompletedClasses) || 0);
             const isCompleted = batch.status === "Completed" || (targetSessions > 0 && completedCount >= targetSessions);
             
             return (
@@ -631,8 +796,8 @@ export default function BatchesPage() {
                   </div>
                   <div className="bg-neutral-800/60 rounded-xl p-3 overflow-hidden">
                     <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Timing</p>
-                    <p className="text-sm font-semibold text-white whitespace-nowrap text-ellipsis overflow-hidden">
-                      {batch.timing?.startTime || "—"} - {batch.timing?.endTime || "—"}
+                    <p className="text-sm font-semibold text-white whitespace-nowrap text-ellipsis overflow-hidden" title={formatBatchTiming(batch)}>
+                      {formatBatchTiming(batch)}
                     </p>
                   </div>
                 </div>
@@ -919,48 +1084,206 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Timing */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Class Start Time</label>
-                    <input
-                      type="time"
-                      value={form.startTime}
-                      onChange={(e) => setForm({ ...form, startTime: e.target.value })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
-                    />
+                {/* Days Selection */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="block text-sm font-medium text-neutral-300">
+                      Class Days <span className="text-red-400">*</span>
+                    </label>
+                    {form.days.length > 0 && (
+                      <span className="text-xs text-amber-400/90 font-medium">
+                        {form.days.length} day{form.days.length > 1 ? "s" : ""} selected
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Class End Time</label>
-                    <input
-                      type="time"
-                      value={form.endTime}
-                      onChange={(e) => setForm({ ...form, endTime: e.target.value })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
-                    />
+                  <div className="flex flex-wrap gap-2">
+                    {DAYS.map((day) => {
+                      const isSelected = form.days.includes(day);
+                      return (
+                        <button
+                          key={day}
+                          type="button"
+                          onClick={() => toggleDay(day)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
+                            isSelected
+                              ? "brand-gradient text-black border-transparent shadow-sm shadow-amber-500/20"
+                              : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                          }`}
+                        >
+                          {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
+                          {day.slice(0, 3)}
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Days */}
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-2">Class Days</label>
-                  <div className="flex flex-wrap gap-2">
-                    {DAYS.map((day) => (
-                      <button
-                        key={day}
-                        type="button"
-                        onClick={() => toggleDay(day)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ${
-                          form.days.includes(day)
-                            ? "brand-gradient text-black border-transparent"
-                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
-                        }`}
-                      >
-                        {day.slice(0, 3)}
-                      </button>
-                    ))}
+                {/* Timing Configuration */}
+                {form.days.length === 0 ? (
+                  <div className="p-3 rounded-xl bg-neutral-800/40 border border-neutral-700/60 text-xs text-neutral-400 text-center">
+                    Select one or more class days above to configure class timings.
                   </div>
-                </div>
+                ) : (
+                  <div className="space-y-3 bg-neutral-900/60 p-3.5 rounded-xl border border-neutral-800">
+                    {/* Time Mode Segmented Control */}
+                    <div>
+                      <label className="block text-xs font-medium text-neutral-400 uppercase tracking-wider mb-2">
+                        Class Schedule Timing
+                      </label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-1 bg-neutral-800/80 rounded-xl border border-neutral-700/70">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => ({
+                              ...f,
+                              timeMode: "same",
+                            }));
+                          }}
+                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
+                            form.timeMode === "same"
+                              ? "brand-gradient text-black shadow-sm"
+                              : "text-neutral-400 hover:text-white"
+                          }`}
+                        >
+                          <Clock className="w-3.5 h-3.5" />
+                          Same time for all days
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setForm((f) => {
+                              const updatedDayTimings = { ...f.dayTimings };
+                              f.days.forEach((day) => {
+                                if (!updatedDayTimings[day]) {
+                                  updatedDayTimings[day] = {
+                                    startTime: f.startTime || "09:00",
+                                    endTime: f.endTime || computeEndTime(f.startTime || "09:00", 60),
+                                  };
+                                }
+                              });
+                              return {
+                                ...f,
+                                timeMode: "different",
+                                dayTimings: updatedDayTimings,
+                              };
+                            });
+                          }}
+                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
+                            form.timeMode === "different"
+                              ? "brand-gradient text-black shadow-sm"
+                              : "text-neutral-400 hover:text-white"
+                          }`}
+                        >
+                          <Sliders className="w-3.5 h-3.5" />
+                          Different time for each day
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Mode 1: Same Time for All Days */}
+                    {form.timeMode === "same" ? (
+                      <div className="space-y-2 pt-1">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-medium text-neutral-300">Class Start Time</label>
+                              <span className="text-[11px] font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
+                                {formatTime12h(form.startTime)}
+                              </span>
+                            </div>
+                            <input
+                              type="time"
+                              value={form.startTime}
+                              onChange={(e) => {
+                                const newStart = e.target.value;
+                                setForm((f) => ({
+                                  ...f,
+                                  startTime: newStart,
+                                  endTime: computeEndTime(newStart, 60),
+                                }));
+                              }}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                            />
+                          </div>
+                          <div>
+                            <div className="flex items-center justify-between mb-1.5">
+                              <label className="text-xs font-medium text-neutral-300">Class End Time</label>
+                              <span className="text-[11px] font-bold text-neutral-300 bg-neutral-800 px-2 py-0.5 rounded border border-neutral-700">
+                                {formatTime12h(form.endTime)}
+                              </span>
+                            </div>
+                            <input
+                              type="time"
+                              value={form.endTime}
+                              onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                              className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                            />
+                          </div>
+                        </div>
+                        <p className="text-[11px] text-neutral-400">
+                          Applies to: <span className="text-white font-medium">{form.days.join(", ")}</span> at{" "}
+                          <span className="text-amber-400 font-semibold">{formatTime12h(form.startTime)}</span>
+                        </p>
+                      </div>
+                    ) : (
+                      /* Mode 2: Different Time for Each Day */
+                      <div className="space-y-2 pt-1">
+                        <p className="text-[11px] text-neutral-400">
+                          Configure individual class start times for each selected day:
+                        </p>
+                        <div className="space-y-2">
+                          {DAYS.filter((day) => form.days.includes(day)).map((day) => {
+                            const timing = form.dayTimings[day] || {
+                              startTime: form.startTime || "09:00",
+                              endTime: form.endTime || computeEndTime(form.startTime || "09:00", 60),
+                            };
+                            return (
+                              <div
+                                key={day}
+                                className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-neutral-800/80 border border-neutral-700/80 hover:border-neutral-600 transition-all"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-300 text-xs font-bold min-w-[70px] text-center">
+                                    {day}
+                                  </span>
+                                  <span className="text-xs text-neutral-400 hidden sm:inline">•</span>
+                                  <span className="text-xs font-semibold text-white">
+                                    {formatTime12h(timing.startTime)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2 w-full sm:w-auto">
+                                  <div className="flex-1 sm:w-36">
+                                    <input
+                                      type="time"
+                                      value={timing.startTime || ""}
+                                      onChange={(e) => {
+                                        const newStart = e.target.value;
+                                        setForm((f) => ({
+                                          ...f,
+                                          dayTimings: {
+                                            ...f.dayTimings,
+                                            [day]: {
+                                              startTime: newStart,
+                                              endTime: computeEndTime(newStart, 60),
+                                            },
+                                          },
+                                        }));
+                                      }}
+                                      className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white outline-none focus:border-amber-500 transition-all"
+                                    />
+                                  </div>
+                                  <span className="text-[11px] text-neutral-500 shrink-0">
+                                    to {formatTime12h(timing.endTime || computeEndTime(timing.startTime, 60))}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Google Meet Link */}
                 <div>
@@ -979,6 +1302,13 @@ export default function BatchesPage() {
                     />
                   </div>
                 </div>
+
+                {formError && (
+                  <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 shrink-0" />
+                    <span>{formError}</span>
+                  </div>
+                )}
 
                 {apiError && (
                   <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-sm">

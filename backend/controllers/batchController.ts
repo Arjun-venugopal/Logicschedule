@@ -25,6 +25,33 @@ export function normalizeDateOnlyToUtc(val: any): Date | undefined {
   return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 0, 0, 0, 0));
 }
 
+export function computeEndTime(startTime: string, durationMinutes: number = 60): string {
+  if (!startTime) return '10:00';
+  const parts = startTime.split(':').map(Number);
+  if (isNaN(parts[0])) return '10:00';
+  const mins = (parts[0] * 60 + (parts[1] || 0) + durationMinutes) % (24 * 60);
+  const endH = Math.floor(mins / 60);
+  const endM = mins % 60;
+  return `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+}
+
+export function getSlotTimingForDay(batch: any, date: Date | number): { startTime: string; endTime: string } {
+  const d = new Date(date);
+  const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  const dayName = dayNames[d.getUTCDay()];
+  
+  const dayTimings = batch.dayTimings;
+  if (dayTimings && typeof dayTimings === 'object' && dayTimings[dayName]?.startTime) {
+    const sTime = dayTimings[dayName].startTime;
+    const eTime = dayTimings[dayName].endTime || computeEndTime(sTime, 60);
+    return { startTime: sTime, endTime: eTime };
+  }
+
+  const sTime = batch.timing?.startTime || '09:00';
+  const eTime = batch.timing?.endTime || computeEndTime(sTime, 60);
+  return { startTime: sTime, endTime: eTime };
+}
+
 /**
  * Generate schedule entries for every matching class day starting from startDate.
  * If numberOfSessions is set, generates that exact number of classes.
@@ -38,7 +65,12 @@ export async function generateSchedulesForBatch(
 ): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
 
-  if (!startDate || !days?.length || !timing?.startTime || !timing?.endTime) {
+  const hasTiming =
+    (timing?.startTime && timing?.endTime) ||
+    (batch.dayTimings && typeof batch.dayTimings === 'object' && Object.keys(batch.dayTimings).length > 0) ||
+    timing?.startTime;
+
+  if (!startDate || !days?.length || !hasTiming) {
     return 0; // Not enough info to auto-generate
   }
 
@@ -51,6 +83,7 @@ export async function generateSchedulesForBatch(
 
   const kolkata = getKolkataNow();
   const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
+  const todayUtc = normalizeDateOnlyToUtc(kolkata.todayStr)!;
 
   // Pre-fetch all schedules for this batch
   const existingSchedules = await Schedule.find({ batch: _id });
@@ -112,17 +145,18 @@ export async function generateSchedulesForBatch(
 
         if (dateKey <= kolkata.todayStr && !existingTimes.has(backTime)) {
           const daySlots = teacherSlotsByDate.get(dateKey) || [];
+          const slotTiming = getSlotTimingForDay(batch, backTime);
           const isConflict = checkIntervalConflict(daySlots, {
-            startTime: timing.startTime,
-            endTime: timing.endTime,
+            startTime: slotTiming.startTime,
+            endTime: slotTiming.endTime,
           });
 
           const completedSlot = {
             teacher: assignedTeacher || undefined,
             batch: _id,
             date: new Date(backTime),
-            startTime: timing.startTime,
-            endTime: timing.endTime,
+            startTime: slotTiming.startTime,
+            endTime: slotTiming.endTime,
             status: 'Completed',
             conflict: isConflict,
             meetingLink: meetingLink || '',
@@ -143,13 +177,46 @@ export async function generateSchedulesForBatch(
       backCursor.setUTCDate(backCursor.getUTCDate() - 1);
       backDaysScanned++;
     }
+
+    // Fallback: If matching days were not sufficient in past, fill remaining completed classes on preceding days
+    let fallbackOffset = 1;
+    while (schedulesToCreate.length < neededCompleted && fallbackOffset <= 365) {
+      const fbDate = new Date(baseTimestamp - fallbackOffset * 86400000);
+      const fbTime = fbDate.getTime();
+      const fbDateKey = fbDate.toISOString().split('T')[0];
+      if (fbDateKey <= kolkata.todayStr && !existingTimes.has(fbTime)) {
+        const slotTiming = getSlotTimingForDay(batch, fbTime);
+        const completedSlot = {
+          teacher: assignedTeacher || undefined,
+          batch: _id,
+          date: new Date(fbTime),
+          startTime: slotTiming.startTime,
+          endTime: slotTiming.endTime,
+          status: 'Completed',
+          conflict: false,
+          meetingLink: meetingLink || '',
+          notes: 'Auto-generated as Completed (Classes Already Completed)',
+          attendance: batchStudentIds.map((sId) => ({
+            studentId: sId,
+            isPresent: true,
+            date: new Date(fbTime),
+          })),
+        };
+        schedulesToCreate.unshift(completedSlot);
+        existingTimes.add(fbTime);
+      }
+      fallbackOffset++;
+    }
   }
 
-  // Step 2: Generate remaining upcoming/scheduled classes forward from startDate onwards
+  // Step 2: Generate remaining upcoming/scheduled classes forward
+  // Strictly start forward from today or startDate (whichever is later) so upcoming classes
+  // are never placed in the past!
   const totalCompletedSoFar = existingCompletedCount + schedulesToCreate.length;
-  const forwardCursor = new Date(cursor.getTime());
+  const forwardStartTime = Math.max(cursor.getTime(), todayUtc.getTime());
+  const forwardCursor = new Date(forwardStartTime);
   let forwardDaysScanned = 0;
-  let scheduledCount = existingSchedules.filter((s: any) => s.status !== 'Completed').length;
+  let scheduledCount = existingSchedules.filter((s: any) => s.status === 'Scheduled').length;
   const maxScanDays = 365;
 
   while (forwardDaysScanned < maxScanDays) {
@@ -166,22 +233,23 @@ export async function generateSchedulesForBatch(
       if (!existingTimes.has(forwardTime)) {
         const dateKey = forwardCursor.toISOString().split('T')[0];
         const daySlots = teacherSlotsByDate.get(dateKey) || [];
+        const slotTiming = getSlotTimingForDay(batch, forwardTime);
         const isConflict = checkIntervalConflict(daySlots, {
-          startTime: timing.startTime,
-          endTime: timing.endTime,
+          startTime: slotTiming.startTime,
+          endTime: slotTiming.endTime,
         });
 
         const newSlot = {
           teacher: assignedTeacher || undefined,
           batch: _id,
           date: new Date(forwardTime),
-          startTime: timing.startTime,
-          endTime: timing.endTime,
+          startTime: slotTiming.startTime,
+          endTime: slotTiming.endTime,
           status: 'Scheduled',
           conflict: isConflict,
           meetingLink: meetingLink || '',
           notes: 'Auto-generated for batch',
-          attendance: studentId ? [{ studentId, isPresent: false, date: new Date(forwardTime) }] : [],
+          attendance: batchStudentIds.map((sId) => ({ studentId: sId, isPresent: false, date: new Date(forwardTime) })),
         };
 
         schedulesToCreate.push(newSlot);
@@ -275,11 +343,13 @@ export const getBatches = async (req: any, res: Response) => {
     const enrichedBatches = batches.map((b: any) => {
       const batchObj = b.toObject ? b.toObject() : b;
       const bId = batchObj._id.toString();
-      const completedCount = completedCountMap[bId] || 0;
+      const rawCompleted = completedCountMap[bId] || 0;
+      const preCompleted = Math.max(0, Number(batchObj.preCompletedClasses) || 0);
+      const completedCount = Math.max(rawCompleted, preCompleted);
       const schedCount = totalCountMap[bId] || 0;
       const targetSessions = (batchObj.numberOfSessions && Number(batchObj.numberOfSessions) > 0)
         ? Number(batchObj.numberOfSessions)
-        : schedCount;
+        : Math.max(schedCount, completedCount);
 
       const isClassCompleted = targetSessions > 0 && completedCount >= targetSessions;
       const effectiveStatus = (isClassCompleted && batchObj.status !== 'Dropped' && batchObj.status !== 'Cancelled')
@@ -314,7 +384,8 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     const {
       name, subject, assignedTeacher, studentsCount,
       timing, days, meetingLink,
-      startDate, durationType, status, numberOfSessions, preCompletedClasses
+      startDate, durationType, status, numberOfSessions, preCompletedClasses,
+      dayTimings, timeMode
     } = req.body;
 
     if (!name || !subject) {
@@ -328,6 +399,8 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       assignedTeacher: assignedTeacher || undefined,
       studentsCount: studentsCount || 0,
       timing: timing || {},
+      dayTimings: dayTimings || {},
+      timeMode: timeMode || 'same',
       days: days || [],
       meetingLink: meetingLink || '',
       startDate: normalizeDateOnlyToUtc(startDate),
@@ -370,13 +443,16 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       (req.body.startDate !== undefined && String(req.body.startDate) !== String(batch.startDate)) ||
       (req.body.days !== undefined && JSON.stringify(req.body.days) !== JSON.stringify(batch.days)) ||
       (req.body.numberOfSessions !== undefined && req.body.numberOfSessions !== batch.numberOfSessions) ||
-      (req.body.timing !== undefined);
+      (req.body.timing !== undefined || req.body.dayTimings !== undefined || req.body.timeMode !== undefined) ||
+      (req.body.preCompletedClasses !== undefined && Number(req.body.preCompletedClasses) !== Number(batch.preCompletedClasses));
 
     batch.name = req.body.name ?? batch.name;
     batch.subject = req.body.subject ?? batch.subject;
     batch.assignedTeacher = req.body.assignedTeacher || batch.assignedTeacher;
     batch.studentsCount = req.body.studentsCount ?? batch.studentsCount;
     batch.timing = req.body.timing ?? batch.timing;
+    batch.dayTimings = req.body.dayTimings ?? batch.dayTimings;
+    batch.timeMode = req.body.timeMode ?? batch.timeMode;
     batch.days = req.body.days ?? batch.days;
     batch.meetingLink = req.body.meetingLink ?? batch.meetingLink;
     batch.durationType = req.body.durationType ?? batch.durationType;
@@ -391,7 +467,14 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     // If dates/days/timing changed, delete old auto-generated schedules and regenerate
     if (datesChanged) {
-      await Schedule.deleteMany({ batch: batch._id, notes: { $regex: /Auto-generated/ } });
+      // Delete ONLY future scheduled classes (preserving all historical attendance and completed records!)
+      const kolkata = getKolkataNow();
+      const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
+      await Schedule.deleteMany({
+        batch: batch._id,
+        status: 'Scheduled',
+        date: { $gte: todayStart }
+      });
       const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
       console.log(`🔄 Regenerated ${generated} schedule(s) for batch "${updated.name}"`);
     }
@@ -471,6 +554,9 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     const cancelledClasses = schedules.filter((s: any) => s.status === 'Cancelled');
     const upcomingClasses = schedules.filter((s: any) => s.status === 'Scheduled');
 
+    const preCompleted = Math.max(0, Number(batch.preCompletedClasses) || 0);
+    const effectiveCompletedCount = Math.max(completedClasses.length, preCompleted);
+
     // Compute attendance statistics per student
     const attendanceStats = students.map((stu: any) => {
       let presentCount = 0;
@@ -481,6 +567,9 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
         if (record) {
           totalCount++;
           if (record.isPresent) presentCount++;
+        } else {
+          totalCount++;
+          presentCount++;
         }
       });
 
@@ -489,8 +578,8 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
         name: stu.name,
         email: stu.email,
         phone: stu.mobileNumber || stu.phone,
-        presentCount,
-        totalCount,
+        presentCount: Math.max(presentCount, effectiveCompletedCount),
+        totalCount: Math.max(totalCount, effectiveCompletedCount),
         percentage: totalCount > 0 ? Math.round((presentCount / totalCount) * 100) : 0,
         projectSubmissions: stu.projectSubmissions || [],
       };
@@ -498,13 +587,13 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
 
     const targetSessions = (batch.numberOfSessions && Number(batch.numberOfSessions) > 0)
       ? Number(batch.numberOfSessions)
-      : schedules.length;
+      : Math.max(schedules.length, effectiveCompletedCount);
 
     res.json({
       batch,
       studentsCount: students.length,
       totalSchedules: targetSessions,
-      completedSchedules: completedClasses.length,
+      completedSchedules: effectiveCompletedCount,
       cancelledSchedules: cancelledClasses.length,
       upcomingSchedules: upcomingClasses.length,
       attendanceStats,

@@ -4,7 +4,7 @@ import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
-import { serverCache } from '../utils/cache';
+import { serverCache, getSystemMemoryMetrics, clearAllDiskCache } from '../utils/cache';
 
 // @desc    Get dashboard stats
 // @route   GET /stats
@@ -211,5 +211,86 @@ export const getDashboardStats = async (req: any, res: Response) => {
   } catch (error: any) {
     console.error('Stats error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
+  }
+};
+
+// @desc    Get runtime system memory and cache metrics
+// @route   GET /stats/memory
+// @access  Private/Admin
+export const getMemoryMetrics = async (_req: any, res: Response) => {
+  try {
+    const metrics = getSystemMemoryMetrics();
+    res.json(metrics);
+  } catch (error: any) {
+    console.error('Failed to get memory metrics:', error);
+    res.status(500).json({ message: 'Failed to retrieve memory metrics', detail: error.message });
+  }
+};
+
+// @desc    Clear cache (L1 in-memory, L2 disk, or specific pattern)
+// @route   POST /stats/cache/clear
+// @access  Private/Admin
+export const clearCache = async (req: any, res: Response) => {
+  try {
+    const { target = 'all', pattern } = req.body || {};
+    let result: any = { target };
+
+    if (target === 'l1' || target === 'all') {
+      if (pattern && typeof pattern === 'string') {
+        const clearedCount = serverCache.clearPattern(pattern);
+        result.l1ClearedPattern = pattern;
+        result.l1ClearedCount = clearedCount;
+      } else {
+        serverCache.clear();
+        result.l1Cleared = true;
+      }
+    }
+
+    if (target === 'disk' || target === 'all') {
+      const diskResult = clearAllDiskCache();
+      result.diskDeletedFiles = diskResult.deletedFiles;
+      result.diskFreedBytes = diskResult.freedBytes;
+    }
+
+    result.currentMetrics = getSystemMemoryMetrics();
+    res.json({ message: 'Cache successfully cleared', ...result });
+  } catch (error: any) {
+    console.error('Failed to clear cache:', error);
+    res.status(500).json({ message: 'Failed to clear cache', detail: error.message });
+  }
+};
+
+// @desc    Prune expired cache entries
+// @route   POST /stats/cache/prune
+// @access  Private/Admin
+export const pruneCache = async (_req: any, res: Response) => {
+  try {
+    const prunedCount = serverCache.pruneExpired();
+    const metrics = getSystemMemoryMetrics();
+    res.json({ message: 'Expired cache entries pruned', prunedCount, currentMetrics: metrics });
+  } catch (error: any) {
+    console.error('Failed to prune cache:', error);
+    res.status(500).json({ message: 'Failed to prune cache', detail: error.message });
+  }
+};
+
+// @desc    Configure cache capacity
+// @route   PUT /stats/cache/config
+// @access  Private/Admin
+export const updateCacheConfig = async (req: any, res: Response) => {
+  try {
+    const { capacity } = req.body || {};
+    if (!capacity || isNaN(Number(capacity))) {
+      return res.status(400).json({ message: 'Valid numerical capacity required (25 - 5000)' });
+    }
+    const numCap = parseInt(capacity, 10);
+    serverCache.setCapacity(numCap);
+    res.json({
+      message: `Cache capacity updated to ${numCap}`,
+      currentMetrics: getSystemMemoryMetrics(),
+    });
+  } catch (error: any) {
+    console.error('Failed to update cache config:', error);
+    res.status(500).json({ message: 'Failed to update cache configuration', detail: error.message });
   }
 };

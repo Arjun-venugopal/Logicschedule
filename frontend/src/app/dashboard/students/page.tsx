@@ -86,11 +86,16 @@ export default function StudentsPage() {
 
   const filteredStudents = useMemo(() => {
     if (!debouncedSearch) return students;
-    const lowerSearch = debouncedSearch.toLowerCase();
+    const lowerSearch = debouncedSearch.trim().toLowerCase();
     return students.filter((s: any) =>
       (s.name || "").toLowerCase().includes(lowerSearch) ||
       (s.email || "").toLowerCase().includes(lowerSearch) ||
-      (s.batch?.name || "").toLowerCase().includes(lowerSearch)
+      (s.phone || "").toLowerCase().includes(lowerSearch) ||
+      (s.mobileNumber || "").toLowerCase().includes(lowerSearch) ||
+      (s.whatsappNumber || "").toLowerCase().includes(lowerSearch) ||
+      (s.parentName || "").toLowerCase().includes(lowerSearch) ||
+      (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
+      (s.batch?.subject || "").toLowerCase().includes(lowerSearch)
     );
   }, [students, debouncedSearch]);
 

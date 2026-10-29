@@ -4,7 +4,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle, Clock, Edit2, X, AlertTriangle, Users, Search, BookOpen, Calendar, Filter } from "lucide-react";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSearchStore } from "@/store/searchStore";
 import { format, parseISO, isBefore } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
@@ -18,6 +19,13 @@ export default function CompletedClassesPage() {
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [filterExtraOnly, setFilterExtraOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const { searchQuery: globalSearch, setSearchQuery: setGlobalSearch } = useSearchStore();
+
+  useEffect(() => {
+    if (globalSearch !== undefined && globalSearch !== searchQuery) {
+      setSearchQuery(globalSearch);
+    }
+  }, [globalSearch]);
   const [formError, setFormError] = useState<string | null>(null);
   
   const [form, setForm] = useState<{
@@ -162,7 +170,8 @@ export default function CompletedClassesPage() {
           const teacherName = (s.teacher?.name || "").toLowerCase();
           const notes = (s.notes || "").toLowerCase();
           const extraReason = (s.extraClassReason || "").toLowerCase();
-          if (!batchName.includes(q) && !subject.includes(q) && !teacherName.includes(q) && !notes.includes(q) && !extraReason.includes(q)) {
+          const studentMatch = Array.isArray(s.attendance) && s.attendance.some((a: any) => (a.studentName || a.student?.name || "").toLowerCase().includes(q));
+          if (!batchName.includes(q) && !subject.includes(q) && !teacherName.includes(q) && !notes.includes(q) && !extraReason.includes(q) && !studentMatch) {
             return false;
           }
         }
@@ -315,13 +324,19 @@ export default function CompletedClassesPage() {
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setGlobalSearch(e.target.value);
+              }}
               placeholder="Search batch, topic..."
               className="w-full bg-neutral-900 border border-neutral-800 rounded-xl pl-9 pr-8 py-2 text-sm text-white placeholder-neutral-500 outline-none focus:border-amber-500 transition-all"
             />
             {searchQuery && (
               <button
-                onClick={() => setSearchQuery("")}
+                onClick={() => {
+                  setSearchQuery("");
+                  setGlobalSearch("");
+                }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
                 title="Clear search"
               >

@@ -10,8 +10,8 @@ import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, C
 import dynamic from "next/dynamic";
 
 const ActiveBatchesAnalyticsModal = dynamic(
-  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then(mod => mod.ActiveBatchesAnalyticsModal),
-  { ssr: false }
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal"),
+  { ssr: false, loading: () => null }
 );
 
 const WeeklyClassesChart = dynamic(

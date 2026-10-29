@@ -407,3 +407,5 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
     </div>
   );
 }
+
+export default ActiveBatchesAnalyticsModal;

@@ -765,9 +765,34 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
 
       const isTimeFiltered = !!(queryDate || targetMonthKey || (startDate && endDate));
 
+      // Comprehensive search matching logic
+      const txIds = history.map((h: any) => h.transactionId || h.id || '').join(' ').toLowerCase();
+      const txNotes = history.map((h: any) => h.notes || '').join(' ').toLowerCase();
+      const courseName = (batch?.subject || batch?.name || p.courseName || '').toLowerCase();
+      const sName = (student?.name || p.studentName || '').toLowerCase();
+      const sEmail = (student?.email || p.studentEmail || p.email || '').toLowerCase();
+      const sPhone = (student?.mobileNumber || student?.phone || student?.whatsappNumber || p.contactNumber || p.phone || '').toLowerCase();
+      const pName = (student?.parentName || p.parentName || '').toLowerCase();
+      const pNotes = (p.notes || '').toLowerCase();
+      const pTxId = (p.transactionId || '').toLowerCase();
+      const sExec = salesExec.toLowerCase();
+
+      const matchesSearch = !searchQuery || (
+        sName.includes(searchQuery) ||
+        sEmail.includes(searchQuery) ||
+        sPhone.includes(searchQuery) ||
+        pName.includes(searchQuery) ||
+        courseName.includes(searchQuery) ||
+        pNotes.includes(searchQuery) ||
+        pTxId.includes(searchQuery) ||
+        txIds.includes(searchQuery) ||
+        txNotes.includes(searchQuery) ||
+        sExec.includes(searchQuery)
+      );
+
       // Collect pending student record for dedicated pending report (students closed in this period who have pending balance)
       if (remainingAmount > 0) {
-        const matchesPending = isTimeFiltered ? isClosedInPeriod : true;
+        const matchesPending = searchQuery ? matchesSearch : (isTimeFiltered ? isClosedInPeriod : true);
         if (matchesPending) {
           allPendingStudents.push({
             paymentId: p._id || sId,
@@ -841,17 +866,9 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
       }
 
       const matchesMethod = paymentMethodFilter === 'all' || hasMatchingMethodTx;
-      const matchesSearch = !searchQuery || (
-        (student?.name || '').toLowerCase().includes(searchQuery) ||
-        (student?.email || '').toLowerCase().includes(searchQuery) ||
-        (student?.phone || student?.mobileNumber || '').toLowerCase().includes(searchQuery) ||
-        (student?.parentName || '').toLowerCase().includes(searchQuery) ||
-        (batch?.name || '').toLowerCase().includes(searchQuery) ||
-        (p.notes || '').toLowerCase().includes(searchQuery) ||
-        salesExec.toLowerCase().includes(searchQuery)
-      );
 
-      if (matchesTime && matchesSales && matchesStatus && matchesMethod && matchesSearch) {
+      // KPIs calculation strictly follows the active time filter and status filters
+      if (matchesTime && matchesSales && matchesStatus && matchesMethod) {
         filteredCollected += (targetMonthKey || startDate ? periodCollected : amountPaid);
         filteredPrevCollected += prevPeriodCollected;
         filteredOutstanding += remainingAmount;
@@ -880,6 +897,12 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
           overdueCount++;
           totalDueAmount += remainingAmount;
         }
+      }
+
+      // If search query is entered, search across all records regardless of admission month; otherwise enforce time filter
+      const effectiveMatchesTime = searchQuery ? true : matchesTime;
+
+      if (effectiveMatchesTime && matchesSales && matchesStatus && matchesMethod && matchesSearch) {
 
         processedPayments.push({
           ...p,

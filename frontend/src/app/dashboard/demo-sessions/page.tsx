@@ -595,13 +595,16 @@ export default function DemoSessionsPage() {
   const filteredSessions = demoSessions.filter((d) => {
     // Search filter
     if (searchQuery) {
-      const search = searchQuery.toLowerCase();
-      const matchName = d.studentName.toLowerCase().includes(search);
-      const matchSubject = d.subject.toLowerCase().includes(search);
-      const matchTeacher = d.teacher?.name?.toLowerCase().includes(search);
-      const matchSales = d.salesExecutive?.toLowerCase().includes(search);
+      const search = searchQuery.trim().toLowerCase();
+      const matchName = (d.studentName || "").toLowerCase().includes(search);
+      const matchEmail = (d.studentEmail || "").toLowerCase().includes(search);
+      const matchPhone = (d.phoneNumber || "").toLowerCase().includes(search);
+      const matchParent = ((d as any).parentName || "").toLowerCase().includes(search);
+      const matchSubject = (d.subject || "").toLowerCase().includes(search);
+      const matchTeacher = (d.teacher?.name || "").toLowerCase().includes(search);
+      const matchSales = (d.salesExecutive || "").toLowerCase().includes(search);
       const matchAdmission = (d.admissionConfirmed || "").toLowerCase().includes(search);
-      if (!matchName && !matchSubject && !matchTeacher && !matchSales && !matchAdmission) return false;
+      if (!matchName && !matchEmail && !matchPhone && !matchParent && !matchSubject && !matchTeacher && !matchSales && !matchAdmission) return false;
     }
 
     // Teacher filter

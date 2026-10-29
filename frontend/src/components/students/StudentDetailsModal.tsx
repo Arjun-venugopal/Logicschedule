@@ -372,7 +372,10 @@ export function StudentDetailsModal({
     const sBId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
     return sBId === currentBatchId;
   });
-  const currentCompletedCount = currentBatchSchedules.filter((s: any) => s.status === "Completed").length;
+  const currentCompletedCount = Math.max(
+    currentBatchSchedules.filter((s: any) => s.status === "Completed").length,
+    Number(student.batch?.preCompletedClasses) || 0
+  );
   const currentClassesNeeded = student.classesNeeded || student.batch?.numberOfSessions || 15;
   const currentProgressPct = Math.min(100, currentClassesNeeded > 0 ? Math.round((currentCompletedCount / currentClassesNeeded) * 100) : 0);
   const currentExtraClassCount = currentBatchSchedules.filter((s: any) => s.isExtraClass).length;

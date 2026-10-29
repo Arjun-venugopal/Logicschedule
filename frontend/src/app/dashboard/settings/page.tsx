@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useAuthStore } from "@/store/authStore";
 import SubAdminManager from "./SubAdminManager";
+import SystemOptimizationDashboard from "@/components/admin/SystemOptimizationDashboard";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -709,6 +710,7 @@ export default function SettingsPage() {
         </div>
         
         {isAdmin && <SubAdminManager />}
+        {isAdmin && <SystemOptimizationDashboard />}
 
       </div>
     </div>

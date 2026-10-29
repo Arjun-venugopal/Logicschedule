@@ -169,13 +169,14 @@ export function TeacherTimingTable() {
     }
     // Search query filter
     if (!searchQuery) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.trim().toLowerCase();
     return (
-      t.name.toLowerCase().includes(q) ||
-      t.email.toLowerCase().includes(q) ||
-      t.subjectExpertise.some((s) => s.toLowerCase().includes(q)) ||
-      t.currentClass?.title.toLowerCase().includes(q) ||
-      t.nextClass?.title.toLowerCase().includes(q)
+      (t.name || "").toLowerCase().includes(q) ||
+      (t.email || "").toLowerCase().includes(q) ||
+      (t.phone || "").toLowerCase().includes(q) ||
+      Boolean(t.subjectExpertise?.some((s: string) => (s || "").toLowerCase().includes(q))) ||
+      Boolean(t.currentClass?.title?.toLowerCase().includes(q)) ||
+      Boolean(t.nextClass?.title?.toLowerCase().includes(q))
     );
   });
 

@@ -221,7 +221,10 @@ export async function autoCompletePastSchedules(force: boolean = false): Promise
       for (const batch of validBatches) {
         try {
           const batchSchedules = schedulesByBatch.get(batch._id.toString()) || [];
-          const finishedCount = batchSchedules.filter((s: any) => s.status === 'Completed').length;
+          const finishedCount = Math.max(
+            batchSchedules.filter((s: any) => s.status === 'Completed').length,
+            Number(batch.preCompletedClasses) || 0
+          );
           const targetSessions = (batch.numberOfSessions && Number(batch.numberOfSessions) > 0)
             ? Number(batch.numberOfSessions)
             : batchSchedules.length;

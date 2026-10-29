@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown, Trash2 } from "lucide-react";
+import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";
@@ -504,8 +504,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Search..."
-                className="bg-neutral-800 border border-neutral-700 rounded-lg pl-9 pr-4 py-1.5 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all w-40 lg:w-56 placeholder-neutral-600 text-white"
+                className="bg-neutral-800 border border-neutral-700 rounded-lg pl-9 pr-7 py-1.5 text-sm outline-none focus:border-amber-500 focus:ring-1 focus:ring-amber-500/20 transition-all w-40 lg:w-56 placeholder-neutral-600 text-white"
               />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
 
             {/* Mobile Search Toggle */}

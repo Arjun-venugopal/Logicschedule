@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -37,6 +37,7 @@ import { PaymentAnalyticsOverview } from "@/components/payments/PaymentAnalytics
 import { SalespersonLeaderboard } from "@/components/payments/SalespersonLeaderboard";
 import { SalespersonPendingReport } from "@/components/payments/SalespersonPendingReport";
 import { format } from "date-fns";
+import { useSearchStore } from "@/store/searchStore";
 
 const MONTH_OPTIONS = [
   { value: 0, label: "All Months" },
@@ -103,6 +104,17 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [methodFilter, setMethodFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const { searchQuery, setSearchQuery } = useSearchStore();
+
+  // Sync with top navbar global search query
+  useEffect(() => {
+    if (searchQuery !== undefined && searchQuery !== search) {
+      setSearch(searchQuery);
+      if (searchQuery.trim() && activeTab === "overview") {
+        setActiveTab("records");
+      }
+    }
+  }, [searchQuery]);
 
   // Modals state
   const [selectedPaymentForRecord, setSelectedPaymentForRecord] = useState<any>(null);
@@ -205,16 +217,30 @@ export default function PaymentsPage() {
   const filteredPayments = useMemo(() => {
     return payments.filter((item: any) => {
       const sName = item.student?.name || item.studentName || "";
-      const sPhone = item.student?.phone || item.student?.mobileNumber || "";
+      const sEmail = item.student?.email || item.studentEmail || item.email || "";
+      const sPhone = item.student?.phone || item.student?.mobileNumber || item.student?.whatsappNumber || item.contactNumber || "";
+      const pName = item.student?.parentName || item.parentName || "";
       const cName = item.batch?.subject || item.batch?.name || item.courseName || "";
       const closed = item.closedBy || item.salesExecutive || "";
-      const query = search.toLowerCase();
+      const notes = item.notes || "";
+      const txId = item.transactionId || "";
+      const historyIds = Array.isArray(item.paymentHistory)
+        ? item.paymentHistory.map((h: any) => `${h.transactionId || ""} ${h.id || ""} ${h.notes || ""}`).join(" ")
+        : "";
+
+      const query = search.trim().toLowerCase();
 
       const matchesSearch =
+        !query ||
         sName.toLowerCase().includes(query) ||
+        sEmail.toLowerCase().includes(query) ||
         sPhone.toLowerCase().includes(query) ||
+        pName.toLowerCase().includes(query) ||
         cName.toLowerCase().includes(query) ||
-        closed.toLowerCase().includes(query);
+        closed.toLowerCase().includes(query) ||
+        notes.toLowerCase().includes(query) ||
+        txId.toLowerCase().includes(query) ||
+        historyIds.toLowerCase().includes(query);
 
       if (!matchesSearch) return false;
 
@@ -231,6 +257,13 @@ export default function PaymentsPage() {
     });
   }, [payments, search, salesFilter, statusFilter]);
 
+  // Filter rankings when user searches a salesperson's name
+  const filteredRankings = useMemo(() => {
+    if (!search.trim()) return salespersonRanking;
+    const q = search.trim().toLowerCase();
+    return salespersonRanking.filter((sp: any) => (sp.name || "").toLowerCase().includes(q));
+  }, [salespersonRanking, search]);
+
   const handleResetFilters = () => {
     setTimeRangeFilter("month");
     setSelectedMonth(currentNow.getMonth() + 1);
@@ -242,6 +275,7 @@ export default function PaymentsPage() {
     setStatusFilter("All");
     setMethodFilter("all");
     setSearch("");
+    setSearchQuery("");
   };
 
   const hasActiveFilters =
@@ -252,7 +286,7 @@ export default function PaymentsPage() {
     salesFilter !== "all" ||
     statusFilter !== "All" ||
     methodFilter !== "all" ||
-    search !== "" ||
+    search.trim() !== "" ||
     customStartDate !== "";
 
   // Switch to Pending tab with pre-selected salesperson from Leaderboard
@@ -643,14 +677,25 @@ export default function PaymentsPage() {
             <input
               type="text"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value;
+                setSearch(val);
+                setSearchQuery(val);
+                if (val.trim() && activeTab === "overview") {
+                  setActiveTab("records");
+                }
+              }}
               placeholder="Search student, mobile number, parent, course, or salesperson..."
               className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-8 py-2 text-xs sm:text-sm text-white outline-none focus:border-amber-500 transition-colors"
             />
             {search && (
               <button
-                onClick={() => setSearch("")}
+                onClick={() => {
+                  setSearch("");
+                  setSearchQuery("");
+                }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-white p-1"
+                title="Clear search"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -735,7 +780,7 @@ export default function PaymentsPage() {
       {/* Tab 2: Salesperson Ranking (Leaderboard) */}
       {activeTab === "leaderboard" && (
         <SalespersonLeaderboard
-          rankings={salespersonRanking}
+          rankings={filteredRankings}
           selectedMonthName={selectedMonthLabel}
           onSelectSalespersonForPending={handleSelectSalespersonForPending}
           onExportCsv={handleExportLeaderboard}
@@ -752,6 +797,7 @@ export default function PaymentsPage() {
           onRecordPayment={handleOpenRecordModal}
           onViewHistory={handleOpenHistoryModal}
           onExportCsv={handleExportPending}
+          externalSearch={search}
         />
       )}
 
@@ -763,7 +809,21 @@ export default function PaymentsPage() {
               <h3 className="text-xs sm:text-sm font-bold text-white flex items-center gap-2 flex-wrap">
                 <CreditCard className="w-4 h-4 text-amber-400" />
                 All Student Payment Records ({filteredPayments.length})
-                {selectedDate ? (
+                {search.trim() ? (
+                  <span className="text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    Matching &quot;{search.trim()}&quot;
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch("");
+                        setSearchQuery("");
+                      }}
+                      className="hover:text-white ml-0.5"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ) : selectedDate ? (
                   <span className="text-[11px] font-medium bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-full">
                     Closed on {selectedMonthLabel}
                   </span>
@@ -794,8 +854,10 @@ export default function PaymentsPage() {
             <div className="py-20 text-center text-neutral-500">
               <CreditCard className="w-10 h-10 mx-auto mb-3 text-neutral-700" />
               <p className="text-base font-semibold text-neutral-400">No payment records found</p>
-              <p className="text-xs text-neutral-600 mt-1">
-                {selectedDate
+              <p className="text-xs text-neutral-600 mt-1 max-w-md mx-auto">
+                {search.trim()
+                  ? `No payment records matched "${search.trim()}". Check spelling or clear search filters.`
+                  : selectedDate
                   ? `No student admissions were closed on ${selectedMonthLabel}.`
                   : timeRangeFilter === "month" && selectedMonth > 0
                   ? `No student admissions were closed in ${selectedMonthLabel}.`

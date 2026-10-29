@@ -51,9 +51,13 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
   const targetClasses = (batch?.numberOfSessions && Number(batch.numberOfSessions) > 0)
     ? Number(batch.numberOfSessions)
     : totalSchedules;
-  const progress = targetClasses > 0 ? Math.min(100, Math.round((completedSchedules / targetClasses) * 100)) : 0;
+  const effectiveCompleted = Math.max(
+    completedSchedules || 0,
+    Number(batch?.preCompletedClasses) || 0
+  );
+  const progress = targetClasses > 0 ? Math.min(100, Math.round((effectiveCompleted / targetClasses) * 100)) : 0;
   const cancelledCount = cancelledSchedules || (schedules ? schedules.filter((s: any) => s.status === 'Cancelled').length : 0);
-  const remainingCount = Math.max(0, targetClasses - completedSchedules);
+  const remainingCount = Math.max(0, targetClasses - effectiveCompleted);
 
   const barChartData = attendanceStats.map((stu: any) => ({
     name: stu.name.split(' ')[0], 
@@ -61,7 +65,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
   }));
 
   const pieChartData = [
-    { name: 'Completed', value: completedSchedules },
+    { name: 'Completed', value: effectiveCompleted },
     { name: 'Upcoming/Remaining', value: remainingCount },
     ...(cancelledCount > 0 ? [{ name: 'Cancelled', value: cancelledCount }] : [])
   ];
@@ -163,7 +167,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
             <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
               <div className="flex items-center justify-between text-xs font-semibold text-neutral-400 mb-1.5">
                 <span>Course Completion Progress</span>
-                <span className="text-emerald-400">{progress}% ({completedSchedules} of {targetClasses} classes)</span>
+                <span className="text-emerald-400">{progress}% ({effectiveCompleted} of {targetClasses} classes)</span>
               </div>
               <div className="w-full h-2 bg-neutral-700 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400" style={{ width: `${progress}%` }} />
@@ -190,7 +194,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
             ) : (
               <div className="space-y-3">
                 {attendanceStats.map((stu: any) => {
-                  const studentCompleted = getStudentCompletedCount(stu.studentId);
+                  const studentCompleted = Math.max(getStudentCompletedCount(stu.studentId), Number(batch?.preCompletedClasses) || 0);
                   const isExpanded = expandedProjects[stu.studentId] ?? (attendanceStats.length === 1);
                   const milestonesCount = Math.floor(studentCompleted / 5);
 
@@ -417,7 +421,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                     </thead>
                     <tbody className="divide-y divide-neutral-800/50">
                       {attendanceStats.map((stu: any) => {
-                        const studentCompleted = getStudentCompletedCount(stu.studentId);
+                        const studentCompleted = Math.max(getStudentCompletedCount(stu.studentId), Number(batch?.preCompletedClasses) || 0);
                         const milestonesCount = Math.floor(studentCompleted / 5);
 
                         return (
@@ -540,3 +544,5 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
     </div>
   );
 }
+
+export default BatchAnalyticsModal;

@@ -104,6 +104,7 @@ export default function ClassNotesPage() {
         if (!debouncedSearch) return true;
         
         return (
+          (s.notes || "").toLowerCase().includes(lowerSearch) ||
           (s.teacher?.name || "").toLowerCase().includes(lowerSearch) ||
           (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
           (s.subject || "").toLowerCase().includes(lowerSearch)
