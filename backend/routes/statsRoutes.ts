@@ -5,6 +5,7 @@ import {
   clearCache,
   pruneCache,
   updateCacheConfig,
+  runMemoryOptimization,
 } from '../controllers/statsController';
 import { protect, admin } from '../middleware/authMiddleware';
 
@@ -12,6 +13,7 @@ const router = express.Router();
 
 router.get('/', protect, getDashboardStats);
 router.get('/memory', protect, admin, getMemoryMetrics);
+router.post('/memory/gc', protect, admin, runMemoryOptimization);
 router.post('/cache/clear', protect, admin, clearCache);
 router.post('/cache/prune', protect, admin, pruneCache);
 router.put('/cache/config', protect, admin, updateCacheConfig);

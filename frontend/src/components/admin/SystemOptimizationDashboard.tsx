@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,7 +22,12 @@ import {
   Server,
   Layers,
   ArrowRight,
-  Info
+  Info,
+  Gauge,
+  Clock,
+  Sparkles,
+  RotateCcw,
+  Check,
 } from "lucide-react";
 
 interface CacheStats {
@@ -33,7 +38,10 @@ interface CacheStats {
   hitRatio: number;
   evictions: number;
   expiredPruned: number;
+  pressureEvictions?: number;
+  estimatedSizeBytes?: number;
   activeKeys: string[];
+  namespaceCounts?: Record<string, number>;
 }
 
 interface DiskCacheFile {
@@ -47,6 +55,16 @@ interface DiskCacheStats {
   totalSizeBytes: number;
   cacheDir: string;
   files: DiskCacheFile[];
+  expiredPruned?: number;
+}
+
+interface CacheConfig {
+  capacity: number;
+  cleanupIntervalSeconds: number;
+  defaultTtlSeconds: number;
+  maxMemoryThresholdMb: number;
+  enableMemoryPressureEviction: boolean;
+  diskCacheMaxAgeHours: number;
 }
 
 interface MemoryMetrics {
@@ -59,6 +77,7 @@ interface MemoryMetrics {
   timestamp: string;
   l1Cache: CacheStats;
   l2DiskCache: DiskCacheStats;
+  config?: CacheConfig;
 }
 
 interface CleanupLogItem {
@@ -69,10 +88,18 @@ interface CleanupLogItem {
   status: "success" | "warning" | "info";
 }
 
+const DEFAULT_CONFIG: CacheConfig = {
+  capacity: 250,
+  cleanupIntervalSeconds: 60,
+  defaultTtlSeconds: 30,
+  maxMemoryThresholdMb: 384,
+  enableMemoryPressureEviction: true,
+  diskCacheMaxAgeHours: 24,
+};
+
 export default function SystemOptimizationDashboard() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<"memory" | "code" | "dependencies" | "sql" | "history">("memory");
-  const [newCapacity, setNewCapacity] = useState<number | "">("");
   const [patternInput, setPatternInput] = useState("");
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -81,12 +108,17 @@ export default function SystemOptimizationDashboard() {
     action: () => void;
   } | null>(null);
 
+  // Config form state
+  const [configForm, setConfigForm] = useState<CacheConfig>(DEFAULT_CONFIG);
+  const [isConfigDirty, setIsConfigDirty] = useState(false);
+  const [configSuccessMsg, setConfigSuccessMsg] = useState<string | null>(null);
+
   const [cleanupLogs, setCleanupLogs] = useState<CleanupLogItem[]>([
     {
       id: "init-1",
       timestamp: new Date().toLocaleTimeString(),
       action: "System Initialized",
-      detail: "Memory & Dead Code Audit Dashboard loaded with safe defaults.",
+      detail: "Memory & Cache Optimization loaded with verified safe defaults.",
       status: "info"
     }
   ]);
@@ -104,7 +136,7 @@ export default function SystemOptimizationDashboard() {
     ]);
   };
 
-  // 1. Fetch memory metrics
+  // 1. Fetch live memory metrics
   const { data: metrics, isLoading, isFetching, refetch } = useQuery<MemoryMetrics>({
     queryKey: ["admin-memory-metrics"],
     queryFn: async () => (await api.get("/stats/memory")).data,
@@ -112,12 +144,20 @@ export default function SystemOptimizationDashboard() {
     staleTime: 5_000,
   });
 
+  // Sync server config into local form if user hasn't modified it
+  useEffect(() => {
+    if (metrics?.config && !isConfigDirty) {
+      setConfigForm(metrics.config);
+    }
+  }, [metrics?.config, isConfigDirty]);
+
   // 2. Prune cache mutation
   const pruneMutation = useMutation({
     mutationFn: async () => (await api.post("/stats/cache/prune")).data,
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-memory-metrics"] });
-      addLog("L1 Cache Pruned", `Cleaned ${data.prunedCount || 0} expired memory entries.`, "success");
+      const detail = `Pruned ${data.prunedCount || 0} expired memory entries & ${data.prunedDiskFiles || 0} disk files (${((data.freedDiskBytes || 0) / 1024).toFixed(1)} KB freed).`;
+      addLog("Expired Entries Pruned", detail, "success");
     },
     onError: (err: any) => {
       addLog("Prune Failed", err.response?.data?.message || err.message, "warning");
@@ -133,7 +173,7 @@ export default function SystemOptimizationDashboard() {
       const detail = variables.target === "pattern"
         ? `Cleared pattern '${variables.pattern}' (${data.l1ClearedCount || 0} keys freed).`
         : variables.target === "disk"
-        ? `Freed ${((data.diskFreedBytes || 0) / 1024).toFixed(1)} KB across ${data.diskDeletedFiles || 0} files.`
+        ? `Freed ${((data.diskFreedBytes || 0) / 1024).toFixed(1)} KB across ${data.diskDeletedFiles || 0} disk files.`
         : `L1 memory & L2 disk cache completely flushed.`;
       addLog(`Cache Cleared (${variables.target})`, detail, "success");
       setConfirmModal(null);
@@ -144,16 +184,36 @@ export default function SystemOptimizationDashboard() {
     }
   });
 
-  // 4. Update capacity mutation
-  const capacityMutation = useMutation({
-    mutationFn: async (capacity: number) => (await api.put("/stats/cache/config", { capacity })).data,
-    onSuccess: (_, capacity) => {
+  // 4. Update configuration mutation
+  const configMutation = useMutation({
+    mutationFn: async (payload: Partial<CacheConfig> & { resetToDefaults?: boolean }) =>
+      (await api.put("/stats/cache/config", payload)).data,
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["admin-memory-metrics"] });
-      addLog("Capacity Adjusted", `LRU Cache capacity updated to ${capacity} items.`, "success");
-      setNewCapacity("");
+      if (data.config) {
+        setConfigForm(data.config);
+      }
+      setIsConfigDirty(false);
+      setConfigSuccessMsg(data.message || "Memory optimization configuration saved.");
+      setTimeout(() => setConfigSuccessMsg(null), 4000);
+      addLog("Configuration Saved", `Capacity: ${data.config?.capacity || configForm.capacity}, Cleanup: ${data.config?.cleanupIntervalSeconds || configForm.cleanupIntervalSeconds}s, Retain: ${data.config?.diskCacheMaxAgeHours || configForm.diskCacheMaxAgeHours}h.`, "success");
     },
     onError: (err: any) => {
-      addLog("Capacity Update Failed", err.response?.data?.message || err.message, "warning");
+      addLog("Config Save Failed", err.response?.data?.message || err.message, "warning");
+    }
+  });
+
+  // 5. Memory compaction / Garbage collector mutation
+  const gcMutation = useMutation({
+    mutationFn: async () => (await api.post("/stats/memory/gc")).data,
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-memory-metrics"] });
+      const freedMb = ((data.heapFreedBytes || 0) / (1024 * 1024)).toFixed(1);
+      const detail = `Freed ${freedMb} MB heap • Pruned ${data.prunedL1Entries || 0} L1 entries • Cleaned ${data.prunedDiskFiles || 0} disk files.${data.gcTriggered ? " (V8 GC executed)" : ""}`;
+      addLog("Memory Optimization Executed", detail, "success");
+    },
+    onError: (err: any) => {
+      addLog("Optimization Failed", err.response?.data?.message || err.message, "warning");
     }
   });
 
@@ -176,6 +236,9 @@ export default function SystemOptimizationDashboard() {
     ? Math.min(100, Math.round((metrics.heapUsedBytes / metrics.heapTotalBytes) * 100))
     : 0;
 
+  const currentCapacity = metrics?.l1Cache?.capacity || configForm.capacity;
+  const currentNamespaceCounts = metrics?.l1Cache?.namespaceCounts || {};
+
   return (
     <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6 space-y-6">
       {/* Header */}
@@ -186,34 +249,46 @@ export default function SystemOptimizationDashboard() {
           </div>
           <div>
             <h3 className="font-bold text-white text-base sm:text-lg flex items-center gap-2">
-              System Optimization & Cleanup
-              <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-500/20">
-                Active Audit
+              Memory Optimization & System Health
+              <span className="bg-emerald-500/10 text-emerald-400 text-xs px-2 py-0.5 rounded-full font-medium border border-emerald-500/20 flex items-center gap-1">
+                <Check className="w-3 h-3" /> Safe Defaults Active
               </span>
             </h3>
             <p className="text-xs sm:text-sm text-neutral-400">
-              Manage runtime memory, cache lifecycles, dead code audits, and database health
+              Manage runtime memory, LRU cache capacity, automated cleanup schedules, and system audits
             </p>
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            refetch();
-            addLog("Metrics Refreshed", "Live memory & cache metrics refreshed manually.", "info");
-          }}
-          disabled={isFetching}
-          className="self-start sm:self-auto flex items-center gap-2 px-3.5 py-2 bg-neutral-800 hover:bg-neutral-700/80 text-neutral-300 hover:text-white rounded-xl text-xs font-medium border border-neutral-700/60 transition-colors disabled:opacity-50"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-amber-500" : ""}`} />
-          {isFetching ? "Refreshing..." : "Refresh Metrics"}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => gcMutation.mutate()}
+            disabled={gcMutation.isPending}
+            className="flex items-center gap-1.5 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all disabled:opacity-50"
+            title="Run memory compaction, prune expired cache, and trigger garbage collection"
+          >
+            <Sparkles className={`w-3.5 h-3.5 ${gcMutation.isPending ? "animate-spin" : ""}`} />
+            {gcMutation.isPending ? "Compacting..." : "Optimize Memory"}
+          </button>
+
+          <button
+            onClick={() => {
+              refetch();
+              addLog("Metrics Refreshed", "Live memory & cache metrics refreshed manually.", "info");
+            }}
+            disabled={isFetching}
+            className="flex items-center gap-2 px-3 py-2 bg-neutral-800 hover:bg-neutral-700/80 text-neutral-300 hover:text-white rounded-xl text-xs font-medium border border-neutral-700/60 transition-colors disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${isFetching ? "animate-spin text-amber-500" : ""}`} />
+            {isFetching ? "Refreshing..." : "Refresh"}
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 border-b border-neutral-800/80 text-xs font-semibold">
         {[
-          { id: "memory", label: "Memory Usage", icon: Activity },
+          { id: "memory", label: "Memory Optimization", icon: Activity },
           { id: "code", label: "Code Audit", icon: FileCode2 },
           { id: "dependencies", label: "Dependency Audit", icon: PackageCheck },
           { id: "sql", label: "SQL & DB Audit", icon: Database },
@@ -238,7 +313,7 @@ export default function SystemOptimizationDashboard() {
         })}
       </div>
 
-      {/* TAB CONTENT: 1. MEMORY USAGE */}
+      {/* TAB CONTENT: 1. MEMORY OPTIMIZATION */}
       {activeTab === "memory" && (
         <div className="space-y-6">
           {/* Key Metric KPI Cards */}
@@ -266,15 +341,15 @@ export default function SystemOptimizationDashboard() {
               </p>
             </div>
 
-            {/* L1 Cache Entries */}
+            {/* L1 In-Memory Cache Entries */}
             <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-4 space-y-2">
               <div className="flex items-center justify-between text-xs text-neutral-400">
                 <span className="flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-emerald-400" />
-                  L1 In-Memory Cache
+                  L1 In-Memory LRU Cache
                 </span>
                 <span className="font-mono text-[11px] text-emerald-400">
-                  {metrics?.l1Cache?.size || 0} / {metrics?.l1Cache?.capacity || 250}
+                  {metrics?.l1Cache?.size || 0} / {currentCapacity}
                 </span>
               </div>
               <p className="text-xl font-bold text-white font-mono">
@@ -284,7 +359,7 @@ export default function SystemOptimizationDashboard() {
                 Hit Ratio: {metrics?.l1Cache?.hitRatio || 0}% ({metrics?.l1Cache?.hits || 0} hits / {metrics?.l1Cache?.misses || 0} misses)
               </p>
               <p className="text-[10px] text-neutral-500 font-mono">
-                Pruned: {metrics?.l1Cache?.expiredPruned || 0} • Evicted: {metrics?.l1Cache?.evictions || 0}
+                Pruned: {metrics?.l1Cache?.expiredPruned || 0} • Evicted: {metrics?.l1Cache?.evictions || 0} • Pressure: {metrics?.l1Cache?.pressureEvictions || 0}
               </p>
             </div>
 
@@ -293,7 +368,7 @@ export default function SystemOptimizationDashboard() {
               <div className="flex items-center justify-between text-xs text-neutral-400">
                 <span className="flex items-center gap-1.5">
                   <HardDrive className="w-3.5 h-3.5 text-blue-400" />
-                  L2 Disk Cache
+                  L2 Disk Fallback Cache
                 </span>
                 <span className="font-mono text-[11px] text-blue-400">
                   {metrics?.l2DiskCache?.fileCount || 0} files
@@ -303,10 +378,10 @@ export default function SystemOptimizationDashboard() {
                 {isLoading ? "..." : `${(((metrics?.l2DiskCache?.totalSizeBytes || 0) / 1024)).toFixed(1)} KB`}
               </p>
               <p className="text-[11px] text-neutral-500">
-                Directory: backend/.cache
+                Max Retention: {metrics?.config?.diskCacheMaxAgeHours || configForm.diskCacheMaxAgeHours}h
               </p>
               <p className="text-[10px] text-neutral-500">
-                Persistent offline JSON fallbacks
+                Expired disk files pruned: {metrics?.l2DiskCache?.expiredPruned || 0}
               </p>
             </div>
 
@@ -328,38 +403,85 @@ export default function SystemOptimizationDashboard() {
                 Timezone: Asia/Kolkata
               </p>
               <p className="text-[10px] text-neutral-500">
-                Last checked: {metrics?.timestamp ? new Date(metrics.timestamp).toLocaleTimeString() : "—"}
+                Auto-cleanup: Every {metrics?.config?.cleanupIntervalSeconds || configForm.cleanupIntervalSeconds}s
               </p>
             </div>
           </div>
 
-          {/* Controls: Actions & Config */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Quick Cache Operations */}
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 space-y-3">
-              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-500" />
-                Active Cache Actions
-              </h4>
-              <p className="text-xs text-neutral-400">
-                Safely prune expired items without evicting warm data, or flush specific cache namespaces.
-              </p>
-
+          {/* Active Cache Namespaces Inspector */}
+          {Object.keys(currentNamespaceCounts).length > 0 && (
+            <div className="bg-neutral-800/25 border border-neutral-800/70 rounded-xl p-3.5 space-y-2">
+              <div className="flex items-center justify-between text-xs text-neutral-400">
+                <span className="flex items-center gap-1.5 font-medium text-neutral-300">
+                  <Layers className="w-3.5 h-3.5 text-amber-500" />
+                  Active Cache Namespaces in Memory
+                </span>
+                <span className="text-[11px] text-neutral-500">
+                  Estimated Memory Overhead: ~{(((metrics?.l1Cache?.estimatedSizeBytes || 0) / 1024)).toFixed(1)} KB
+                </span>
+              </div>
               <div className="flex flex-wrap gap-2 pt-1">
+                {Object.entries(currentNamespaceCounts).map(([prefix, count]) => (
+                  <div
+                    key={prefix}
+                    className="flex items-center gap-1.5 bg-neutral-900/90 border border-neutral-800 px-2.5 py-1 rounded-lg text-xs"
+                  >
+                    <span className="font-mono text-neutral-300 font-medium">{prefix}_</span>
+                    <span className="bg-amber-500/15 text-amber-400 text-[10px] px-1.5 py-0.2 rounded font-mono font-bold">
+                      {count}
+                    </span>
+                    <button
+                      onClick={() => clearMutation.mutate({ target: "l1", pattern: `${prefix}_` })}
+                      disabled={clearMutation.isPending}
+                      className="ml-1 text-neutral-500 hover:text-red-400 transition-colors"
+                      title={`Purge all '${prefix}_' entries`}
+                    >
+                      <Trash2 className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Main Controls Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Panel A: Cache Cleanup Operations */}
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 space-y-4">
+              <div>
+                <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-amber-500" />
+                  Cache Cleanup & Maintenance Operations
+                </h4>
+                <p className="text-xs text-neutral-400 mt-0.5">
+                  Prune expired entries without touching active cache, or clear specific cache namespaces.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => pruneMutation.mutate()}
                   disabled={pruneMutation.isPending}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 ${pruneMutation.isPending ? "animate-spin" : ""}`} />
-                  Prune Expired Entries
+                  {pruneMutation.isPending ? "Pruning..." : "Prune Expired Entries (L1 & L2)"}
+                </button>
+
+                <button
+                  onClick={() => gcMutation.mutate()}
+                  disabled={gcMutation.isPending}
+                  className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded-xl text-xs font-semibold transition-all disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  Compact Memory
                 </button>
 
                 <button
                   onClick={() => setConfirmModal({
                     isOpen: true,
                     title: "Clear L1 In-Memory Cache?",
-                    description: "This will flush the in-memory cache. Subsequent requests will rebuild cache entries on demand from the database with zero downtime.",
+                    description: "This will flush in-memory cached query results. Future requests will automatically rebuild fresh cache entries from Supabase with zero downtime.",
                     action: () => clearMutation.mutate({ target: "l1" })
                   })}
                   className="flex items-center gap-1.5 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 rounded-xl text-xs font-semibold transition-all"
@@ -371,8 +493,8 @@ export default function SystemOptimizationDashboard() {
                 <button
                   onClick={() => setConfirmModal({
                     isOpen: true,
-                    title: "Clear L2 Disk Cache?",
-                    description: "This will remove stored .json fallback snapshots from backend/.cache. Active memory cache and database records will remain intact.",
+                    title: "Clear L2 Disk Fallback Cache?",
+                    description: "This will remove stored .json fallback snapshots from backend/.cache. Active in-memory cache and database records will remain completely intact.",
                     action: () => clearMutation.mutate({ target: "disk" })
                   })}
                   className="flex items-center gap-1.5 px-3 py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 border border-neutral-700 rounded-xl text-xs font-semibold transition-all"
@@ -382,10 +504,10 @@ export default function SystemOptimizationDashboard() {
                 </button>
               </div>
 
-              {/* Pattern Invalidation */}
-              <div className="pt-2 border-t border-neutral-800">
-                <label className="block text-[11px] font-medium text-neutral-400 mb-1.5">
-                  Targeted Pattern Invalidation (e.g., schedules_, batches_, stats_)
+              {/* Targeted Namespace Invalidation */}
+              <div className="pt-2 border-t border-neutral-800/80 space-y-2">
+                <label className="block text-[11px] font-medium text-neutral-400">
+                  Targeted Namespace Invalidation (e.g. schedules_, batches_, stats_)
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -393,7 +515,7 @@ export default function SystemOptimizationDashboard() {
                     placeholder="Enter prefix: batches_, stats_..."
                     value={patternInput}
                     onChange={(e) => setPatternInput(e.target.value)}
-                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-amber-500"
+                    className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white placeholder-neutral-500 outline-none focus:border-amber-500 font-mono"
                   />
                   <button
                     onClick={() => {
@@ -402,17 +524,18 @@ export default function SystemOptimizationDashboard() {
                       setPatternInput("");
                     }}
                     disabled={!patternInput.trim() || clearMutation.isPending}
-                    className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 border border-neutral-700 rounded-xl text-xs font-medium disabled:opacity-50"
+                    className="px-3.5 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-amber-400 border border-neutral-700 rounded-xl text-xs font-medium disabled:opacity-50"
                   >
-                    Invalidate
+                    Invalidate Prefix
                   </button>
                 </div>
-                <div className="flex flex-wrap gap-1 mt-2">
-                  {["batches_", "schedules_", "teachers_", "stats_", "students_", "payments_"].map(p => (
+
+                <div className="flex flex-wrap gap-1.5 pt-0.5">
+                  {["batches_", "schedules_", "teachers_", "students_", "demo_sessions_", "payments_", "stats_"].map(p => (
                     <button
                       key={p}
                       onClick={() => clearMutation.mutate({ target: "l1", pattern: p })}
-                      className="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-amber-400 border border-neutral-800 rounded px-1.5 py-0.5 font-mono transition-colors"
+                      className="text-[10px] bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-amber-400 border border-neutral-800 rounded px-2 py-0.5 font-mono transition-colors"
                     >
                       {p}*
                     </button>
@@ -421,72 +544,199 @@ export default function SystemOptimizationDashboard() {
               </div>
             </div>
 
-            {/* LRU Capacity Tuning */}
-            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 space-y-3">
-              <h4 className="text-sm font-semibold text-white flex items-center gap-2">
-                <Sliders className="w-4 h-4 text-amber-500" />
-                LRU Cache Capacity Configuration
-              </h4>
-              <p className="text-xs text-neutral-400">
-                Control the maximum number of items held in the fast in-memory LRU cache. When capacity is reached, least recently used entries are automatically evicted.
-              </p>
-
-              <div className="space-y-3 pt-1">
+            {/* Panel B: Memory Optimization Settings & Policies */}
+            <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 space-y-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-neutral-400">Current Capacity:</span>
-                    <span className="font-bold text-white font-mono">{metrics?.l1Cache?.capacity || 250} entries</span>
+                  <h4 className="text-sm font-semibold text-white flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-amber-500" />
+                    Memory Limits & Cleanup Schedules
+                  </h4>
+                  <p className="text-xs text-neutral-400 mt-0.5">
+                    Configure memory thresholds, automatic background eviction, and disk retention.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    configMutation.mutate({ resetToDefaults: true });
+                  }}
+                  disabled={configMutation.isPending}
+                  className="flex items-center gap-1 text-[11px] text-neutral-400 hover:text-amber-400 transition-colors"
+                  title="Reset all settings to verified safe defaults"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  Reset Defaults
+                </button>
+              </div>
+
+              <AnimatePresence>
+                {configSuccessMsg && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -5 }}
+                    className="bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs px-3 py-2 rounded-xl flex items-center gap-2"
+                  >
+                    <CheckCircle2 className="w-4 h-4 shrink-0" />
+                    <span>{configSuccessMsg}</span>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <div className="space-y-3.5">
+                {/* 1. LRU Capacity */}
+                <div>
+                  <div className="flex justify-between items-center text-xs mb-1">
+                    <label className="text-neutral-300 font-medium">LRU Cache Capacity (Max Keys)</label>
+                    <span className="font-mono text-amber-400 text-xs">{configForm.capacity} entries</span>
                   </div>
                   <div className="flex gap-2">
                     <input
                       type="number"
                       min={25}
-                      max={2000}
+                      max={5000}
                       step={25}
-                      placeholder="e.g. 250"
-                      value={newCapacity}
-                      onChange={(e) => setNewCapacity(e.target.value === "" ? "" : Number(e.target.value))}
-                      className="flex-1 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 outline-none focus:border-amber-500 font-mono"
-                    />
-                    <button
-                      onClick={() => {
-                        if (newCapacity && Number(newCapacity) >= 25) {
-                          capacityMutation.mutate(Number(newCapacity));
-                        }
+                      value={configForm.capacity}
+                      onChange={(e) => {
+                        const val = Math.min(Math.max(25, Number(e.target.value) || 250), 5000);
+                        setConfigForm({ ...configForm, capacity: val });
+                        setIsConfigDirty(true);
                       }}
-                      disabled={!newCapacity || capacityMutation.isPending}
-                      className="px-4 py-2 brand-gradient text-black rounded-xl text-xs font-semibold hover:opacity-90 disabled:opacity-50"
-                    >
-                      {capacityMutation.isPending ? "Saving..." : "Set Capacity"}
-                    </button>
+                      className="w-28 bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-amber-500 font-mono"
+                    />
+                    {/* Preset buttons */}
+                    <div className="flex flex-wrap gap-1 items-center flex-1">
+                      {[
+                        { label: "100", val: 100 },
+                        { label: "250 (Safe)", val: 250 },
+                        { label: "500", val: 500 },
+                        { label: "1000", val: 1000 },
+                      ].map(p => (
+                        <button
+                          key={p.val}
+                          type="button"
+                          onClick={() => {
+                            setConfigForm({ ...configForm, capacity: p.val });
+                            setIsConfigDirty(true);
+                          }}
+                          className={`text-[11px] px-2 py-1 rounded-lg border transition-all ${
+                            configForm.capacity === p.val
+                              ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-semibold"
+                              : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
+                          }`}
+                        >
+                          {p.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Preset quick buttons */}
-                <div>
-                  <span className="text-[11px] text-neutral-500 block mb-1">Recommended Presets:</span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {[
-                      { label: "Light (100)", val: 100 },
-                      { label: "Standard (250)", val: 250 },
-                      { label: "High-Traffic (500)", val: 500 },
-                      { label: "Enterprise (1000)", val: 1000 },
-                    ].map(preset => (
-                      <button
-                        key={preset.val}
-                        onClick={() => capacityMutation.mutate(preset.val)}
-                        className={`text-xs px-2.5 py-1 rounded-lg border transition-all ${
-                          metrics?.l1Cache?.capacity === preset.val
-                            ? "bg-amber-500/20 border-amber-500/40 text-amber-300 font-semibold"
-                            : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"
-                        }`}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
+                {/* 2. Automatic Cleanup Schedule */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1">
+                      Auto-Cleanup Schedule
+                    </label>
+                    <select
+                      value={configForm.cleanupIntervalSeconds}
+                      onChange={(e) => {
+                        setConfigForm({ ...configForm, cleanupIntervalSeconds: Number(e.target.value) });
+                        setIsConfigDirty(true);
+                      }}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    >
+                      <option value={30}>Every 30 seconds</option>
+                      <option value={60}>Every 60 seconds (Safe Default)</option>
+                      <option value={120}>Every 2 minutes</option>
+                      <option value={300}>Every 5 minutes</option>
+                      <option value={600}>Every 10 minutes</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1">
+                      Memory Pressure Limit
+                    </label>
+                    <select
+                      value={configForm.maxMemoryThresholdMb}
+                      onChange={(e) => {
+                        setConfigForm({ ...configForm, maxMemoryThresholdMb: Number(e.target.value) });
+                        setIsConfigDirty(true);
+                      }}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    >
+                      <option value={256}>256 MB (Low RAM)</option>
+                      <option value={384}>384 MB (Safe Default)</option>
+                      <option value={512}>512 MB (Standard)</option>
+                      <option value={1024}>1024 MB (High Capacity)</option>
+                    </select>
                   </div>
                 </div>
+
+                {/* 3. Disk Retention & Pressure Eviction Toggle */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-neutral-300 mb-1">
+                      Disk Cache Retention
+                    </label>
+                    <select
+                      value={configForm.diskCacheMaxAgeHours}
+                      onChange={(e) => {
+                        setConfigForm({ ...configForm, diskCacheMaxAgeHours: Number(e.target.value) });
+                        setIsConfigDirty(true);
+                      }}
+                      className="w-full bg-neutral-900 border border-neutral-700 rounded-xl px-3 py-1.5 text-xs text-white outline-none focus:border-amber-500"
+                    >
+                      <option value={6}>6 Hours</option>
+                      <option value={12}>12 Hours</option>
+                      <option value={24}>24 Hours (Safe Default)</option>
+                      <option value={48}>48 Hours</option>
+                      <option value={168}>7 Days</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-5">
+                    <input
+                      type="checkbox"
+                      id="pressureEviction"
+                      checked={configForm.enableMemoryPressureEviction}
+                      onChange={(e) => {
+                        setConfigForm({ ...configForm, enableMemoryPressureEviction: e.target.checked });
+                        setIsConfigDirty(true);
+                      }}
+                      className="w-4 h-4 rounded border-neutral-700 bg-neutral-900 text-amber-500 focus:ring-amber-500/20"
+                    />
+                    <label htmlFor="pressureEviction" className="text-xs text-neutral-300 cursor-pointer">
+                      Auto-evict LRU when memory exceeds threshold
+                    </label>
+                  </div>
+                </div>
+
+                {/* Save button */}
+                <div className="flex justify-end pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      configMutation.mutate(configForm);
+                    }}
+                    disabled={configMutation.isPending}
+                    className="flex items-center gap-1.5 px-4 py-2 brand-gradient text-black rounded-xl text-xs font-semibold hover:opacity-90 disabled:opacity-50 transition-opacity"
+                  >
+                    {configMutation.isPending ? "Saving Settings..." : "Save Optimization Settings"}
+                  </button>
+                </div>
               </div>
+            </div>
+          </div>
+
+          {/* Safe Defaults Guarantee Notice */}
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-300">
+            <Info className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold">Safe Defaults Guard: </span>
+              Essential application caching is preserved to ensure low latency and high responsiveness. Cache cleanups only evict expired or cold LRU data; active database entities and operational records are never deleted.
             </div>
           </div>
         </div>
@@ -498,10 +748,10 @@ export default function SystemOptimizationDashboard() {
           <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4">
             <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
               <FileCode2 className="w-4 h-4 text-amber-500" />
-              Codebase Dead Code & Memory Retention Audit
+              Codebase Dead Code &amp; Memory Retention Audit
             </h4>
             <p className="text-xs text-neutral-400">
-              Audit results for unused exports, dynamic imports, timer cleanups, and React memory footprint.
+              Audit results for unused exports, dynamic imports, timer cleanups, Socket.IO connections, and React memory footprint.
             </p>
           </div>
 
@@ -517,19 +767,27 @@ export default function SystemOptimizationDashboard() {
               </thead>
               <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
                 <tr>
-                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">DemoReportPDF.tsx</td>
-                  <td className="py-2.5 px-3">Dynamic imports for heavy libraries</td>
-                  <td className="py-2.5 px-3">Uses lazy <code>import(&apos;html2canvas&apos;)</code> &amp; <code>import(&apos;jspdf&apos;)</code> only when generating PDFs</td>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">Socket.IO Client</td>
+                  <td className="py-2.5 px-3">Connection retention &amp; duplicate listeners</td>
+                  <td className="py-2.5 px-3">Frontend does not initialize WebSocket connections; relies on TanStack Query HTTP polling with auto garbage collection</td>
                   <td className="py-2.5 px-3">
                     <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">Analytics Modals</td>
-                  <td className="py-2.5 px-3">Code-splitting large modal bundles</td>
-                  <td className="py-2.5 px-3"><code>ActiveBatchesAnalyticsModal</code>, <code>TeacherPerformanceModal</code>, <code>TeacherWeeklyAvailabilityModal</code> use Next.js <code>dynamic()</code></td>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">PwaProvider, Layout, Modals</td>
+                  <td className="py-2.5 px-3">Event Listener Memory Leaks</td>
+                  <td className="py-2.5 px-3">Verified: All <code>online</code>, <code>offline</code>, <code>resize</code>, and <code>mousedown</code> listeners include clean unmount handlers</td>
                   <td className="py-2.5 px-3">
-                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Clean</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">useDebounce &amp; Toast Timers</td>
+                  <td className="py-2.5 px-3">Timer retention &amp; unmount clearing</td>
+                  <td className="py-2.5 px-3"><code>useDebounce</code> clears timer on unmount; toast timeouts use non-retaining 2-4s durations with unref cleanup</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Clean</span>
                   </td>
                 </tr>
                 <tr>
@@ -541,17 +799,9 @@ export default function SystemOptimizationDashboard() {
                   </td>
                 </tr>
                 <tr>
-                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">PwaProvider &amp; Layout</td>
-                  <td className="py-2.5 px-3">Event Listener Memory Leaks</td>
-                  <td className="py-2.5 px-3">Verified: All <code>online</code>, <code>offline</code>, <code>resize</code>, and <code>mousedown</code> listeners include clean unmount handlers</td>
-                  <td className="py-2.5 px-3">
-                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Clean</span>
-                  </td>
-                </tr>
-                <tr>
-                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">scheduleHelper.ts</td>
-                  <td className="py-2.5 px-3">Interval Conflict Detection</td>
-                  <td className="py-2.5 px-3">Strict adherence to CODE_OPTIMIZATION.md: minute normalization + binary search sweep-line (O(N log N))</td>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">studentController.ts</td>
+                  <td className="py-2.5 px-3">Student Cache Lifecycle</td>
+                  <td className="py-2.5 px-3">Added 30s TTL in-memory caching to <code>getAllStudents</code>, completing the lifecycle with existing <code>students_</code> invalidation</td>
                   <td className="py-2.5 px-3">
                     <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
                   </td>
@@ -559,7 +809,23 @@ export default function SystemOptimizationDashboard() {
                 <tr>
                   <td className="py-2.5 px-3 font-mono font-medium text-amber-400">backend/utils/cache.ts</td>
                   <td className="py-2.5 px-3">Active TTL Expiration Prune</td>
-                  <td className="py-2.5 px-3">Background 60s timer with <code>.unref()</code> prevents process hang on exit, actively freeing expired keys</td>
+                  <td className="py-2.5 px-3">Background cleanup schedule with memory pressure protection (evicts oldest 25% if heap exceeds limit)</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">DemoReportPDF.tsx</td>
+                  <td className="py-2.5 px-3">Dynamic imports for heavy libraries</td>
+                  <td className="py-2.5 px-3">Uses lazy <code>import(&apos;html2canvas&apos;)</code> &amp; <code>import(&apos;jspdf&apos;)</code> only when generating PDFs</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">Analytics Modals</td>
+                  <td className="py-2.5 px-3">Code-splitting large modal bundles</td>
+                  <td className="py-2.5 px-3"><code>ActiveBatchesAnalyticsModal</code>, <code>TeacherPerformanceModal</code>, <code>TeacherWeeklyAvailabilityModal</code> use Next.js <code>dynamic()</code></td>
                   <td className="py-2.5 px-3">
                     <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
                   </td>
@@ -822,4 +1088,3 @@ export default function SystemOptimizationDashboard() {
     </div>
   );
 }
-

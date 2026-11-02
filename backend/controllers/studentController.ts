@@ -245,6 +245,13 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
     const limit = req.query.limit ? Number(req.query.limit) : undefined;
     const startAfter = req.query.startAfter as string | undefined;
 
+    const cacheKey = `students_${req.user && req.user.role === 'Teacher' ? req.user._id : 'admin'}_${limit || 'all'}_${startAfter || 'start'}`;
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      res.status(200).json(cached);
+      return;
+    }
+
     if (req.user && req.user.role === 'Teacher') {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (!teacher) {
@@ -267,6 +274,7 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
       const students = await queryChain
         .populate('batch', 'name subject status assignedTeacher numberOfSessions')
         .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+      serverCache.set(cacheKey, students, 30_000);
       res.status(200).json(students);
       return;
     }
@@ -278,6 +286,7 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
     const students = await queryChain
       .populate('batch', 'name subject status assignedTeacher numberOfSessions')
       .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+    serverCache.set(cacheKey, students, 30_000);
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch all students' });

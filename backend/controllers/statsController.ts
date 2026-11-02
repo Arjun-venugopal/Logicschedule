@@ -4,7 +4,14 @@ import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
-import { serverCache, getSystemMemoryMetrics, clearAllDiskCache } from '../utils/cache';
+import {
+  serverCache,
+  getSystemMemoryMetrics,
+  clearAllDiskCache,
+  pruneExpiredDiskCache,
+  runManualMemoryCompaction,
+  DEFAULT_CACHE_CONFIG,
+} from '../utils/cache';
 
 // @desc    Get dashboard stats
 // @route   GET /stats
@@ -260,37 +267,85 @@ export const clearCache = async (req: any, res: Response) => {
   }
 };
 
-// @desc    Prune expired cache entries
+// @desc    Prune expired cache entries across L1 in-memory and L2 disk caches
 // @route   POST /stats/cache/prune
 // @access  Private/Admin
 export const pruneCache = async (_req: any, res: Response) => {
   try {
     const prunedCount = serverCache.pruneExpired();
+    const diskResult = pruneExpiredDiskCache(serverCache.getConfig().diskCacheMaxAgeHours * 3600 * 1000);
     const metrics = getSystemMemoryMetrics();
-    res.json({ message: 'Expired cache entries pruned', prunedCount, currentMetrics: metrics });
+    res.json({
+      message: 'Expired cache entries pruned',
+      prunedCount,
+      prunedDiskFiles: diskResult.prunedFiles,
+      freedDiskBytes: diskResult.freedBytes,
+      currentMetrics: metrics,
+    });
   } catch (error: any) {
     console.error('Failed to prune cache:', error);
     res.status(500).json({ message: 'Failed to prune cache', detail: error.message });
   }
 };
 
-// @desc    Configure cache capacity
+// @desc    Configure cache capacity and memory management strategies
 // @route   PUT /stats/cache/config
 // @access  Private/Admin
 export const updateCacheConfig = async (req: any, res: Response) => {
   try {
-    const { capacity } = req.body || {};
-    if (!capacity || isNaN(Number(capacity))) {
-      return res.status(400).json({ message: 'Valid numerical capacity required (25 - 5000)' });
+    const {
+      capacity,
+      cleanupIntervalSeconds,
+      defaultTtlSeconds,
+      maxMemoryThresholdMb,
+      enableMemoryPressureEviction,
+      diskCacheMaxAgeHours,
+      resetToDefaults,
+    } = req.body || {};
+
+    if (resetToDefaults) {
+      const updated = serverCache.updateConfig(DEFAULT_CACHE_CONFIG);
+      return res.json({
+        message: 'Cache settings reset to safe defaults',
+        config: updated,
+        currentMetrics: getSystemMemoryMetrics(),
+      });
     }
-    const numCap = parseInt(capacity, 10);
-    serverCache.setCapacity(numCap);
+
+    const updated = serverCache.updateConfig({
+      capacity,
+      cleanupIntervalSeconds,
+      defaultTtlSeconds,
+      maxMemoryThresholdMb,
+      enableMemoryPressureEviction,
+      diskCacheMaxAgeHours,
+    });
+
     res.json({
-      message: `Cache capacity updated to ${numCap}`,
+      message: 'Memory management configuration updated successfully',
+      config: updated,
       currentMetrics: getSystemMemoryMetrics(),
     });
   } catch (error: any) {
     console.error('Failed to update cache config:', error);
     res.status(500).json({ message: 'Failed to update cache configuration', detail: error.message });
+  }
+};
+
+// @desc    Run manual memory compaction and trigger garbage collection if available
+// @route   POST /stats/memory/gc
+// @access  Private/Admin
+export const runMemoryOptimization = async (_req: any, res: Response) => {
+  try {
+    const result = runManualMemoryCompaction();
+    const metrics = getSystemMemoryMetrics();
+    res.json({
+      message: 'Memory optimization executed successfully',
+      ...result,
+      currentMetrics: metrics,
+    });
+  } catch (error: any) {
+    console.error('Failed to run memory optimization:', error);
+    res.status(500).json({ message: 'Failed to run memory optimization', detail: error.message });
   }
 };
