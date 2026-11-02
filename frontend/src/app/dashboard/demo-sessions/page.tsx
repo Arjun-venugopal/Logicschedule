@@ -35,6 +35,9 @@ import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
+import { DemoPaymentDetailsModal } from "@/components/payments/DemoPaymentDetailsModal";
+import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
+import { EditPaymentModal } from "@/components/payments/EditPaymentModal";
 import dynamic from "next/dynamic";
 const DemoReportModal = dynamic(() => import("@/components/demo/DemoReportModal"), { ssr: false });
 
@@ -75,6 +78,11 @@ interface DemoSession {
   conflict?: boolean;
   createdBy?: string;
   createdAt?: string;
+  studentId?: string;
+  payment?: any;
+  paymentStatus?: string;
+  paymentType?: string;
+  remainingAmount?: number;
 }
 
 type DemoSessionForm = {
@@ -163,6 +171,9 @@ export default function DemoSessionsPage() {
   const [viewingSession, setViewingSession] = useState<DemoSession | null>(null);
   const [reportSession, setReportSession] = useState<DemoSession | null>(null);
   const [admissionPaymentSession, setAdmissionPaymentSession] = useState<DemoSession | null>(null);
+  const [selectedPaymentSession, setSelectedPaymentSession] = useState<DemoSession | null>(null);
+  const [recordPaymentForSession, setRecordPaymentForSession] = useState<any | null>(null);
+  const [editPaymentForSession, setEditPaymentForSession] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
 
   const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
@@ -250,10 +261,13 @@ export default function DemoSessionsPage() {
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       closeModal();
       if (variables.data.admissionConfirmed === "Yes" || variables.data.admissionConfirmed === "Won") {
-        setAdmissionPaymentSession({
-          ...variables.data,
-          _id: variables.id,
-        } as any);
+        const prev = demoSessions.find((s) => s._id === variables.id);
+        if (!prev?.payment) {
+          setAdmissionPaymentSession({
+            ...variables.data,
+            _id: variables.id,
+          } as any);
+        }
       }
     },
   });
@@ -302,6 +316,69 @@ export default function DemoSessionsPage() {
       return "bg-red-500/10 text-red-400 border-red-500/20";
     }
     return "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  };
+
+  const getPaymentTier = (session: DemoSession): "full" | "half" | "none" => {
+    const p = session.payment;
+    if (!p) return "none";
+    const totalFee = Number(p.totalFee) || 0;
+    const amountPaid = Number(p.amountPaid) || 0;
+    const remainingAmount = Number(
+      p.remainingAmount !== undefined ? p.remainingAmount : Math.max(0, totalFee - amountPaid)
+    );
+    const type = String(p.paymentType || "").toLowerCase();
+    const status = String(p.paymentStatus || "").toLowerCase();
+
+    // Full Payment: Paid in full / 0 remaining balance
+    if (
+      status === "paid" ||
+      (amountPaid > 0 && remainingAmount <= 0) ||
+      (type.includes("full") && remainingAmount <= 0)
+    ) {
+      return "full";
+    }
+
+    // Half / Partial Payment: Partial payment / remaining balance > 0
+    if (
+      type.includes("half") ||
+      status.includes("partial") ||
+      (amountPaid > 0 && remainingAmount > 0)
+    ) {
+      return "half";
+    }
+
+    return "none";
+  };
+
+  const getPaymentButtonProps = (session: DemoSession) => {
+    const tier = getPaymentTier(session);
+    if (tier === "full") {
+      return {
+        tier,
+        colorClass: "text-emerald-400 hover:text-emerald-300 bg-emerald-500/15 hover:bg-emerald-500/25 border-emerald-500/30",
+        tooltip: `Payment: Paid in Full (₹${Number(session.payment?.totalFee || session.payment?.amountPaid || 0).toLocaleString("en-IN")}) · Click to view payment details`,
+      };
+    }
+    if (tier === "half") {
+      return {
+        tier,
+        colorClass: "text-orange-400 hover:text-orange-300 bg-orange-500/15 hover:bg-orange-500/25 border-orange-500/30",
+        tooltip: `Payment: Half Payment (₹${Number(session.payment?.amountPaid || 0).toLocaleString("en-IN")} Paid, ₹${Number(session.payment?.remainingAmount || 0).toLocaleString("en-IN")} Due) · Click to view payment details`,
+      };
+    }
+    return {
+      tier,
+      colorClass: "text-neutral-400 hover:text-amber-400 bg-neutral-800/80 hover:bg-neutral-700/80 border-neutral-700/60",
+      tooltip: "Fee Collection / Payment Details · Click to add payment details",
+    };
+  };
+
+  const handlePaymentClick = (session: DemoSession) => {
+    if (session.payment) {
+      setSelectedPaymentSession(session);
+    } else {
+      setAdmissionPaymentSession(session);
+    }
   };
 
   const openCreate = () => {
@@ -1231,6 +1308,25 @@ export default function DemoSessionsPage() {
                         <CheckCircle2 className="w-3.5 h-3.5 text-neutral-500" />
                         <span>Admn Status: <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>{session.admissionConfirmed || "Pending"}</span></span>
                       </div>
+                      {session.payment && (
+                        <div className="flex items-center gap-2">
+                          <CreditCard className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>
+                            Payment:{" "}
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
+                                getPaymentTier(session) === "full"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                  : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                              }`}
+                            >
+                              {getPaymentTier(session) === "full"
+                                ? "Full Payment"
+                                : `Half Paid (₹${Number(session.payment.remainingAmount || 0).toLocaleString("en-IN")} Due)`}
+                            </span>
+                          </span>
+                        </div>
+                      )}
                       {session.studentEmail && (
                         <div className="text-[11px] text-neutral-500 truncate" title={session.studentEmail}>
                           Email: {session.studentEmail}
@@ -1288,6 +1384,15 @@ export default function DemoSessionsPage() {
                             title="Student Performance Report"
                           >
                             <FileText className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                        {(session.admissionConfirmed === "Yes" || session.admissionConfirmed === "Won" || session.status === "Completed" || session.payment) && (
+                          <button
+                            onClick={() => handlePaymentClick(session)}
+                            className={`p-1.5 rounded-lg border transition-all ${getPaymentButtonProps(session).colorClass}`}
+                            title={getPaymentButtonProps(session).tooltip}
+                          >
+                            <CreditCard className="w-3.5 h-3.5" />
                           </button>
                         )}
                         {!isTeacher && canManageSlots && (
@@ -1384,11 +1489,11 @@ export default function DemoSessionsPage() {
                       {session.status === "Completed" && (
                         <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
                       )}
-                      {(session.admissionConfirmed === "Yes" || session.status === "Completed") && (
+                      {(session.admissionConfirmed === "Yes" || session.admissionConfirmed === "Won" || session.status === "Completed" || session.payment) && (
                         <button
-                          onClick={() => setAdmissionPaymentSession(session)}
-                          className="text-amber-400 hover:text-amber-300"
-                          title="Fee Collection / Payment Details"
+                          onClick={() => handlePaymentClick(session)}
+                          className={`p-1 rounded-md border transition-all ${getPaymentButtonProps(session).colorClass}`}
+                          title={getPaymentButtonProps(session).tooltip}
                         >
                           <CreditCard className="w-4 h-4" />
                         </button>
@@ -2456,15 +2561,67 @@ export default function DemoSessionsPage() {
         />
       )}
 
+      {selectedPaymentSession && (
+        <DemoPaymentDetailsModal
+          isOpen={true}
+          onClose={() => setSelectedPaymentSession(null)}
+          demoSession={selectedPaymentSession}
+          onRecordPayment={(p) => setRecordPaymentForSession(p)}
+          onEditPayment={(p) => setEditPaymentForSession(p)}
+          onAddAdmissionPayment={() => {
+            setAdmissionPaymentSession(selectedPaymentSession);
+            setSelectedPaymentSession(null);
+          }}
+        />
+      )}
+
+      {recordPaymentForSession && (
+        <RecordPaymentModal
+          isOpen={true}
+          onClose={() => setRecordPaymentForSession(null)}
+          payment={recordPaymentForSession}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
+            queryClient.invalidateQueries({ queryKey: ["payments"] });
+            queryClient.invalidateQueries({ queryKey: ["demo-session-payment"] });
+            setRecordPaymentForSession(null);
+          }}
+        />
+      )}
+
+      {editPaymentForSession && (
+        <EditPaymentModal
+          isOpen={true}
+          onClose={() => setEditPaymentForSession(null)}
+          payment={editPaymentForSession}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
+            queryClient.invalidateQueries({ queryKey: ["payments"] });
+            queryClient.invalidateQueries({ queryKey: ["demo-session-payment"] });
+            setEditPaymentForSession(null);
+          }}
+        />
+      )}
+
       {admissionPaymentSession && (
         <AdmissionPaymentModal
           isOpen={true}
           onClose={() => setAdmissionPaymentSession(null)}
           demoSessionId={admissionPaymentSession._id}
+          studentId={admissionPaymentSession.studentId}
           studentName={admissionPaymentSession.studentName}
           courseName={admissionPaymentSession.subject}
-          initialFee={15000}
-          initialSessions={15}
+          initialFee={
+            admissionPaymentSession.feeDiscussed
+              ? Number(String(admissionPaymentSession.feeDiscussed).replace(/[^\d.]/g, "")) || 15000
+              : 15000
+          }
+          initialSessions={admissionPaymentSession.numberOfSessions || 15}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
+            queryClient.invalidateQueries({ queryKey: ["payments"] });
+            queryClient.invalidateQueries({ queryKey: ["demo-session-payment"] });
+          }}
         />
       )}
     </div>

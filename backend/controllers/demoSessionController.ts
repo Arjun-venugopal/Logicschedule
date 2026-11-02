@@ -4,6 +4,7 @@ import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
+import Payment from '../models/Payment';
 import RecycleBin from '../models/RecycleBin';
 import { findExistingStudent } from './studentController';
 import { checkTeacherConflict } from '../utils/scheduleHelper';
@@ -47,14 +48,118 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
       };
     }
 
-    const demoSessions = await DemoSession.find(query)
-      .sort({ date: -1 })
-      .populate('teacher', 'name email status availability');
+    const [demoSessions, allPayments, allStudents] = await Promise.all([
+      DemoSession.find(query)
+        .sort({ date: -1 })
+        .populate('teacher', 'name email status availability'),
+      Payment.safeFind({}),
+      Student.find({}).select('_id name email mobileNumber phone batch payment'),
+    ]);
+
+    // Fast O(1) indexes for payment matching
+    const paymentByDemoId = new Map<string, any>();
+    const paymentByStudentId = new Map<string, any>();
+
+    for (const p of allPayments) {
+      if (p.demoSession) {
+        const dsId = (p.demoSession._id || p.demoSession).toString();
+        paymentByDemoId.set(dsId, p);
+      }
+      if (p.student) {
+        const sId = (p.student._id || p.student).toString();
+        paymentByStudentId.set(sId, p);
+      }
+    }
+
+    const studentByEmail = new Map<string, any>();
+    const studentByPhone = new Map<string, any>();
+    const studentByName = new Map<string, any>();
+    const studentByBatch = new Map<string, any>();
+
+    for (const s of allStudents) {
+      const sId = s._id ? s._id.toString() : '';
+      if (s.email) {
+        studentByEmail.set(s.email.trim().toLowerCase(), s);
+      }
+      const phoneDigits = String(s.mobileNumber || s.phone || '').replace(/\D/g, '');
+      if (phoneDigits.length >= 8) {
+        studentByPhone.set(phoneDigits.slice(-10), s);
+      }
+      if (s.name) {
+        studentByName.set(s.name.trim().toLowerCase(), s);
+      }
+      if (s.batch) {
+        const bId = (s.batch._id || s.batch).toString();
+        studentByBatch.set(bId, s);
+      }
+      if (s.payment && !paymentByStudentId.has(sId)) {
+        paymentByStudentId.set(sId, s.payment);
+      }
+    }
 
     // Mask fee details for Sales Person if they are not the assigned salesExecutive
     const maskedSessions = demoSessions.map((session: any) => {
       const sessionObj = { ...session };
       sessionObj.status = sessionObj.status || 'Scheduled';
+
+      const sId = session._id ? session._id.toString() : '';
+      let matchedPayment = sId ? paymentByDemoId.get(sId) : null;
+      let matchedStudent: any = null;
+
+      if (session.studentEmail) {
+        matchedStudent = studentByEmail.get(session.studentEmail.trim().toLowerCase());
+      }
+      if (!matchedStudent && session.phoneNumber) {
+        const pClean = String(session.phoneNumber).replace(/\D/g, '');
+        if (pClean.length >= 8) {
+          matchedStudent = studentByPhone.get(pClean.slice(-10));
+        }
+      }
+      if (!matchedStudent && session.batchAssigned) {
+        const bId = (session.batchAssigned._id || session.batchAssigned).toString();
+        matchedStudent = studentByBatch.get(bId);
+      }
+      if (!matchedStudent && session.studentName) {
+        matchedStudent = studentByName.get(session.studentName.trim().toLowerCase());
+      }
+
+      if (!matchedPayment && matchedStudent) {
+        matchedPayment = paymentByStudentId.get(matchedStudent._id.toString());
+      }
+
+      if (matchedStudent) {
+        sessionObj.studentId = matchedStudent._id.toString();
+        if (!sessionObj.studentEmail && matchedStudent.email) sessionObj.studentEmail = matchedStudent.email;
+        if (!sessionObj.phoneNumber && matchedStudent.mobileNumber) sessionObj.phoneNumber = matchedStudent.mobileNumber;
+      }
+
+      if (matchedPayment) {
+        const totalFee = Number(matchedPayment.totalFee) || 0;
+        const amountPaid = Number(matchedPayment.amountPaid) || 0;
+        const remainingAmount = Math.max(0, totalFee - amountPaid);
+        const pType = matchedPayment.paymentType || (remainingAmount <= 0 ? 'Full Payment' : 'Half Payment');
+        const pStatus = matchedPayment.paymentStatus || (remainingAmount <= 0 ? 'Paid' : 'Partially Paid');
+
+        sessionObj.payment = {
+          _id: matchedPayment._id,
+          totalFee,
+          amountPaid,
+          remainingAmount,
+          paymentType: pType,
+          paymentStatus: pStatus,
+          assignedClasses: matchedPayment.assignedClasses || 15,
+          dueAfterClasses: matchedPayment.dueAfterClasses || 5,
+          paymentHistory: Array.isArray(matchedPayment.paymentHistory) ? matchedPayment.paymentHistory : [],
+          notes: matchedPayment.notes || '',
+          salesExecutive: matchedPayment.salesExecutive || sessionObj.salesExecutive || '',
+          admissionDate: matchedPayment.admissionDate || '',
+          updatedAt: matchedPayment.updatedAt || matchedPayment.createdAt || '',
+        };
+        sessionObj.paymentStatus = pStatus;
+        sessionObj.paymentType = pType;
+        sessionObj.remainingAmount = remainingAmount;
+      }
+
       if (req.user && req.user.role === 'Sales Person') {
         const isAssigned = sessionObj.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
         if (!isAssigned) {
@@ -158,9 +263,9 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
         const isTutorNotConfirmed = demoSession.classAssignedTutor === 'Teacher is not confirmed' || demoSession.classAssignedTutor === 'Teacher Not Confirmed' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
         const teacherId = isTutorNotConfirmed
           ? undefined
-          : (demoSession.classAssignedTutor 
-             || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
-             || undefined);
+          : (demoSession.classAssignedTutor
+            || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
+            || undefined);
 
         const newBatch = await Batch.create({
           name: batchName,
@@ -297,7 +402,7 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
       demoSession.date = req.body.date ? new Date(req.body.date) : demoSession.date;
       demoSession.startTime = req.body.startTime || demoSession.startTime;
       demoSession.endTime = req.body.endTime || demoSession.endTime;
-      
+
       if (req.body.status !== undefined) {
         demoSession.status = req.body.status;
       } else if (!demoSession.status) {
@@ -379,9 +484,9 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         const isTutorNotConfirmed = updated.classAssignedTutor === 'Teacher is not confirmed' || updated.classAssignedTutor === 'Teacher Not Confirmed' || updated.admissionConfirmed === 'Teacher is not confirmed' || updated.admissionConfirmed === 'Teacher Not Confirmed';
         const teacherId = isTutorNotConfirmed
           ? undefined
-          : (updated.classAssignedTutor 
-             || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
-             || undefined);
+          : (updated.classAssignedTutor
+            || (updated.teacher && typeof updated.teacher === 'object' ? updated.teacher._id : updated.teacher)
+            || undefined);
 
         const newBatch = await Batch.create({
           name: batchName,

@@ -191,6 +191,8 @@ export function StudentDetailsModal({
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["payments"] });
+      queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
+      queryClient.invalidateQueries({ queryKey: ["demo-session-payment"] });
       setShowNextCourseModal(false);
       setSelectedLevel("");
       setSelectedTeacher("");

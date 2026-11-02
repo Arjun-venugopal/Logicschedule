@@ -7,6 +7,7 @@ import {
   updatePayment,
   deletePayment,
   getStudentPayment,
+  getDemoSessionPayment,
   getPaymentNotifications,
   getConfig,
   updateConfig,
@@ -24,6 +25,9 @@ router.put('/config', protect, admin, updateConfig);
 
 // Student payment summary
 router.get('/student/:studentId', protect, getStudentPayment);
+
+// Demo session payment summary
+router.get('/demo-session/:sessionId', protect, getDemoSessionPayment);
 
 // Record initial admission / direct payment
 router.post('/admission', protect, createAdmissionPayment);

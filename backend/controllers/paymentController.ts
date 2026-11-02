@@ -7,6 +7,7 @@ import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
 import RecycleBin from '../models/RecycleBin';
 import { getSupabase } from '../config/supabase';
+import { serverCache } from '../utils/cache';
 import {
   getPaymentConfig,
   savePaymentConfig,
@@ -228,6 +229,19 @@ export const createAdmissionPayment = async (req: Request, res: Response): Promi
       await Student.findByIdAndUpdate(targetStudent._id, { payment: savedPayment });
     }
 
+    if (demoSession) {
+      demoSession.payment = savedPayment._id;
+      if (targetStudent?._id) {
+        demoSession.student = targetStudent._id;
+      }
+      await demoSession.save();
+    }
+
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.clearPattern('stats_');
+    serverCache.clearPattern('payments_');
+    serverCache.clearPattern('students_');
+
     res.status(201).json({
       success: true,
       message: 'Admission fee recorded successfully',
@@ -340,6 +354,11 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
     if (sId) {
       await Student.findByIdAndUpdate(sId, { payment: updatedPayment });
     }
+
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.clearPattern('stats_');
+    serverCache.clearPattern('payments_');
+    serverCache.clearPattern('students_');
 
     res.json({
       success: true,
@@ -1200,6 +1219,11 @@ export const updatePayment = async (req: Request, res: Response): Promise<void> 
       if (sIdStr) await Student.findByIdAndUpdate(sIdStr, { payment: updatedPayment });
     }
 
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.clearPattern('stats_');
+    serverCache.clearPattern('payments_');
+    serverCache.clearPattern('students_');
+
     res.json({
       success: true,
       message: 'Payment record updated successfully',
@@ -1242,6 +1266,11 @@ export const deletePayment = async (req: any, res: Response): Promise<void> => {
     }
 
     await Payment.safeFindByIdAndDelete(id);
+
+    serverCache.clearPattern('demo_sessions_');
+    serverCache.clearPattern('stats_');
+    serverCache.clearPattern('payments_');
+    serverCache.clearPattern('students_');
 
     res.json({
       success: true,
@@ -1328,6 +1357,106 @@ export const getStudentPayment = async (req: Request, res: Response): Promise<vo
   } catch (error: any) {
     console.error('Get student payment error:', error);
     res.status(500).json({ message: error.message || 'Error fetching student payment' });
+  }
+};
+
+// @desc    Get payment and fee summary for a single demo session
+// @route   GET /payments/demo-session/:sessionId
+// @access  Private
+export const getDemoSessionPayment = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const sessionId = Array.isArray(req.params.sessionId) ? req.params.sessionId[0] : (req.params.sessionId || '');
+    const session = await DemoSession.findById(sessionId);
+    if (!session) {
+      res.status(404).json({ message: 'Demo session not found' });
+      return;
+    }
+
+    // 1. Look by direct demoSession ID
+    let payment = await Payment.safeFindOne({ demoSession: sessionId });
+
+    // 2. If not found, look up student by email, phone, name, or batch
+    let student: any = null;
+    if (!payment) {
+      if (session.studentEmail) {
+        student = await Student.findOne({ email: session.studentEmail.trim().toLowerCase() });
+      }
+      if (!student && session.phoneNumber) {
+        const clean = String(session.phoneNumber).replace(/\D/g, '');
+        if (clean.length >= 8) {
+          const allStudents = await Student.find({}).select('_id mobileNumber phone email name batch payment');
+          student = allStudents.find((s: any) => {
+            const p = String(s.mobileNumber || s.phone || '').replace(/\D/g, '');
+            return p.length >= 8 && p.slice(-10) === clean.slice(-10);
+          });
+        }
+      }
+      if (!student && session.batchAssigned) {
+        student = await Student.findOne({ batch: session.batchAssigned });
+      }
+      if (!student && session.studentName) {
+        student = await Student.findOne({ name: session.studentName.trim() });
+      }
+
+      if (student) {
+        payment = await Payment.safeFindOne({ student: student._id.toString() });
+        if (!payment && student.payment) {
+          payment = student.payment;
+        }
+      }
+    }
+
+    if (!payment) {
+      res.json({
+        hasPayment: false,
+        demoSession: session,
+        student,
+      });
+      return;
+    }
+
+    const batchId = payment.batch?._id ? payment.batch._id.toString() : payment.batch?.toString();
+    const batch = batchId ? await Batch.findById(batchId) : null;
+    const completedClasses = await getCompletedClassesForBatch(batchId);
+    const assignedClasses = Number(payment.assignedClasses) || Number(batch?.numberOfSessions) || 15;
+    const dueAfterClasses = Number(payment.dueAfterClasses) || calculateDueAfterClasses(assignedClasses);
+    const totalFee = Number(payment.totalFee) || 0;
+    const amountPaid = Number(payment.amountPaid) || 0;
+    const remainingAmount = Math.max(0, totalFee - amountPaid);
+
+    const dynamicStatus = calculatePaymentStatus({
+      totalFee,
+      amountPaid,
+      completedClasses,
+      dueAfterClasses,
+    });
+
+    res.json({
+      hasPayment: true,
+      payment: {
+        ...payment,
+        completedClasses,
+        assignedClasses,
+        dueAfterClasses,
+        remainingAmount,
+        paymentStatus: dynamicStatus,
+        paymentType: payment.paymentType || (remainingAmount <= 0 ? 'Full Payment' : 'Half Payment'),
+        batch: batch || payment.batch,
+        student: student ? {
+          _id: student._id,
+          name: student.name,
+          email: student.email,
+          phone: student.mobileNumber || student.phone,
+          parentName: student.parentName,
+        } : (payment.student || { name: session.studentName }),
+        demoSession: session,
+      },
+      demoSession: session,
+      student,
+    });
+  } catch (error: any) {
+    console.error('Get demo session payment error:', error);
+    res.status(500).json({ message: error.message || 'Error fetching demo session payment' });
   }
 };
 
