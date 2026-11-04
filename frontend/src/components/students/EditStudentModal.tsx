@@ -16,16 +16,12 @@ import {
   Sparkles,
   CheckCircle2,
   AlertCircle,
-  Calendar,
-  Clock,
   GraduationCap,
   Check,
   Loader2,
-  Video,
-  ChevronRight,
-  Filter,
 } from "lucide-react";
 import { format } from "date-fns";
+import { formatTime12h } from "@/lib/utils";
 
 const POPULAR_SUBJECTS = [
   "Scratch",
@@ -244,6 +240,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       if (onSuccess) onSuccess();
       onClose();
     },
@@ -257,6 +254,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       if (onSuccess) onSuccess();
       onClose();
     },
@@ -305,6 +303,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
       const res = await api.post("/batches", payload);
       const createdBatch = res.data;
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
 
       return createdBatch._id;
     } catch (err: any) {
@@ -692,39 +691,90 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
 
                 {/* Selected Batch Preview (if chosen) */}
                 {selectedBatchObj && (
-                  <div className="p-3 bg-neutral-800/60 border border-neutral-700 rounded-xl flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
-                        <Check className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-xs font-bold text-white truncate">
-                            {selectedBatchObj.name}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
-                            {selectedBatchObj.subject}
-                          </span>
-                          <span className="text-[10px] px-1.5 py-0.2 rounded bg-neutral-700 text-neutral-300">
-                            {selectedBatchObj.status || "Active"}
-                          </span>
+                  <div className="p-3.5 bg-neutral-800/80 border border-amber-500/30 rounded-xl space-y-2.5 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 shrink-0">
+                          <Check className="w-4 h-4" />
                         </div>
-                        <p className="text-[11px] text-neutral-400 mt-0.5 truncate">
-                          Tutor: {selectedBatchObj.assignedTeacher?.name || "Unassigned"}
-                          {selectedBatchObj.timing?.startTime &&
-                            ` • ${selectedBatchObj.timing.startTime} - ${selectedBatchObj.timing.endTime}`}
-                          {selectedBatchObj.days?.length > 0 && ` • ${selectedBatchObj.days.join(", ")}`}
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-xs font-bold text-white truncate">
+                              {selectedBatchObj.name}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-medium">
+                              {selectedBatchObj.subject}
+                            </span>
+                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-neutral-700 text-neutral-300">
+                              {selectedBatchObj.status || "Active"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setFormData({ ...formData, batch: "" })}
+                        className="text-xs text-neutral-400 hover:text-red-400 p-1.5 hover:bg-neutral-800 rounded-lg transition-colors shrink-0"
+                        title="Clear selection"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    {/* Auto-schedule Configuration Details */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-neutral-700/60 text-xs">
+                      <div className="flex items-center gap-1.5 text-neutral-300">
+                        <span className="text-neutral-500 font-medium">Teacher:</span>
+                        <span className="font-semibold text-white truncate">
+                          {selectedBatchObj.assignedTeacher?.name || "Unassigned"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1.5 text-neutral-300">
+                        <span className="text-neutral-500 font-medium">Batch Start Date:</span>
+                        <span className="font-semibold text-amber-400">
+                          {selectedBatchObj.startDate
+                            ? format(new Date(selectedBatchObj.startDate), "dd MMM yyyy")
+                            : "Not configured"}
+                        </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setFormData({ ...formData, batch: "" })}
-                      className="text-xs text-neutral-400 hover:text-red-400 p-1.5 hover:bg-neutral-800 rounded-lg transition-colors shrink-0"
-                      title="Clear selection"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+
+                    {/* Weekday Timings */}
+                    {selectedBatchObj.days?.length > 0 && (
+                      <div className="bg-neutral-900/60 rounded-lg p-2 border border-neutral-800/80">
+                        <p className="text-[11px] font-semibold text-neutral-400 mb-1">
+                          Class Schedule Timings:
+                        </p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedBatchObj.days.map((day: string) => {
+                            const dayTiming = selectedBatchObj.dayTimings?.[day] || selectedBatchObj.dayTimings?.[day.toLowerCase()];
+                            const startTime = dayTiming?.startTime || selectedBatchObj.timing?.startTime || "09:00";
+                            return (
+                              <span
+                                key={day}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-neutral-800 border border-neutral-700 text-[11px] text-neutral-300"
+                              >
+                                <strong className="text-amber-400">{day.slice(0, 3)}:</strong>
+                                <span>{formatTime12h(startTime)}</span>
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-1.5 text-[11px] text-emerald-400/90 bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20">
+                      <Sparkles className="w-3.5 h-3.5 shrink-0" />
+                      <span>
+                        Enrolling student will automatically assign teacher &amp; generate class calendar from{" "}
+                        <strong className="text-white font-semibold">
+                          {selectedBatchObj.startDate
+                            ? format(new Date(selectedBatchObj.startDate), "dd MMM yyyy")
+                            : "Start Date"}
+                        </strong>
+                        .
+                      </span>
+                    </div>
                   </div>
                 )}
 

@@ -11,6 +11,8 @@ import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // Day name → JS getUTCDay() index
 const DAY_INDEX: Record<string, number> = {
+  sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
+  thursday: 4, friday: 5, saturday: 6,
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
   Thursday: 4, Friday: 5, Saturday: 6,
 };
@@ -39,12 +41,16 @@ export function getSlotTimingForDay(batch: any, date: Date | number): { startTim
   const d = new Date(date);
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayName = dayNames[d.getUTCDay()];
+  const dayNameLower = dayName ? dayName.toLowerCase() : '';
   
   const dayTimings = batch.dayTimings;
-  if (dayTimings && typeof dayTimings === 'object' && dayTimings[dayName]?.startTime) {
-    const sTime = dayTimings[dayName].startTime;
-    const eTime = dayTimings[dayName].endTime || computeEndTime(sTime, 60);
-    return { startTime: sTime, endTime: eTime };
+  if (dayTimings && typeof dayTimings === 'object') {
+    const entry = dayTimings[dayName] || dayTimings[dayNameLower];
+    if (entry && entry.startTime) {
+      const sTime = entry.startTime;
+      const eTime = entry.endTime || computeEndTime(sTime, 60);
+      return { startTime: sTime, endTime: eTime };
+    }
   }
 
   const sTime = batch.timing?.startTime || '09:00';
@@ -61,7 +67,8 @@ export function getSlotTimingForDay(batch: any, date: Date | number): { startTim
 export async function generateSchedulesForBatch(
   batch: any,
   rawPreCompletedClasses: number = 0,
-  studentId?: string
+  studentId?: string,
+  customTargetSessions?: number
 ): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
 
@@ -77,9 +84,16 @@ export async function generateSchedulesForBatch(
   const cursor = normalizeDateOnlyToUtc(startDate);
   if (!cursor) return 0;
 
+  const teacherId = assignedTeacher?._id
+    ? assignedTeacher._id.toString()
+    : (assignedTeacher ? assignedTeacher.toString() : undefined);
+
   const preCompletedClasses = Math.max(0, Number(rawPreCompletedClasses) || Number(batch.preCompletedClasses) || 0);
-  const targetSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
-  const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]));
+  const batchSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
+  const targetSessions = (customTargetSessions && Number(customTargetSessions) > 0)
+    ? Number(customTargetSessions)
+    : batchSessions;
+  const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]).filter(d => d !== undefined));
 
   const kolkata = getKolkataNow();
   const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
@@ -92,8 +106,7 @@ export async function generateSchedulesForBatch(
 
   // Pre-fetch teacher's other schedules and demo sessions to detect conflicts
   const teacherSlotsByDate = new Map<string, any[]>();
-  if (assignedTeacher) {
-    const teacherId = assignedTeacher._id ? assignedTeacher._id.toString() : assignedTeacher.toString();
+  if (teacherId) {
     const [tScheds, tDemos] = await Promise.all([
       Schedule.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch'),
       DemoSession.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
@@ -152,7 +165,7 @@ export async function generateSchedulesForBatch(
           });
 
           const completedSlot = {
-            teacher: assignedTeacher || undefined,
+            teacher: teacherId || undefined,
             batch: _id,
             date: new Date(backTime),
             startTime: slotTiming.startTime,
@@ -187,7 +200,7 @@ export async function generateSchedulesForBatch(
       if (fbDateKey <= kolkata.todayStr && !existingTimes.has(fbTime)) {
         const slotTiming = getSlotTimingForDay(batch, fbTime);
         const completedSlot = {
-          teacher: assignedTeacher || undefined,
+          teacher: teacherId || undefined,
           batch: _id,
           date: new Date(fbTime),
           startTime: slotTiming.startTime,
@@ -210,10 +223,9 @@ export async function generateSchedulesForBatch(
   }
 
   // Step 2: Generate remaining upcoming/scheduled classes forward
-  // Strictly start forward from today or startDate (whichever is later) so upcoming classes
-  // are never placed in the past!
+  // Strictly start forward from batch Start Date (Requirement 3 & 4)
   const totalCompletedSoFar = existingCompletedCount + schedulesToCreate.length;
-  const forwardStartTime = Math.max(cursor.getTime(), todayUtc.getTime());
+  const forwardStartTime = cursor.getTime();
   const forwardCursor = new Date(forwardStartTime);
   let forwardDaysScanned = 0;
   let scheduledCount = existingSchedules.filter((s: any) => s.status === 'Scheduled').length;
@@ -240,7 +252,7 @@ export async function generateSchedulesForBatch(
         });
 
         const newSlot = {
-          teacher: assignedTeacher || undefined,
+          teacher: teacherId || undefined,
           batch: _id,
           date: new Date(forwardTime),
           startTime: slotTiming.startTime,
@@ -249,7 +261,11 @@ export async function generateSchedulesForBatch(
           conflict: isConflict,
           meetingLink: meetingLink || '',
           notes: 'Auto-generated for batch',
-          attendance: batchStudentIds.map((sId) => ({ studentId: sId, isPresent: false, date: new Date(forwardTime) })),
+          attendance: batchStudentIds.map((sId) => ({
+            studentId: sId,
+            isPresent: false,
+            date: new Date(forwardTime),
+          })),
         };
 
         schedulesToCreate.push(newSlot);
@@ -414,9 +430,29 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     const generated = await generateSchedulesForBatch(batch, preCompletedClasses || 0);
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
 
+    // If teacher was assigned, automatically sync assignedTutor to any enrolled students
+    if (batch.assignedTeacher) {
+      const batchIdStr = batch._id.toString();
+      const allStudents = await Student.find({});
+      for (const st of allStudents) {
+        const sBatchId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+        if (sBatchId === batchIdStr) {
+          const currentTutor = st.assignedTutor?._id ? st.assignedTutor._id.toString() : (st.assignedTutor ? st.assignedTutor.toString() : '');
+          const targetTeacherStr = (batch.assignedTeacher?._id || batch.assignedTeacher).toString();
+          if (currentTutor !== targetTeacherStr) {
+            st.assignedTutor = batch.assignedTeacher;
+            await st.save();
+          }
+        }
+      }
+    }
+
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('timings_');
+    serverCache.delete('teachers_all');
     deleteDiskCache('schedules_all');
 
     const populated = await batch.populate('assignedTeacher', 'name email');
@@ -427,7 +463,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
   }
 };
 
-// @desc    Update a batch + regenerate schedules if dates/days changed
+// @desc    Update a batch + regenerate schedules if dates/days/timing/teacher changed
 // @route   PUT /batches/:id
 // @access  Private/Admin
 export const updateBatch = async (req: Request, res: Response): Promise<void> => {
@@ -439,16 +475,35 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const datesChanged =
-      (req.body.startDate !== undefined && String(req.body.startDate) !== String(batch.startDate)) ||
-      (req.body.days !== undefined && JSON.stringify(req.body.days) !== JSON.stringify(batch.days)) ||
+    const oldTeacherId = batch.assignedTeacher?._id ? batch.assignedTeacher._id.toString() : (batch.assignedTeacher ? batch.assignedTeacher.toString() : '');
+    const newTeacherId = req.body.assignedTeacher !== undefined ? (req.body.assignedTeacher || '') : oldTeacherId;
+    const teacherChanged = req.body.assignedTeacher !== undefined && String(newTeacherId) !== String(oldTeacherId);
+
+    const oldStartDate = batch.startDate ? normalizeDateOnlyToUtc(batch.startDate)?.toISOString() : '';
+    const newStartDate = req.body.startDate !== undefined ? normalizeDateOnlyToUtc(req.body.startDate)?.toISOString() : oldStartDate;
+    const startDateChanged = req.body.startDate !== undefined && String(newStartDate || '') !== String(oldStartDate || '');
+
+    const oldDaysStr = JSON.stringify(Array.isArray(batch.days) ? batch.days : []);
+    const newDaysStr = req.body.days !== undefined ? JSON.stringify(Array.isArray(req.body.days) ? req.body.days : []) : oldDaysStr;
+    const daysChanged = req.body.days !== undefined && newDaysStr !== oldDaysStr;
+
+    const oldTimingStr = JSON.stringify(batch.timing || {});
+    const newTimingStr = req.body.timing !== undefined ? JSON.stringify(req.body.timing || {}) : oldTimingStr;
+    const oldDayTimingsStr = JSON.stringify(batch.dayTimings || {});
+    const newDayTimingsStr = req.body.dayTimings !== undefined ? JSON.stringify(req.body.dayTimings || {}) : oldDayTimingsStr;
+    const timingChanged = newTimingStr !== oldTimingStr || newDayTimingsStr !== oldDayTimingsStr || (req.body.timeMode !== undefined && req.body.timeMode !== batch.timeMode);
+
+    const sessionsChanged =
       (req.body.numberOfSessions !== undefined && req.body.numberOfSessions !== batch.numberOfSessions) ||
-      (req.body.timing !== undefined || req.body.dayTimings !== undefined || req.body.timeMode !== undefined) ||
       (req.body.preCompletedClasses !== undefined && Number(req.body.preCompletedClasses) !== Number(batch.preCompletedClasses));
+
+    const datesChanged = startDateChanged || daysChanged || timingChanged || sessionsChanged;
 
     batch.name = req.body.name ?? batch.name;
     batch.subject = req.body.subject ?? batch.subject;
-    batch.assignedTeacher = req.body.assignedTeacher || batch.assignedTeacher;
+    if (req.body.assignedTeacher !== undefined) {
+      batch.assignedTeacher = req.body.assignedTeacher ? req.body.assignedTeacher : undefined;
+    }
     batch.studentsCount = req.body.studentsCount ?? batch.studentsCount;
     batch.timing = req.body.timing ?? batch.timing;
     batch.dayTimings = req.body.dayTimings ?? batch.dayTimings;
@@ -465,23 +520,64 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     const updated = await batch.save();
 
-    // If dates/days/timing changed, delete old auto-generated schedules and regenerate
-    if (datesChanged) {
-      // Delete ONLY future scheduled classes (preserving all historical attendance and completed records!)
-      const kolkata = getKolkataNow();
-      const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
+    const kolkata = getKolkataNow();
+    const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
+
+    const existingSchedules = await Schedule.find({ batch: updated._id });
+    const existingFutureCount = existingSchedules.filter((s: any) => {
+      const sDate = s.date ? new Date(s.date) : null;
+      return s.status === 'Scheduled' && sDate && sDate >= todayStart;
+    }).length;
+
+    const hasTiming =
+      (updated.timing?.startTime && updated.timing?.endTime) ||
+      (updated.dayTimings && typeof updated.dayTimings === 'object' && Object.keys(updated.dayTimings).length > 0) ||
+      updated.timing?.startTime;
+
+    const canGenerateSchedules = Boolean(updated.startDate && updated.days?.length && hasTiming);
+    const shouldRegenerate = datesChanged || teacherChanged || (canGenerateSchedules && existingFutureCount === 0);
+
+    // If dates/days/timing/sessions or teacher changed, delete scheduled classes and regenerate
+    if (shouldRegenerate && canGenerateSchedules) {
+      // Delete ONLY scheduled classes (preserving all historical attendance and completed records!)
       await Schedule.deleteMany({
-        batch: batch._id,
+        batch: updated._id,
         status: 'Scheduled',
-        date: { $gte: todayStart }
       });
       const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
-      console.log(`🔄 Regenerated ${generated} schedule(s) for batch "${updated.name}"`);
+      console.log(`🔄 Auto-scheduled/regenerated ${generated} class(es) for batch "${updated.name}"`);
+    } else if (teacherChanged && !canGenerateSchedules) {
+      // If timing/days not complete but teacher changed, update any existing scheduled slots
+      const targetTeacher = updated.assignedTeacher || null;
+      const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });
+      for (const fs of futureScheds) {
+        fs.teacher = targetTeacher;
+        await fs.save();
+      }
+    }
+
+    // Automatically sync assigned teacher to all enrolled students in this batch!
+    const targetTeacher = updated.assignedTeacher || null;
+    const batchIdStr = updated._id ? updated._id.toString() : '';
+    const allStudents = await Student.find({});
+    for (const st of allStudents) {
+      const stBatchId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+      if (stBatchId === batchIdStr) {
+        const currentTutor = st.assignedTutor?._id ? st.assignedTutor._id.toString() : (st.assignedTutor ? st.assignedTutor.toString() : '');
+        const targetTeacherStr = targetTeacher ? (targetTeacher._id || targetTeacher).toString() : '';
+        if (currentTutor !== targetTeacherStr) {
+          st.assignedTutor = targetTeacher;
+          await st.save();
+        }
+      }
     }
 
     serverCache.clearPattern('batches_');
     serverCache.clearPattern('stats_');
     serverCache.clearPattern('schedules_');
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('timings_');
+    serverCache.delete('teachers_all');
     deleteDiskCache('schedules_all');
 
     await updated.populate('assignedTeacher', 'name email');

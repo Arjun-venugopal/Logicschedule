@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Users, Home, Settings, LogOut, Bell, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown, Trash2, X } from "lucide-react";
+import { Calendar, Users, Home, Settings, LogOut, Search, Menu, ChevronRight, BookOpen, FileText, CheckCircle, Video, TrendingUp, Download, WifiOff, CreditCard, GraduationCap, ChevronDown, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect, useRef } from "react";

@@ -3,15 +3,9 @@
 import React from "react";
 import {
   Trophy,
-  Medal,
-  IndianRupee,
-  Users,
-  CheckCircle2,
   AlertCircle,
   Download,
   ArrowUpRight,
-  TrendingUp,
-  Percent,
 } from "lucide-react";
 
 export interface SalespersonRankingItem {
@@ -102,10 +96,9 @@ export function SalespersonLeaderboard({
       {/* Podium Cards for Top 3 */}
       {topThree.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {topThree.map((item, idx) => {
+          {topThree.map((item) => {
             const isFirst = item.rank === 1;
             const isSecond = item.rank === 2;
-            const isThird = item.rank === 3;
 
             return (
               <div

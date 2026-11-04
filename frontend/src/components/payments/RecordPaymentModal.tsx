@@ -6,13 +6,10 @@ import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
-  CreditCard,
   CheckCircle2,
   AlertCircle,
   IndianRupee,
-  Calendar,
   Receipt,
-  ArrowRight,
 } from "lucide-react";
 import { format } from "date-fns";
 

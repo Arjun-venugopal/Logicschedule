@@ -1,1 +1,298 @@
-[]
+[
+  {
+    "_id": "30687bdf-ce2b-4eb7-9dd3-78b49b68fb0f",
+    "entityType": "schedule",
+    "entityId": "7fa53e7b-1342-494c-aa01-967dfb0ba4dc",
+    "name": "Schedule (2026-09-10T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-10T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-10T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-10T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "7fa53e7b-1342-494c-aa01-967dfb0ba4dc",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:43:01.183Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "036f0899-af83-4eff-8033-47b738220336",
+    "entityType": "schedule",
+    "entityId": "2c29fb87-f2c2-44b2-9b62-b9ffdaa43cb7",
+    "name": "Schedule (2026-09-16T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-16T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-16T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-16T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "2c29fb87-f2c2-44b2-9b62-b9ffdaa43cb7",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:39.685Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "471d696f-d007-4334-9e17-fbcd5d9302f3",
+    "entityType": "schedule",
+    "entityId": "54680d31-8079-4324-8509-e313a99ae4f5",
+    "name": "Schedule (2026-09-17T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-17T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-17T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-17T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "54680d31-8079-4324-8509-e313a99ae4f5",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:34.548Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "d85302c7-7fe4-45fd-8aaf-151693b64a8a",
+    "entityType": "schedule",
+    "entityId": "02052148-dbd4-4879-bb45-2a5c944df8be",
+    "name": "Schedule (2026-09-23T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-23T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-23T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-23T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "02052148-dbd4-4879-bb45-2a5c944df8be",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:31.140Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "4115ba9f-1734-4bda-a10c-fbec0d736c00",
+    "entityType": "schedule",
+    "entityId": "daf0351a-e1ba-4a4b-9482-fab3c9e5be3a",
+    "name": "Schedule (2026-09-24T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-24T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-24T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-24T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "daf0351a-e1ba-4a4b-9482-fab3c9e5be3a",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:26.976Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "3f5c4611-542f-4217-9d53-6b7752768462",
+    "entityType": "schedule",
+    "entityId": "a393cac3-84e3-438f-baa8-4b5b8678361a",
+    "name": "Schedule (2026-09-30T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-09-30T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-09-30T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-09-30T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "a393cac3-84e3-438f-baa8-4b5b8678361a",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:22.963Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "ce4aab56-c637-43aa-9510-100fbaf02df4",
+    "entityType": "schedule",
+    "entityId": "cf4ef283-b5f4-4378-bb9d-c9f6c53f32ac",
+    "name": "Schedule (2026-10-01T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-10-01T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-10-01T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-10-01T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "cf4ef283-b5f4-4378-bb9d-c9f6c53f32ac",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:19.267Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  },
+  {
+    "_id": "44091116-951f-4ce0-a207-02e37219edd6",
+    "entityType": "schedule",
+    "entityId": "1949c5ae-a8a8-4ed5-9ecd-2bcb55dcfe18",
+    "name": "Schedule (2026-10-07T00:00:00.000Z 09:00-10:00)",
+    "secondaryInfo": "Date: 2026-10-07T00:00:00.000Z • Time: 09:00-10:00",
+    "itemData": {
+      "date": "2026-10-07T00:00:00.000Z",
+      "batch": "fmpOolelU9GMPUSnZCrH",
+      "notes": "Auto-generated as Completed (Classes Already Completed)",
+      "status": "Completed",
+      "endTime": "10:00",
+      "teacher": "tTdlTgE4uIEOVYObiUVN",
+      "conflict": false,
+      "startTime": "09:00",
+      "attendance": [
+        {
+          "date": "2026-10-07T00:00:00.000Z",
+          "isPresent": true,
+          "studentId": "EhZBCeIHJ2ONNTUZqDHo"
+        }
+      ],
+      "meetingLink": "",
+      "_id": "1949c5ae-a8a8-4ed5-9ecd-2bcb55dcfe18",
+      "createdAt": "2026-11-04T07:03:23.742+00:00",
+      "updatedAt": "2026-11-04T07:03:23.742+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-04T08:33:15.084Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  }
+]

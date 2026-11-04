@@ -3,7 +3,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle, Clock, Edit2, X, AlertTriangle, Users, Search, BookOpen, Calendar, Filter } from "lucide-react";
+import { CheckCircle, Clock, Edit2, X, AlertTriangle, Users, Search, Calendar } from "lucide-react";
 import { useState, useMemo, useEffect } from "react";
 import { useSearchStore } from "@/store/searchStore";
 import { format, parseISO, isBefore } from "date-fns";
@@ -475,7 +475,7 @@ export default function CompletedClassesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60">
-                {pastOrCompletedClasses.map((cls: any, i: number) => {
+                {pastOrCompletedClasses.map((cls: any) => {
                   const batchName = getBatchName(cls);
                   const batchSubject = getBatchSubject(cls);
                   const attendanceCount = cls.attendance && Array.isArray(cls.attendance) ? cls.attendance.length : 0;

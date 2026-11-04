@@ -25,9 +25,6 @@ import {
   ShieldCheck,
   UserCheck,
   Clock,
-  ExternalLink,
-  ChevronRight,
-  Filter,
   Sparkles,
 } from "lucide-react";
 import { useSearchStore } from "@/store/searchStore";

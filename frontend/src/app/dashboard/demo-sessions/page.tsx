@@ -5,6 +5,7 @@ import { api } from "@/lib/axios";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths } from "date-fns";
+import { formatTime12h } from "@/lib/utils";
 import {
   Plus,
   X,
@@ -26,7 +27,6 @@ import {
   List,
   FileText,
   UserCheck,
-  Filter,
   RotateCcw,
   SlidersHorizontal,
   CreditCard,
@@ -293,15 +293,7 @@ export default function DemoSessionsPage() {
   };
 
   const formatTimeAMPM = (timeStr: string) => {
-    if (!timeStr) return "";
-    try {
-      const [h, m] = timeStr.split(":");
-      const date = new Date();
-      date.setHours(parseInt(h, 10), parseInt(m, 10), 0);
-      return format(date, "h:mm a");
-    } catch {
-      return timeStr;
-    }
+    return formatTime12h(timeStr);
   };
 
   const getAdmissionBadge = (status?: string) => {
@@ -886,11 +878,6 @@ export default function DemoSessionsPage() {
     setFilterEndDate("");
   };
 
-  const canViewFee = (sessionSalesExec?: string) => {
-    if (!isSalesPerson) return true;
-    if (!user?.name) return false;
-    return sessionSalesExec?.trim().toLowerCase() === user.name.trim().toLowerCase();
-  };
 
   return (
     <div className="space-y-6">

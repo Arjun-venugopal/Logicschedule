@@ -765,7 +765,6 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       let minutesToNextClass: number | null = null;
       let currentClassProgress = 0;
 
-      const isPastDate = targetDateStr < kolkata.todayStr;
       const isFutureDate = targetDateStr > kolkata.todayStr;
 
       // Only classes explicitly marked 'Completed' by the teacher count as completed/finished.

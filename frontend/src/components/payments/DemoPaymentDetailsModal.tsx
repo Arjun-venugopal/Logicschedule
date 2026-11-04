@@ -6,17 +6,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   X,
   CreditCard,
-  IndianRupee,
-  Calendar,
   CheckCircle2,
   Clock,
   AlertCircle,
   Receipt,
   Edit2,
-  Layers,
-  ArrowRight,
-  ShieldCheck,
-  User,
   Plus,
 } from "lucide-react";
 import { format } from "date-fns";

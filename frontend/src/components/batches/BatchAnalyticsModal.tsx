@@ -13,15 +13,12 @@ import {
   Calendar, 
   AlertTriangle,
   FolderGit2,
-  Award,
   ExternalLink,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
   User,
-  Link as LinkIcon,
-  Sparkles,
-  GraduationCap
+  Link as LinkIcon
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
@@ -47,7 +44,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
   if (!data) return null;
 
-  const { batch, studentsCount, totalSchedules, completedSchedules, cancelledSchedules = 0, upcomingSchedules = 0, attendanceStats, schedules } = data;
+  const { batch, studentsCount, totalSchedules, completedSchedules, cancelledSchedules = 0, attendanceStats, schedules } = data;
   const targetClasses = (batch?.numberOfSessions && Number(batch.numberOfSessions) > 0)
     ? Number(batch.numberOfSessions)
     : totalSchedules;

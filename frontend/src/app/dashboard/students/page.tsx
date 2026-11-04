@@ -3,7 +3,7 @@
 import { useState, useRef, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Plus, Edit2, Trash2, X, GraduationCap } from "lucide-react";
+import { Upload, FileUp, Loader2, CheckCircle2, AlertCircle, Users, BookOpen, Phone, User, Plus, Edit2, Trash2, GraduationCap } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -30,13 +30,6 @@ export default function StudentsPage() {
   const { data: students = [], isLoading, refetch } = useQuery({
     queryKey: ["students-all"],
     queryFn: async () => (await api.get("/students")).data,
-    staleTime: 5 * 60 * 1000,
-    refetchOnWindowFocus: false,
-  });
-
-  const { data: batches = [] } = useQuery({
-    queryKey: ["batches"],
-    queryFn: async () => (await api.get("/batches")).data,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });

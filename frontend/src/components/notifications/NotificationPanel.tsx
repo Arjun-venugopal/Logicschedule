@@ -6,13 +6,10 @@ import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Bell,
-  AlertTriangle,
   Clock,
   CheckCircle,
   CreditCard,
   X,
-  ArrowRight,
-  ExternalLink,
 } from "lucide-react";
 import { RecordPaymentModal } from "../payments/RecordPaymentModal";
 

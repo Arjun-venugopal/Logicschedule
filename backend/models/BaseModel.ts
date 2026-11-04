@@ -297,6 +297,16 @@ function matchesCondition(item: any, key: string, filterVal: any): boolean {
     if (fDate && iDate && fDate === iDate) return true;
   }
 
+  if (itemVal && typeof itemVal === 'object' && itemVal._id) {
+    if (itemVal._id === filterVal || itemVal._id.toString() === filterVal?.toString()) return true;
+  }
+
+  if (filterVal && typeof filterVal === 'object' && filterVal._id) {
+    const fId = filterVal._id.toString();
+    const iId = (itemVal && typeof itemVal === 'object' && itemVal._id) ? itemVal._id.toString() : itemVal?.toString();
+    if (iId === fId) return true;
+  }
+
   if (itemVal === filterVal || itemVal?.toString() === filterVal?.toString()) {
     return true;
   }
@@ -1021,6 +1031,28 @@ export class BaseModel {
       }
       await getSupabase().from(this.collectionName).update(row).eq('_id', doc._id);
     }
+  }
+
+  async updateMany(query: any, data: any): Promise<number> {
+    invalidatePopulateCache(this.collectionName);
+    const docs = await this._fetchAndFilter(query, null, null);
+    if (docs.length === 0) return 0;
+    const cleanData = sanitizeObject(data.$set || data);
+    delete cleanData._id;
+    const now = new Date().toISOString();
+    const validCols = new Set(tableColumns[this.collectionName] || ['_id', 'data', 'createdAt', 'updatedAt']);
+    for (const doc of docs) {
+      const merged = { ...doc, ...cleanData };
+      const row: any = {
+        data: merged,
+        updatedAt: now,
+      };
+      for (const k of Object.keys(cleanData)) {
+        if (validCols.has(k)) row[k] = cleanData[k];
+      }
+      await getSupabase().from(this.collectionName).update(row).eq('_id', doc._id);
+    }
+    return docs.length;
   }
 
   async deleteOne(query: any): Promise<void> {

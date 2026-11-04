@@ -21,10 +21,7 @@ import {
   Zap,
   Server,
   Layers,
-  ArrowRight,
   Info,
-  Gauge,
-  Clock,
   Sparkles,
   RotateCcw,
   Check,
@@ -828,6 +825,46 @@ export default function SystemOptimizationDashboard() {
                   <td className="py-2.5 px-3"><code>ActiveBatchesAnalyticsModal</code>, <code>TeacherPerformanceModal</code>, <code>TeacherWeeklyAvailabilityModal</code> use Next.js <code>dynamic()</code></td>
                   <td className="py-2.5 px-3">
                     <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Optimized</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">frontend/src/lib/utils.ts</td>
+                  <td className="py-2.5 px-3">Function Consolidation</td>
+                  <td className="py-2.5 px-3">Unified duplicate <code>formatTime12h</code>, <code>getSafeDateOnly</code>, and <code>extractLevel</code> across Batches, Schedules, and Modals into a single reusable utility</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Consolidated</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">StudentDetailsModal.tsx</td>
+                  <td className="py-2.5 px-3">Orphaned Variable Cleanup</td>
+                  <td className="py-2.5 px-3">Removed orphaned <code>setShowPaymentHistoryInModal</code> call left over from state refactor, restoring clean strict TypeScript compilation</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded text-[10px] font-semibold">Fixed</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">attendanceHelper.ts:270</td>
+                  <td className="py-2.5 px-3">startScheduleAutoCompleter stub</td>
+                  <td className="py-2.5 px-3">Deprecated dummy stub returning <code>null</code>; unreferenced in routes or background workers. Cataloged for confirmation.</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded text-[10px] font-semibold">Candidate (Obsolete)</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">attendanceHelper.ts:163</td>
+                  <td className="py-2.5 px-3">autoCompletePastSchedules</td>
+                  <td className="py-2.5 px-3">Uncalled 100-line schedule auto-revert function; no active timer or route triggers it. Cataloged for confirmation.</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded text-[10px] font-semibold">Candidate (Unused)</span>
+                  </td>
+                </tr>
+                <tr>
+                  <td className="py-2.5 px-3 font-mono font-medium text-amber-400">scheduleHelper.ts:183</td>
+                  <td className="py-2.5 px-3">indexSchedulesByTeacherAndDate</td>
+                  <td className="py-2.5 px-3">Exported indexer function never imported or invoked by any controller or route. Cataloged for confirmation.</td>
+                  <td className="py-2.5 px-3">
+                    <span className="bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded text-[10px] font-semibold">Candidate (Unused)</span>
                   </td>
                 </tr>
               </tbody>

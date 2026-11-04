@@ -6,10 +6,12 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Payment from '../models/Payment';
+import Schedule from '../models/Schedule';
 import { calculateDueAfterClasses, calculatePaymentStatus } from '../utils/paymentRules';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
+import { getKolkataNow } from '../utils/scheduleHelper';
 import RecycleBin from '../models/RecycleBin';
 
 export function extractLevel(text?: string, fallback = 'Level 1'): string {
@@ -323,6 +325,125 @@ const studentSchema = z.object({
 
 const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
+export async function syncStudentBatchSchedules(
+  studentId: string,
+  newBatchId?: string,
+  oldBatchId?: string
+): Promise<void> {
+  // 1. If moved from an old batch, remove student from Scheduled classes of that old batch
+  if (oldBatchId && oldBatchId !== newBatchId) {
+    try {
+      const oldFutureSchedules = await Schedule.find({
+        batch: oldBatchId,
+        status: 'Scheduled',
+      });
+      for (const os of oldFutureSchedules) {
+        if (Array.isArray(os.attendance)) {
+          const filtered = os.attendance.filter(
+            (a: any) => (a.studentId?._id || a.studentId || '').toString() !== studentId
+          );
+          if (filtered.length !== os.attendance.length) {
+            os.attendance = filtered;
+            await os.save();
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('Failed to remove student from old batch future schedules:', err?.message);
+    }
+  }
+
+  // 2. If assigned to a new batch, ensure student and batch schedules are synchronized
+  if (newBatchId) {
+    try {
+      const [batchDoc, studentDoc] = await Promise.all([
+        Batch.findById(newBatchId),
+        Student.findById(studentId),
+      ]);
+
+      if (batchDoc) {
+        // Automatically assign batch teacher to student if student tutor is missing or needs sync
+        const batchTeacherId = batchDoc.assignedTeacher?._id
+          ? batchDoc.assignedTeacher._id.toString()
+          : (batchDoc.assignedTeacher ? batchDoc.assignedTeacher.toString() : '');
+
+        if (studentDoc && batchTeacherId) {
+          const currentTutorId = studentDoc.assignedTutor?._id
+            ? studentDoc.assignedTutor._id.toString()
+            : (studentDoc.assignedTutor ? studentDoc.assignedTutor.toString() : '');
+          if (currentTutorId !== batchTeacherId) {
+            studentDoc.assignedTutor = batchTeacherId;
+            await studentDoc.save();
+          }
+        }
+
+        const existingSchedules = await Schedule.find({ batch: batchDoc._id });
+        const scheduledClasses = existingSchedules.filter((s: any) => s.status === 'Scheduled');
+
+        const hasTiming =
+          (batchDoc.timing?.startTime && batchDoc.timing?.endTime) ||
+          (batchDoc.dayTimings && typeof batchDoc.dayTimings === 'object' && Object.keys(batchDoc.dayTimings).length > 0) ||
+          batchDoc.timing?.startTime;
+
+        const targetSessions = (studentDoc?.classesNeeded && Number(studentDoc.classesNeeded) > 0)
+          ? Number(studentDoc.classesNeeded)
+          : (batchDoc.numberOfSessions && Number(batchDoc.numberOfSessions) > 0 ? Number(batchDoc.numberOfSessions) : 0);
+
+        if (scheduledClasses.length === 0 && batchDoc.startDate && batchDoc.days?.length && hasTiming) {
+          // No scheduled classes yet, auto-generate calendar starting from batch.startDate
+          await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+        } else {
+          // Schedules already exist:
+          // A) Ensure student is added to attendance for all Scheduled classes
+          for (const sched of scheduledClasses) {
+            let modified = false;
+            const att = Array.isArray(sched.attendance) ? [...sched.attendance] : [];
+            const exists = att.some(
+              (a: any) => (a.studentId?._id || a.studentId || '').toString() === studentId
+            );
+            if (!exists) {
+              att.push({ studentId, isPresent: false, date: sched.date });
+              sched.attendance = att;
+              modified = true;
+            }
+
+            // Ensure scheduled class teacher matches batch assigned teacher
+            if (batchTeacherId) {
+              const schedTeacherId = sched.teacher?._id
+                ? sched.teacher._id.toString()
+                : (sched.teacher ? sched.teacher.toString() : '');
+              if (schedTeacherId !== batchTeacherId) {
+                sched.teacher = batchTeacherId;
+                modified = true;
+              }
+            }
+
+            if (modified) {
+              await sched.save();
+            }
+          }
+
+          // B) If student needs more sessions than existing classes, generate the remaining sessions!
+          const existingCompletedCount = existingSchedules.filter((s: any) => s.status === 'Completed').length;
+          const totalExisting = existingCompletedCount + scheduledClasses.length;
+          if (targetSessions > 0 && totalExisting < targetSessions && batchDoc.startDate && batchDoc.days?.length && hasTiming) {
+            await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+          }
+        }
+      }
+    } catch (err: any) {
+      console.warn('Failed to sync student to new batch schedules:', err?.message);
+    }
+  }
+
+  serverCache.clearPattern('schedules_');
+  serverCache.clearPattern('students_');
+  serverCache.clearPattern('batches_');
+  serverCache.clearPattern('stats_');
+  serverCache.delete('teachers_all');
+  deleteDiskCache('schedules_all');
+}
+
 export async function findExistingStudent(studentName: string, studentEmail?: string, phoneNumber?: string) {
   const cleanEmail = studentEmail ? String(studentEmail).trim().toLowerCase() : '';
   const cleanPhone = phoneNumber ? String(phoneNumber).replace(/\D/g, '') : '';
@@ -446,13 +567,21 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
         existingStudent.level = derivedLevel;
       }
       if (classesNeeded !== undefined) existingStudent.classesNeeded = Number(classesNeeded);
-      if (assignedTutor !== undefined) existingStudent.assignedTutor = assignedTutor;
+      if (assignedTutor !== undefined) {
+        existingStudent.assignedTutor = assignedTutor;
+      } else if (newBatchId) {
+        try {
+          const bDoc = await Batch.findById(newBatchId);
+          if (bDoc?.assignedTeacher) existingStudent.assignedTutor = bDoc.assignedTeacher;
+        } catch {}
+      }
 
       const updatedStudent = await existingStudent.save();
       if (newBatchId) {
         await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
       }
 
+      await syncStudentBatchSchedules(updatedStudent._id.toString(), newBatchId, oldBatchId);
       serverCache.clearPattern('students_');
       serverCache.clearPattern('batches_');
       res.status(200).json(updatedStudent);
@@ -461,15 +590,23 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
 
     // 3. New child registration
     let initialLevel = currentLevel || level;
-    if (!initialLevel && batch) {
+    let batchAssignedTeacher: any = undefined;
+    if (batch) {
       try {
         const batchDoc = await Batch.findById(batch);
-        if (batchDoc?.name) {
-          initialLevel = extractLevel(batchDoc.name, 'Level 1');
+        if (batchDoc) {
+          if (!initialLevel && batchDoc.name) {
+            initialLevel = extractLevel(batchDoc.name, 'Level 1');
+          }
+          if (batchDoc.assignedTeacher) {
+            batchAssignedTeacher = batchDoc.assignedTeacher;
+          }
         }
       } catch {}
     }
     if (!initialLevel) initialLevel = 'Level 1';
+
+    const finalTutor = assignedTutor || batchAssignedTeacher || undefined;
 
     const newStudent = await Student.create({
       name: trimmedName,
@@ -481,11 +618,12 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       currentLevel: initialLevel,
       level: initialLevel,
       classesNeeded: classesNeeded !== undefined ? Number(classesNeeded) : undefined,
-      assignedTutor: assignedTutor || undefined,
+      assignedTutor: finalTutor,
     });
 
     if (batch) {
       await Batch.findByIdAndUpdate(batch, { $inc: { studentsCount: 1 } });
+      await syncStudentBatchSchedules(newStudent._id.toString(), batch);
     }
 
     serverCache.clearPattern('students_');
@@ -572,16 +710,29 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       student.level = level;
     }
     if (classesNeeded !== undefined) student.classesNeeded = Number(classesNeeded);
-    if (assignedTutor !== undefined) student.assignedTutor = assignedTutor;
+    if (assignedTutor !== undefined) {
+      student.assignedTutor = assignedTutor;
+    } else if (newBatchId) {
+      try {
+        const nb = await Batch.findById(newBatchId);
+        if (nb?.assignedTeacher && (!student.assignedTutor || newBatchId !== oldBatchId)) {
+          student.assignedTutor = nb.assignedTeacher?._id ? nb.assignedTeacher._id.toString() : nb.assignedTeacher.toString();
+        }
+      } catch {}
+    }
 
     await student.save();
 
-    // If batch changed, update counts
+    // If batch changed or assigned, update counts and sync schedules
     if (oldBatchId && newBatchId && oldBatchId !== newBatchId) {
       await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
       await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
+      await syncStudentBatchSchedules(student._id.toString(), newBatchId, oldBatchId);
     } else if (!oldBatchId && newBatchId) {
       await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
+      await syncStudentBatchSchedules(student._id.toString(), newBatchId);
+    } else if (newBatchId) {
+      await syncStudentBatchSchedules(student._id.toString(), newBatchId);
     }
 
     serverCache.clearPattern('students_');
@@ -758,6 +909,7 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
     }
 
     await student.save();
+    await syncStudentBatchSchedules(student._id.toString(), targetBatchId, oldBatchId);
 
     // Increment count on target batch only if target batch is different from old batch and was existing
     if (batchId && oldBatchId !== targetBatchId) {

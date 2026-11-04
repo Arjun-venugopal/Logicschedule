@@ -8,6 +8,7 @@ import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfM
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, Users, BookOpen, Calendar, AlignLeft, Info, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getSafeDateOnly } from "@/lib/utils";
 
 const SLOT_COLORS = [
   { bg: "bg-amber-500/20", border: "border-amber-500/50", text: "text-amber-300", dot: "bg-amber-400" },
@@ -123,18 +124,6 @@ const emptyForm = (): ScheduleEntry => ({
   nextExtraClassEndTime: "10:00",
   nextExtraClassDate: "",
 });
-
-const getSafeDateOnly = (val: any): string => {
-  if (!val) return "";
-  if (typeof val === "string") return val.split("T")[0];
-  if (val instanceof Date) {
-    const y = val.getUTCFullYear();
-    const m = String(val.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(val.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(val).split("T")[0];
-};
 
 export default function SchedulePage() {
   const queryClient = useQueryClient();

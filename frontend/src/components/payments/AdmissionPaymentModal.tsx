@@ -9,10 +9,8 @@ import {
   CreditCard,
   CheckCircle2,
   AlertCircle,
-  Calendar,
   IndianRupee,
   Layers,
-  ArrowRight,
   ShieldCheck,
   Percent,
 } from "lucide-react";

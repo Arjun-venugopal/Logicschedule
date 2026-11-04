@@ -2,14 +2,14 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2 } from "lucide-react";
-import { format } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
 import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { getSafeDateOnly, formatTime12h } from "@/lib/utils";
 
 const BatchAnalyticsModal = dynamic(
   () => import("@/components/batches/BatchAnalyticsModal"),
@@ -34,18 +34,6 @@ function batchProgress(completedClassesCount?: number, totalClassesCount?: numbe
   if (!totalClassesCount || totalClassesCount <= 0) return 0;
   return Math.min(100, Math.round(((completedClassesCount || 0) / totalClassesCount) * 100));
 }
-
-const getSafeDateOnly = (val: any): string => {
-  if (!val) return "";
-  if (typeof val === "string") return val.split("T")[0];
-  if (val instanceof Date) {
-    const y = val.getUTCFullYear();
-    const m = String(val.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(val.getUTCDate()).padStart(2, "0");
-    return `${y}-${m}-${d}`;
-  }
-  return String(val).split("T")[0];
-};
 
 const formatSafeDisplayDate = (val: any): string => {
   const dateStr = getSafeDateOnly(val);
@@ -73,17 +61,6 @@ const computeEndTime = (startTime?: string, durationMinutes = 60): string => {
   const endHours = Math.floor((totalMin / 60) % 24);
   const endMin = totalMin % 60;
   return `${String(endHours).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
-};
-
-const formatTime12h = (time24?: string): string => {
-  if (!time24) return "—";
-  const [hStr, mStr] = time24.split(":");
-  const h = parseInt(hStr, 10);
-  const m = parseInt(mStr || "0", 10);
-  if (isNaN(h)) return time24;
-  const period = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 === 0 ? 12 : h % 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${period}`;
 };
 
 const formatBatchTiming = (batch: any): string => {
@@ -236,17 +213,32 @@ export default function BatchesPage() {
 
   const createBatch = useMutation({
     mutationFn: (data: any) => api.post("/batches", data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      closeModal();
+    },
   });
 
   const updateBatch = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/batches/${id}`, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); closeModal(); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      closeModal();
+    },
   });
 
   const deleteBatch = useMutation({
     mutationFn: (id: string) => api.delete(`/batches/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["batches"] }); setDeleteConfirm(null); },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      setDeleteConfirm(null);
+    },
   });
 
   const openCreate = () => {

@@ -7,26 +7,21 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   CreditCard,
   Search,
-  Filter,
-  IndianRupee,
   Clock,
   CheckCircle2,
   AlertCircle,
   Sliders,
   History,
-  User,
   Plus,
   Pencil,
   Trash2,
   UserCheck,
   Calendar,
   X,
-  Sparkles,
   Trophy,
   BarChart3,
   Download,
   RotateCcw,
-  TrendingUp,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { ConfigRulesModal } from "@/components/payments/ConfigRulesModal";

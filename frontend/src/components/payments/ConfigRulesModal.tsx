@@ -14,7 +14,7 @@ interface ConfigRulesModalProps {
 export function ConfigRulesModal({ isOpen, onClose }: ConfigRulesModalProps) {
   const queryClient = useQueryClient();
 
-  const { data: configData, isLoading } = useQuery({
+  const { data: configData } = useQuery({
     queryKey: ["payment-config"],
     queryFn: async () => (await api.get("/payments/config")).data,
     enabled: isOpen,

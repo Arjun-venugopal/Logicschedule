@@ -11,8 +11,6 @@ import {
   Calendar,
   Trophy,
   ArrowUpRight,
-  ShieldAlert,
-  CreditCard,
   Users,
 } from "lucide-react";
 

@@ -147,7 +147,7 @@ export default function AttendancePage() {
     });
   }, [studentsWithSchedules, isTeacher, selectedTeacherId]);
 
-  const { globalTotal, globalMarked, globalPresent, globalRate } = useMemo(() => {
+  const { globalTotal, globalPresent, globalRate } = useMemo(() => {
     let total = 0;
     let marked = 0;
     let present = 0;

@@ -18,8 +18,7 @@ import {
   X, 
   Award,
   Sparkles,
-  Link as LinkIcon,
-  RotateCcw
+  Link as LinkIcon
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";

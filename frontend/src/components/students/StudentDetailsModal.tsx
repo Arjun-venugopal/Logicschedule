@@ -4,17 +4,12 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, IndianRupee, AlertCircle, Clock, Receipt, Calendar, Video, ExternalLink, ChevronDown, ChevronUp, FileText, Sparkles } from "lucide-react";
+import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 import { ProjectSubmissionsSection } from "./ProjectSubmissionsSection";
-
-function extractLevel(text?: string, fallback = "Level 1"): string {
-  if (!text) return fallback;
-  const match = text.match(/level\s*[-]?\s*(\d+)/i) || text.match(/lvl\s*[-]?\s*(\d+)/i);
-  return match ? `Level ${match[1]}` : fallback;
-}
+import { extractLevel } from "@/lib/utils";
 
 function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback = "Session"): string {
   if (!dateVal) return fallback;
@@ -58,7 +53,6 @@ export function StudentDetailsModal({
   const [nextLevelPaymentMethod, setNextLevelPaymentMethod] = useState<string>("Bank Transfer");
   const [nextLevelPaymentDate, setNextLevelPaymentDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [nextLevelPaymentNotes, setNextLevelPaymentNotes] = useState<string>("");
-  const [showPaymentHistoryInModal, setShowPaymentHistoryInModal] = useState<boolean>(true);
 
   // Extra Class State
   const [showScheduleExtraClassModal, setShowScheduleExtraClassModal] = useState(false);
@@ -141,7 +135,6 @@ export function StudentDetailsModal({
     setNextLevelPaymentDate(format(new Date(), "yyyy-MM-dd"));
     setNextLevelPaymentNotes("");
     setRecordNextLevelPayment(true);
-    setShowPaymentHistoryInModal(true);
 
     setShowNextCourseModal(true);
   };

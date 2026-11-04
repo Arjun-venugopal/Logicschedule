@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
-import { Download, WifiOff, Wifi, RefreshCw, X, CheckCircle2, Share2, PlusSquare } from "lucide-react";
+import { Download, WifiOff, RefreshCw, X, CheckCircle2, Share2, PlusSquare } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface BeforeInstallPromptEvent extends Event {

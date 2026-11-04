@@ -6,9 +6,9 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Payment from '../models/Payment';
 import RecycleBin from '../models/RecycleBin';
-import { findExistingStudent } from './studentController';
-import { checkTeacherConflict } from '../utils/scheduleHelper';
-import { serverCache } from '../utils/cache';
+import { findExistingStudent, syncStudentBatchSchedules } from './studentController';
+import { checkTeacherConflict, getKolkataNow } from '../utils/scheduleHelper';
+import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // @desc    Get all demo sessions
 // @route   GET /demo-sessions
@@ -503,6 +503,8 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
         updated.batchAssigned = newBatch._id;
         await updated.save();
 
+        const assignedTutorId = teacherId || (newBatch.assignedTeacher?._id ? newBatch.assignedTeacher._id.toString() : newBatch.assignedTeacher);
+
         if (existingStudent) {
           // Advance/move existing student to new batch without duplicating!
           const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
@@ -522,25 +524,50 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
           }
 
           existingStudent.batch = newBatch._id;
+          if (assignedTutorId) existingStudent.assignedTutor = assignedTutorId;
           if (updated.customerName && !existingStudent.parentName) existingStudent.parentName = updated.customerName;
           if (updated.phoneNumber && !existingStudent.mobileNumber) existingStudent.mobileNumber = updated.phoneNumber;
           if (updated.studentEmail && !existingStudent.email) existingStudent.email = updated.studentEmail;
           if (studentCleanName) existingStudent.name = studentCleanName;
           await existingStudent.save();
+          await syncStudentBatchSchedules(existingStudent._id.toString(), newBatch._id.toString(), oldBatchId);
         } else {
-          await Student.create({
+          const createdSt = await Student.create({
             name: studentCleanName,
             batch: newBatch._id,
             parentName: updated.customerName || '',
             mobileNumber: updated.phoneNumber || '',
             email: updated.studentEmail || '',
+            assignedTutor: assignedTutorId || undefined,
           });
+          await syncStudentBatchSchedules(createdSt._id.toString(), newBatch._id.toString());
         }
       }
     } else if ((isAdmin || isSalesPerson) && isNowConfirmed && updated.batchAssigned) {
       // If batch was already created (e.g. while teacher was not confirmed) and tutor is now selected:
       if (updated.classAssignedTutor && updated.classAssignedTutor !== 'Teacher is not confirmed' && updated.classAssignedTutor !== 'Teacher Not Confirmed') {
-        await Batch.findByIdAndUpdate(updated.batchAssigned, { assignedTeacher: updated.classAssignedTutor });
+        const bDoc = await Batch.findById(updated.batchAssigned);
+        if (bDoc) {
+          bDoc.assignedTeacher = updated.classAssignedTutor;
+          await bDoc.save();
+          const batchStudents = await Student.find({ batch: bDoc._id });
+          for (const bs of batchStudents) {
+            bs.assignedTutor = updated.classAssignedTutor;
+            await bs.save();
+          }
+          const kolkata = getKolkataNow();
+          const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
+          const futureScheds = await Schedule.find({ batch: bDoc._id, status: 'Scheduled', date: { $gte: todayStart } });
+          for (const fs of futureScheds) {
+            fs.teacher = updated.classAssignedTutor;
+            await fs.save();
+          }
+          serverCache.clearPattern('schedules_');
+          serverCache.clearPattern('students_');
+          serverCache.clearPattern('batches_');
+          serverCache.clearPattern('stats_');
+          deleteDiskCache('schedules_all');
+        }
       }
     }
 
