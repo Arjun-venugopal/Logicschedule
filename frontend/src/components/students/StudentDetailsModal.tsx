@@ -1,4 +1,5 @@
 "use client";
+import React from "react";
 
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -65,6 +66,11 @@ export function StudentDetailsModal({
   const [extraClassMeetingLink, setExtraClassMeetingLink] = useState("");
   const [extraClassError, setExtraClassError] = useState("");
   const [togglingScheduleId, setTogglingScheduleId] = useState<string | null>(null);
+  const [showReassignTeacherModal, setShowReassignTeacherModal] = useState(false);
+  const [reassignTeacherId, setReassignTeacherId] = useState("");
+  const [reassignReason, setReassignReason] = useState("");
+  const [reassignError, setReassignError] = useState("");
+  const [expandedScheduleRowId, setExpandedScheduleRowId] = useState<string | null>(null);
 
   const { data: student, isLoading } = useQuery({
     queryKey: ["student", studentId],
@@ -248,6 +254,35 @@ export function StudentDetailsModal({
     },
   });
 
+  const reassignTeacherMutation = useMutation({
+    mutationFn: async ({ teacherId, reason }: { teacherId: string; reason?: string }) => {
+      return (await api.put(`/students/${studentId}`, { assignedTutor: teacherId, reassignReason: reason })).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      setShowReassignTeacherModal(false);
+      setReassignReason("");
+      setReassignError("");
+    },
+    onError: (err: any) => {
+      setReassignError(err.response?.data?.message || "Failed to reassign teacher");
+    },
+  });
+
+  const handleOpenReassignModal = () => {
+    const currentTId =
+      (typeof student?.assignedTutor === "string" ? student?.assignedTutor : student?.assignedTutor?._id) ||
+      student?.batch?.assignedTeacher?._id ||
+      (typeof student?.batch?.assignedTeacher === "string" ? student?.batch?.assignedTeacher : "") || "";
+    setReassignTeacherId(currentTId);
+    setReassignReason("");
+    setReassignError("");
+    setShowReassignTeacherModal(true);
+  };
+
   const handleOpenScheduleExtraClass = () => {
     setExtraClassDate(format(new Date(), "yyyy-MM-dd"));
     setExtraClassStartTime(student?.batch?.timing?.startTime || "09:00");
@@ -342,6 +377,11 @@ export function StudentDetailsModal({
   }
 
   if (!student) return null;
+
+  const currentTeacherName =
+    getTeacherName(student?.assignedTutor) ||
+    getTeacherName(student?.batch?.assignedTeacher) ||
+    "Assigned Tutor";
 
   // Calculate attendance if available across completed sessions
   let presentCount = 0;
@@ -600,8 +640,8 @@ export function StudentDetailsModal({
               {/* Current / Ongoing Level */}
               {student.batch ? (() => {
                 const currentTeacherName = 
-                  getTeacherName(student.batch?.assignedTeacher) || 
                   getTeacherName(student.assignedTutor) || 
+                  getTeacherName(student.batch?.assignedTeacher) || 
                   "Assigned Tutor";
 
                 return (
@@ -621,6 +661,14 @@ export function StudentDetailsModal({
                             In Progress
                           </span>
                           <button
+                            type="button"
+                            onClick={handleOpenReassignModal}
+                            className="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                            title="Reassign Teacher for Student"
+                          >
+                            <User className="w-3.5 h-3.5" /> Reassign Teacher
+                          </button>
+                          <button
                             onClick={handleOpenNextCourseModal}
                             className="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
                           >
@@ -636,7 +684,7 @@ export function StudentDetailsModal({
                       <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-300">
                         <span className="flex items-center gap-1.5">
                           <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span>Teacher: <strong className="text-white font-semibold">{currentTeacherName}</strong></span>
+                          <span>Assigned Teacher: <strong className="text-white font-semibold">{currentTeacherName}</strong></span>
                         </span>
                         {student.batch.timing?.startTime && (
                           <span className="flex items-center gap-1.5 text-neutral-400">
@@ -726,87 +774,207 @@ export function StudentDetailsModal({
                                   Schedule Extra Class
                                 </button>
                               </div>
-                            ) : (
-                              currentBatchSchedules.map((cls: any, cIdx: number) => (
-                                <div key={cls._id || cIdx} className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs space-y-1.5">
-                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="font-bold text-white flex items-center gap-1">
-                                        <Calendar className="w-3 h-3 text-neutral-500" />
-                                        {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Session")}
-                                      </span>
-                                      <span className="text-neutral-400 font-mono text-[11px] flex items-center gap-1">
-                                        <Clock className="w-3 h-3 text-neutral-500" />
-                                        {cls.startTime} - {cls.endTime}
-                                      </span>
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                                        cls.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20" : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
-                                      }`}>
-                                        {cls.status}
-                                      </span>
-                                      {cls.isExtraClass && (
-                                        <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                          <Sparkles className="w-2.5 h-2.5" />
-                                          Extra Class
+                            ) : (() => {
+                              let regIndex = 0;
+                              return (
+                                <div className="space-y-2">
+                                  {/* Student Teacher Transfer Log if available */}
+                                  {student.teacherHistory && student.teacherHistory.length > 0 && (
+                                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
+                                      <div className="flex items-center justify-between text-[11px] font-bold text-amber-400">
+                                        <span className="flex items-center gap-1">
+                                          <History className="w-3.5 h-3.5" /> Teacher Transfer History ({student.teacherHistory.length})
                                         </span>
-                                      )}
-                                    </div>
-                                    <div className="flex items-center gap-2 flex-wrap">
-                                      <span className="text-neutral-400 text-[11px]">
-                                        Teacher: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || currentTeacherName}</strong>
-                                      </span>
-                                      <button
-                                        type="button"
-                                        title={cls.isExtraClass ? "Click to unmark as Extra Class" : "Click to mark as Extra Class"}
-                                        disabled={togglingScheduleId === cls._id}
-                                        onClick={() => {
-                                          setTogglingScheduleId(cls._id);
-                                          toggleExtraClassMutation.mutate({
-                                            scheduleId: cls._id,
-                                            isExtraClass: !cls.isExtraClass,
-                                            extraClassReason: !cls.isExtraClass ? "Extra class for student" : "",
-                                          });
-                                        }}
-                                        className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${
-                                          cls.isExtraClass
-                                            ? "bg-purple-950/60 text-purple-300 border-purple-500/40 hover:bg-purple-900/60"
-                                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-purple-300 hover:border-purple-500/40"
-                                        }`}
-                                      >
-                                        {togglingScheduleId === cls._id ? (
-                                          <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
-                                        ) : (
-                                          <Sparkles className="w-2.5 h-2.5" />
-                                        )}
-                                        <span>{cls.isExtraClass ? "Extra Class ✓" : "+ Mark Extra"}</span>
-                                      </button>
-                                    </div>
-                                  </div>
-                                  {(cls.subject || cls.notes || (cls.isExtraClass && cls.extraClassReason)) && (
-                                    <div className="bg-neutral-950/60 rounded-lg p-2 border border-neutral-800/60 space-y-1">
-                                      {cls.isExtraClass && cls.extraClassReason && (
-                                        <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
-                                          <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
-                                          <span>{cls.extraClassReason}</span>
-                                        </div>
-                                      )}
-                                      {cls.subject && (
-                                        <div className="flex items-start gap-1.5">
-                                          <span className="text-neutral-500 font-semibold shrink-0">Topic Covered:</span>
-                                          <span className="text-white font-medium">{cls.subject}</span>
-                                        </div>
-                                      )}
-                                      {cls.notes && (
-                                        <div className="flex items-start gap-1.5 text-neutral-400 text-[11px]">
-                                          <span className="text-neutral-500 font-semibold shrink-0">Notes:</span>
-                                          <span>{cls.notes}</span>
-                                        </div>
-                                      )}
+                                        <span className="text-neutral-400 font-normal">Classes 1..N retain historical conductor</span>
+                                      </div>
+                                      <div className="space-y-1 pt-0.5">
+                                        {student.teacherHistory.map((th: any, idx: number) => (
+                                          <div key={idx} className="flex items-center justify-between text-[11px] text-neutral-300 bg-neutral-900/80 px-2.5 py-1 rounded-lg border border-neutral-800">
+                                            <span>
+                                              Transferred from <strong className="text-neutral-200">{th.previousTeacherName || "Previous Teacher"}</strong> → <strong className="text-amber-400">{th.teacherName || "New Teacher"}</strong>
+                                              {th.reason ? <span className="text-neutral-400"> ({th.reason})</span> : null}
+                                            </span>
+                                            <span className="text-neutral-500 font-mono text-[10px]">
+                                              {safeFormatDate(th.changedAt, "dd MMM yyyy", "")}
+                                            </span>
+                                          </div>
+                                        ))}
+                                      </div>
                                     </div>
                                   )}
+
+                                  {/* Table of Class History */ }
+                                  <div className="overflow-x-auto rounded-xl border border-neutral-800/80 bg-neutral-900/60">
+                                    <table className="w-full text-left text-xs divide-y divide-neutral-800">
+                                      <thead className="bg-neutral-950/80 text-neutral-400 text-[11px] font-bold uppercase tracking-wider">
+                                        <tr>
+                                          <th className="py-2.5 px-3">Class</th>
+                                          <th className="py-2.5 px-3">Date</th>
+                                          <th className="py-2.5 px-3">Time</th>
+                                          <th className="py-2.5 px-3">Status</th>
+                                          <th className="py-2.5 px-3">Completed By / Teacher</th>
+                                          <th className="py-2.5 px-3 text-right">Actions</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-neutral-800/60">
+                                        {currentBatchSchedules.map((cls: any, cIdx: number) => {
+                                          if (!cls.isExtraClass) regIndex++;
+                                          const classLabel = cls.isExtraClass ? "Extra Class" : `Class ${regIndex}`;
+                                          const isCompleted = cls.status === "Completed";
+                                          const isCancelled = cls.status === "Cancelled";
+                                          const isExpandedRow = expandedScheduleRowId === (cls._id || String(cIdx));
+
+                                          // Completed classes display the teacher who actually conducted that session
+                                          // Upcoming/pending classes display the currently assigned teacher
+                                          const completedByTeacherName = cls.completedByName ||
+                                            getTeacherName(cls.completedBy) ||
+                                            cls.teacher?.name ||
+                                            getTeacherName(cls.teacher) ||
+                                            "Teacher";
+
+                                          const upcomingTeacherName = cls.teacher?.name ||
+                                            getTeacherName(cls.teacher) ||
+                                            currentTeacherName ||
+                                            "Assigned Teacher";
+
+                                          return (
+                                            <React.Fragment key={cls._id || cIdx}>
+                                              <tr className="hover:bg-neutral-800/40 transition-colors">
+                                                <td className="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
+                                                  <div className="flex items-center gap-1.5">
+                                                    <span>{classLabel}</span>
+                                                    {cls.isExtraClass && (
+                                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                                        Extra
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                </td>
+                                                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-200">
+                                                  <span className="flex items-center gap-1 font-medium">
+                                                    <Calendar className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                                                    {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Session")}
+                                                  </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-300 font-mono text-[11px]">
+                                                  <span className="flex items-center gap-1">
+                                                    <Clock className="w-3 h-3 text-neutral-500 shrink-0" />
+                                                    {cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : (cls.startTime || "—")}
+                                                  </span>
+                                                </td>
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                  {isCompleted ? (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                                      <CheckCircle2 className="w-3 h-3" /> Completed
+                                                    </span>
+                                                  ) : isCancelled ? (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                                                      Cancelled
+                                                    </span>
+                                                  ) : (
+                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                                      <Clock className="w-3 h-3" /> Pending
+                                                    </span>
+                                                  )}
+                                                </td>
+                                                <td className="py-2.5 px-3 whitespace-nowrap">
+                                                  {isCompleted ? (
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                      <span className="font-semibold text-emerald-300">{completedByTeacherName}</span>
+                                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-medium">
+                                                        Conducted
+                                                      </span>
+                                                    </div>
+                                                  ) : (
+                                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                                      <span className="font-semibold text-blue-300">{upcomingTeacherName}</span>
+                                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60 font-medium">
+                                                        Assigned
+                                                      </span>
+                                                    </div>
+                                                  )}
+                                                </td>
+                                                <td className="py-2.5 px-3 text-right whitespace-nowrap">
+                                                  <div className="flex items-center justify-end gap-1.5">
+                                                    <button
+                                                      type="button"
+                                                      title={cls.isExtraClass ? "Click to unmark as Extra Class" : "Click to mark as Extra Class"}
+                                                      disabled={togglingScheduleId === cls._id}
+                                                      onClick={() => {
+                                                        setTogglingScheduleId(cls._id);
+                                                        toggleExtraClassMutation.mutate({
+                                                          scheduleId: cls._id,
+                                                          isExtraClass: !cls.isExtraClass,
+                                                          extraClassReason: !cls.isExtraClass ? "Extra class for student" : "",
+                                                        });
+                                                      }}
+                                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${
+                                                        cls.isExtraClass
+                                                          ? "bg-purple-950/60 text-purple-300 border-purple-500/40 hover:bg-purple-900/60"
+                                                          : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-purple-300 hover:border-purple-500/40"
+                                                      }`}
+                                                    >
+                                                      {togglingScheduleId === cls._id ? (
+                                                        <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
+                                                      ) : (
+                                                        <Sparkles className="w-2.5 h-2.5" />
+                                                      )}
+                                                      <span>{cls.isExtraClass ? "Extra ✓" : "+ Extra"}</span>
+                                                    </button>
+                                                    {(cls.subject || cls.notes || cls.extraClassReason || cls.meetingLink) && (
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setExpandedScheduleRowId(isExpandedRow ? null : (cls._id || String(cIdx)))}
+                                                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors"
+                                                        title="View topic & notes"
+                                                      >
+                                                        {isExpandedRow ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                                                      </button>
+                                                    )}
+                                                  </div>
+                                                </td>
+                                              </tr>
+                                              {isExpandedRow && (cls.subject || cls.notes || cls.extraClassReason || cls.meetingLink) && (
+                                                <tr className="bg-neutral-950/60">
+                                                  <td colSpan={6} className="px-3 py-2 text-xs space-y-1">
+                                                    {cls.subject && (
+                                                      <div className="flex items-start gap-1.5">
+                                                        <span className="text-emerald-400 font-semibold shrink-0">Topic Covered:</span>
+                                                        <span className="text-white">{cls.subject}</span>
+                                                      </div>
+                                                    )}
+                                                    {cls.notes && (
+                                                      <div className="flex items-start gap-1.5 text-neutral-400 text-[11px]">
+                                                        <span className="text-neutral-500 font-semibold shrink-0">Notes:</span>
+                                                        <span>{cls.notes}</span>
+                                                      </div>
+                                                    )}
+                                                    {cls.extraClassReason && (
+                                                      <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
+                                                        <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
+                                                        <span>{cls.extraClassReason}</span>
+                                                      </div>
+                                                    )}
+                                                    {cls.meetingLink && (
+                                                      <div className="flex items-center gap-1.5 text-[11px] pt-0.5">
+                                                        <span className="text-neutral-500 font-semibold">Link:</span>
+                                                        <a href={cls.meetingLink} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline truncate">
+                                                          {cls.meetingLink}
+                                                        </a>
+                                                      </div>
+                                                    )}
+                                                  </td>
+                                                </tr>
+                                              )}
+                                            </React.Fragment>
+                                          );
+                                        })}
+                                      </tbody>
+                                    </table>
+                                  </div>
                                 </div>
-                              ))
-                            )}
+                              );
+                            })()}
                           </div>
                         )}
                       </div>
@@ -1766,6 +1934,113 @@ export function StudentDetailsModal({
                       Move to Next Level
                     </>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Reassign Teacher Modal */}
+        {showReassignTeacherModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-neutral-900 border border-neutral-700/80 rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl relative space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Reassign Teacher</h3>
+                    <p className="text-xs text-neutral-400">Transfer student class management to a new teacher</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowReassignTeacherModal(false)}
+                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {reassignError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-xs text-red-400">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{reassignError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3 text-xs">
+                <div className="p-2.5 rounded-xl bg-neutral-800/60 border border-neutral-700/60 flex items-center justify-between">
+                  <span className="text-neutral-400">Currently Assigned:</span>
+                  <span className="font-semibold text-white">{currentTeacherName}</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Select New Teacher <span className="text-amber-500">*</span>
+                  </label>
+                  <select
+                    value={reassignTeacherId}
+                    onChange={(e) => setReassignTeacherId(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-amber-500 transition-colors"
+                  >
+                    <option value="">Choose a teacher...</option>
+                    {allTeachers.map((t: any) => (
+                      <option key={t._id} value={t._id}>
+                        {t.name || t.user?.name || "Teacher"} ({t.email || t.user?.email || ""})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Reason for Transfer <span className="text-neutral-500 font-normal">(Optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={reassignReason}
+                    onChange={(e) => setReassignReason(e.target.value)}
+                    placeholder="e.g. Schedule adjustment, student request"
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+
+                {/* Policy Guarantee Banner */ }
+                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1 text-amber-300">
+                  <p className="font-bold text-xs flex items-center gap-1.5 text-amber-400">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Reassignment Policy:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-amber-200/90">
+                    <li>All upcoming and pending classes will be transferred to the new teacher.</li>
+                    <li>All previously completed classes permanently retain the teacher who actually conducted them.</li>
+                    <li>The new teacher receives full access to this student's complete class history.</li>
+                  </ul>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-neutral-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowReassignTeacherModal(false)}
+                  disabled={reassignTeacherMutation.isPending}
+                  className="px-3.5 py-2 text-xs font-semibold text-neutral-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!reassignTeacherId || reassignTeacherMutation.isPending}
+                  onClick={() => reassignTeacherMutation.mutate({ teacherId: reassignTeacherId, reason: reassignReason })}
+                  className="px-4 py-2 brand-gradient text-black text-xs font-bold rounded-xl hover:opacity-90 disabled:opacity-50 flex items-center gap-1.5 shadow-md shadow-amber-500/20"
+                >
+                  {reassignTeacherMutation.isPending ? "Transferring..." : "Confirm Reassignment"}
                 </button>
               </div>
             </motion.div>

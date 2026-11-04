@@ -218,11 +218,11 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
 
                 <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
                   <div className="flex items-center justify-between text-neutral-400 mb-1 sm:mb-2">
-                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Students</span>
+                    <span className="text-[10px] sm:text-xs font-semibold uppercase tracking-wider">Students (1:1)</span>
                     <Users className="w-4 h-4 text-amber-400" />
                   </div>
                   <p className="text-2xl sm:text-3xl font-bold text-white">{analytics.totalStudents}</p>
-                  <p className="text-[10px] text-neutral-500 mt-0.5">Across active batches</p>
+                  <p className="text-[10px] text-neutral-500 mt-0.5">Across active 1:1 batches</p>
                 </div>
 
                 <div className="bg-neutral-800/40 border border-neutral-800 rounded-2xl p-3.5 sm:p-4 flex flex-col justify-between">
@@ -344,7 +344,7 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                         <th className="px-5 py-3 font-medium">Batch Name</th>
                         <th className="px-5 py-3 font-medium">Course / Subject</th>
                         <th className="px-5 py-3 font-medium">Teacher</th>
-                        <th className="px-5 py-3 font-medium text-center">Students</th>
+                        <th className="px-5 py-3 font-medium text-center">Format</th>
                         <th className="px-5 py-3 font-medium">Classes Done</th>
                         <th className="px-5 py-3 font-medium text-right">Actions</th>
                       </tr>
@@ -371,8 +371,8 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                             <td className="px-5 py-3.5 text-neutral-300">
                               {b.assignedTeacher?.name || "Unassigned"}
                             </td>
-                            <td className="px-5 py-3.5 text-center font-bold text-white">
-                              {b.studentsCount || 0}
+                            <td className="px-5 py-3.5 text-center font-semibold text-amber-400">
+                              1-on-1
                             </td>
                             <td className="px-5 py-3.5 text-neutral-300">
                               <span className="font-semibold text-emerald-400">

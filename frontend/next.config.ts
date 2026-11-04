@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig = {
-  outputFileTracingRoot: path.resolve(__dirname, "../"),
+
   // Enable static HTML export only for production builds to avoid breaking next dev manifests
   ...(isProd ? { output: "export" as const } : {}),
   images: {
@@ -21,7 +21,7 @@ const nextConfig = {
   },
   experimental: {
     // Tree-shake heavy libraries
-    optimizePackageImports: ["lucide-react", "date-fns"],
+    optimizePackageImports: ["lucide-react"],
   },
   allowedDevOrigins: [
     '192.168.1.39',
@@ -29,12 +29,12 @@ const nextConfig = {
     '192.168.1.39:3001',
     '192.168.1.36',
     '192.168.1.36:3000',
-    '192.168.1.34', 
-    '192.168.1.34:3000', 
+    '192.168.1.34',
+    '192.168.1.34:3000',
     '10.208.57.166',
     '10.208.57.166:3000',
     'localhost:3000',
-    'local-origin.dev', 
+    'local-origin.dev',
     '*.local-origin.dev'
   ],
 } as NextConfig;

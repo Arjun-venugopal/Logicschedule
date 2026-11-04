@@ -125,10 +125,10 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
               <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Students</span>
+                  <span className="text-[10px] sm:text-xs uppercase font-semibold text-neutral-500">Format</span>
                   <Users className="w-4 h-4 text-amber-500" />
                 </div>
-                <p className="text-xl sm:text-2xl font-bold text-white">{studentsCount}</p>
+                <p className="text-lg sm:text-xl font-bold text-amber-400">1-on-1 Class</p>
               </div>
               <div className="bg-neutral-800/50 border border-neutral-800 rounded-xl p-3 sm:p-4">
                 <div className="flex items-center justify-between mb-1">

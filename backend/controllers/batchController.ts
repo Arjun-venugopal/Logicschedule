@@ -87,6 +87,13 @@ export async function generateSchedulesForBatch(
   const teacherId = assignedTeacher?._id
     ? assignedTeacher._id.toString()
     : (assignedTeacher ? assignedTeacher.toString() : undefined);
+  let batchTeacherName = assignedTeacher?.name || '';
+  if (teacherId && !batchTeacherName) {
+    try {
+      const tDoc = await Teacher.findById(teacherId).populate('user', 'name');
+      batchTeacherName = tDoc?.name || (tDoc as any)?.user?.name || '';
+    } catch {}
+  }
 
   const preCompletedClasses = Math.max(0, Number(rawPreCompletedClasses) || Number(batch.preCompletedClasses) || 0);
   const batchSessions = numberOfSessions && Number(numberOfSessions) > 0 ? Number(numberOfSessions) : 0;
@@ -144,95 +151,18 @@ export async function generateSchedulesForBatch(
   const schedulesToCreate: any[] = [];
   const neededCompleted = Math.max(0, preCompletedClasses - existingCompletedCount);
 
-  // Step 1: If preCompletedClasses > 0 and we need more completed schedules:
-  // Generate neededCompleted schedules in the past (dates <= todayStr)
-  if (neededCompleted > 0) {
-    const baseTimestamp = Math.min(cursor.getTime(), todayEnd.getTime());
-    const backCursor = new Date(baseTimestamp);
-    let backDaysScanned = 0;
-
-    while (schedulesToCreate.length < neededCompleted && backDaysScanned < 365) {
-      if (selectedDayIndexes.has(backCursor.getUTCDay())) {
-        const backTime = backCursor.getTime();
-        const dateKey = backCursor.toISOString().split('T')[0];
-
-        if (dateKey <= kolkata.todayStr && !existingTimes.has(backTime)) {
-          const daySlots = teacherSlotsByDate.get(dateKey) || [];
-          const slotTiming = getSlotTimingForDay(batch, backTime);
-          const isConflict = checkIntervalConflict(daySlots, {
-            startTime: slotTiming.startTime,
-            endTime: slotTiming.endTime,
-          });
-
-          const completedSlot = {
-            teacher: teacherId || undefined,
-            batch: _id,
-            date: new Date(backTime),
-            startTime: slotTiming.startTime,
-            endTime: slotTiming.endTime,
-            status: 'Completed',
-            conflict: isConflict,
-            meetingLink: meetingLink || '',
-            notes: 'Auto-generated as Completed (Classes Already Completed)',
-            attendance: batchStudentIds.map((sId) => ({
-              studentId: sId,
-              isPresent: true,
-              date: new Date(backTime),
-            })),
-          };
-
-          schedulesToCreate.unshift(completedSlot); // Keep in chronological order
-          existingTimes.add(backTime);
-          daySlots.push(completedSlot);
-          teacherSlotsByDate.set(dateKey, daySlots);
-        }
-      }
-      backCursor.setUTCDate(backCursor.getUTCDate() - 1);
-      backDaysScanned++;
-    }
-
-    // Fallback: If matching days were not sufficient in past, fill remaining completed classes on preceding days
-    let fallbackOffset = 1;
-    while (schedulesToCreate.length < neededCompleted && fallbackOffset <= 365) {
-      const fbDate = new Date(baseTimestamp - fallbackOffset * 86400000);
-      const fbTime = fbDate.getTime();
-      const fbDateKey = fbDate.toISOString().split('T')[0];
-      if (fbDateKey <= kolkata.todayStr && !existingTimes.has(fbTime)) {
-        const slotTiming = getSlotTimingForDay(batch, fbTime);
-        const completedSlot = {
-          teacher: teacherId || undefined,
-          batch: _id,
-          date: new Date(fbTime),
-          startTime: slotTiming.startTime,
-          endTime: slotTiming.endTime,
-          status: 'Completed',
-          conflict: false,
-          meetingLink: meetingLink || '',
-          notes: 'Auto-generated as Completed (Classes Already Completed)',
-          attendance: batchStudentIds.map((sId) => ({
-            studentId: sId,
-            isPresent: true,
-            date: new Date(fbTime),
-          })),
-        };
-        schedulesToCreate.unshift(completedSlot);
-        existingTimes.add(fbTime);
-      }
-      fallbackOffset++;
-    }
-  }
-
-  // Step 2: Generate remaining upcoming/scheduled classes forward
-  // Strictly start forward from batch Start Date (Requirement 3 & 4)
-  const totalCompletedSoFar = existingCompletedCount + schedulesToCreate.length;
-  const forwardStartTime = cursor.getTime();
-  const forwardCursor = new Date(forwardStartTime);
+  // Generate calendar schedules starting strictly from Start Date forward (Requirements 3 & 4)
+  // 1. Never schedule classes before the batch Start Date.
+  // 2. Classes on or after Start Date whose scheduled date/time have passed become Completed up to neededCompleted.
+  // 3. Classes in the future (or once neededCompleted is satisfied) become Scheduled up to targetSessions.
+  const forwardCursor = new Date(cursor.getTime());
   let forwardDaysScanned = 0;
+  let completedCreated = 0;
   let scheduledCount = existingSchedules.filter((s: any) => s.status === 'Scheduled').length;
-  const maxScanDays = 365;
+  const maxScanDays = 400;
 
   while (forwardDaysScanned < maxScanDays) {
-    if (targetSessions > 0 && (totalCompletedSoFar + scheduledCount) >= targetSessions) {
+    if (targetSessions > 0 && (existingCompletedCount + completedCreated + scheduledCount) >= targetSessions) {
       break;
     }
     if (targetSessions === 0 && forwardDaysScanned >= 180) {
@@ -251,28 +181,62 @@ export async function generateSchedulesForBatch(
           endTime: slotTiming.endTime,
         });
 
-        const newSlot = {
-          teacher: teacherId || undefined,
-          batch: _id,
-          date: new Date(forwardTime),
-          startTime: slotTiming.startTime,
-          endTime: slotTiming.endTime,
-          status: 'Scheduled',
-          conflict: isConflict,
-          meetingLink: meetingLink || '',
-          notes: 'Auto-generated for batch',
-          attendance: batchStudentIds.map((sId) => ({
-            studentId: sId,
-            isPresent: false,
-            date: new Date(forwardTime),
-          })),
-        };
+        // Determine if this slot is in the past or right now (Asia/Kolkata)
+        const [sh, sm] = (slotTiming.startTime || '09:00').split(':').map(Number);
+        const slotMins = (sh || 0) * 60 + (sm || 0);
+        const isSlotPastOrNow =
+          dateKey < kolkata.todayStr ||
+          (dateKey === kolkata.todayStr && kolkata.currentTotalMinutes >= slotMins);
 
-        schedulesToCreate.push(newSlot);
-        existingTimes.add(forwardTime);
-        daySlots.push(newSlot);
-        teacherSlotsByDate.set(dateKey, daySlots);
-        scheduledCount++;
+        if (completedCreated < neededCompleted && isSlotPastOrNow) {
+          const completedSlot = {
+            teacher: teacherId || undefined,
+            completedBy: teacherId || undefined,
+            completedByName: batchTeacherName || undefined,
+            batch: _id,
+            date: new Date(forwardTime),
+            startTime: slotTiming.startTime,
+            endTime: slotTiming.endTime,
+            status: 'Completed',
+            conflict: isConflict,
+            meetingLink: meetingLink || '',
+            notes: 'Auto-generated as Completed (Classes Already Completed)',
+            attendance: batchStudentIds.map((sId) => ({
+              studentId: sId,
+              isPresent: true,
+              date: new Date(forwardTime),
+            })),
+          };
+
+          schedulesToCreate.push(completedSlot);
+          existingTimes.add(forwardTime);
+          daySlots.push(completedSlot);
+          teacherSlotsByDate.set(dateKey, daySlots);
+          completedCreated++;
+        } else {
+          const newSlot = {
+            teacher: teacherId || undefined,
+            batch: _id,
+            date: new Date(forwardTime),
+            startTime: slotTiming.startTime,
+            endTime: slotTiming.endTime,
+            status: 'Scheduled',
+            conflict: isConflict,
+            meetingLink: meetingLink || '',
+            notes: 'Auto-generated for batch',
+            attendance: batchStudentIds.map((sId) => ({
+              studentId: sId,
+              isPresent: false,
+              date: new Date(forwardTime),
+            })),
+          };
+
+          schedulesToCreate.push(newSlot);
+          existingTimes.add(forwardTime);
+          daySlots.push(newSlot);
+          teacherSlotsByDate.set(dateKey, daySlots);
+          scheduledCount++;
+        }
       }
     }
 
@@ -409,6 +373,50 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    const kolkata = getKolkataNow();
+    const cleanStartDate = startDate ? (normalizeDateOnlyToUtc(startDate)?.toISOString().split('T')[0] || '') : '';
+    let validatedPreCompleted = 0;
+
+    if (cleanStartDate) {
+      if (cleanStartDate > kolkata.todayStr) {
+        // Scenario B: Future Date -> 0 completed classes
+        validatedPreCompleted = 0;
+      } else if (cleanStartDate === kolkata.todayStr) {
+        // Scenario A: Start Date is Today
+        // Check if today is a configured class day and if time has passed
+        const todayParts = cleanStartDate.split('-').map(Number);
+        const todayUtc = new Date(Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2], 12, 0, 0));
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const todayDayName = dayNames[todayUtc.getUTCDay()];
+        const isTodayClassDay = Array.isArray(days) && days.includes(todayDayName);
+
+        if (isTodayClassDay) {
+          const timingObj = (dayTimings && dayTimings[todayDayName]) || timing || {};
+          const [th, tm] = (timingObj.startTime || '09:00').split(':').map(Number);
+          const startMins = (th || 0) * 60 + (tm || 0);
+          if (kolkata.currentTotalMinutes >= startMins) {
+            validatedPreCompleted = 1;
+          }
+        }
+      } else {
+        // Scenario C: Start Date is in the past -> mandatory Total Completed Classes
+        if (preCompletedClasses === undefined || preCompletedClasses === null || preCompletedClasses === '') {
+          res.status(400).json({ message: 'Total Completed Classes is required when Start Date is in the past' });
+          return;
+        }
+        const pre = Number(preCompletedClasses);
+        if (isNaN(pre) || pre < 0 || !Number.isInteger(pre)) {
+          res.status(400).json({ message: 'Total Completed Classes must be a whole number 0 or greater' });
+          return;
+        }
+        if (numberOfSessions && pre > Number(numberOfSessions)) {
+          res.status(400).json({ message: `Total Completed Classes cannot exceed total classes (${numberOfSessions})` });
+          return;
+        }
+        validatedPreCompleted = pre;
+      }
+    }
+
     const batch = await Batch.create({
       name,
       subject,
@@ -423,11 +431,11 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       durationType: durationType || 'Custom',
       status: status || 'Upcoming',
       numberOfSessions: numberOfSessions || null,
-      preCompletedClasses: preCompletedClasses || 0,
+      preCompletedClasses: validatedPreCompleted,
     });
 
     // Auto-generate calendar schedules for classes based on numberOfSessions or rolling window
-    const generated = await generateSchedulesForBatch(batch, preCompletedClasses || 0);
+    const generated = await generateSchedulesForBatch(batch, validatedPreCompleted);
     console.log(`✅ Auto-generated ${generated} schedule(s) for batch "${name}"`);
 
     // If teacher was assigned, automatically sync assignedTutor to any enrolled students
@@ -513,10 +521,52 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.durationType = req.body.durationType ?? batch.durationType;
     batch.status = req.body.status ?? batch.status;
     batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
-    batch.preCompletedClasses = req.body.preCompletedClasses !== undefined ? req.body.preCompletedClasses : batch.preCompletedClasses;
 
     if (req.body.startDate !== undefined)
       batch.startDate = normalizeDateOnlyToUtc(req.body.startDate);
+
+    const kolkataNow = getKolkataNow();
+    const effectiveStartDate = batch.startDate ? (normalizeDateOnlyToUtc(batch.startDate)?.toISOString().split('T')[0] || '') : '';
+    let validatedUpdatePreCompleted = batch.preCompletedClasses || 0;
+
+    if (effectiveStartDate) {
+      if (effectiveStartDate > kolkataNow.todayStr) {
+        validatedUpdatePreCompleted = 0;
+      } else if (effectiveStartDate === kolkataNow.todayStr) {
+        const todayParts = effectiveStartDate.split('-').map(Number);
+        const todayUtc = new Date(Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2], 12, 0, 0));
+        const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+        const todayDayName = dayNames[todayUtc.getUTCDay()];
+        const effectiveDays = batch.days || [];
+        const isTodayClassDay = Array.isArray(effectiveDays) && effectiveDays.includes(todayDayName);
+
+        if (isTodayClassDay) {
+          const timingObj = (batch.dayTimings && batch.dayTimings[todayDayName]) || batch.timing || {};
+          const [th, tm] = (timingObj.startTime || '09:00').split(':').map(Number);
+          const startMins = (th || 0) * 60 + (tm || 0);
+          if (kolkataNow.currentTotalMinutes >= startMins) {
+            validatedUpdatePreCompleted = 1;
+          } else {
+            validatedUpdatePreCompleted = 0;
+          }
+        } else {
+          validatedUpdatePreCompleted = 0;
+        }
+      } else if (req.body.preCompletedClasses !== undefined) {
+        const pre = Number(req.body.preCompletedClasses);
+        if (isNaN(pre) || pre < 0 || !Number.isInteger(pre)) {
+          res.status(400).json({ message: 'Total Completed Classes must be a whole number 0 or greater' });
+          return;
+        }
+        if (batch.numberOfSessions && pre > Number(batch.numberOfSessions)) {
+          res.status(400).json({ message: `Total Completed Classes cannot exceed total classes (${batch.numberOfSessions})` });
+          return;
+        }
+        validatedUpdatePreCompleted = pre;
+      }
+    }
+
+    batch.preCompletedClasses = validatedUpdatePreCompleted;
 
     const updated = await batch.save();
 
@@ -534,10 +584,43 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       (updated.dayTimings && typeof updated.dayTimings === 'object' && Object.keys(updated.dayTimings).length > 0) ||
       updated.timing?.startTime;
 
-    const canGenerateSchedules = Boolean(updated.startDate && updated.days?.length && hasTiming);
-    const shouldRegenerate = datesChanged || teacherChanged || (canGenerateSchedules && existingFutureCount === 0);
+    const targetTeacher = updated.assignedTeacher || null;
+    const targetTeacherStr = targetTeacher ? (targetTeacher._id || targetTeacher).toString() : '';
 
-    // If dates/days/timing/sessions or teacher changed, delete scheduled classes and regenerate
+    // When teacher changes, lock completed class history to the historical teacher
+    let oldTeacherName = '';
+    let newTeacherName = '';
+    if (teacherChanged) {
+      try {
+        if (oldTeacherId) {
+          const oldDoc = await Teacher.findById(oldTeacherId).populate('user', 'name');
+          oldTeacherName = oldDoc?.name || (oldDoc as any)?.user?.name || '';
+        }
+        if (newTeacherId) {
+          const newDoc = await Teacher.findById(newTeacherId).populate('user', 'name');
+          newTeacherName = newDoc?.name || (newDoc as any)?.user?.name || 'Teacher';
+        }
+        const existingCompletedSchedules = await Schedule.find({ batch: updated._id, status: 'Completed' });
+        for (const cs of existingCompletedSchedules) {
+          let m = false;
+          if (!cs.completedBy) {
+            cs.completedBy = cs.replacementTeacher || cs.teacher || oldTeacherId;
+            m = true;
+          }
+          if (!cs.completedByName) {
+            cs.completedByName = oldTeacherName || cs.teacher?.name || 'Teacher';
+            m = true;
+          }
+          if (m) await cs.save();
+        }
+      } catch (hErr: any) {
+        console.warn('Error preserving completed schedule conductor:', hErr?.message);
+      }
+    }
+
+    const canGenerateSchedules = Boolean(updated.startDate && updated.days?.length && hasTiming);
+    const shouldRegenerate = datesChanged || (canGenerateSchedules && existingFutureCount === 0);
+
     if (shouldRegenerate && canGenerateSchedules) {
       // Delete ONLY scheduled classes (preserving all historical attendance and completed records!)
       await Schedule.deleteMany({
@@ -546,9 +629,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       });
       const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
       console.log(`🔄 Auto-scheduled/regenerated ${generated} class(es) for batch "${updated.name}"`);
-    } else if (teacherChanged && !canGenerateSchedules) {
-      // If timing/days not complete but teacher changed, update any existing scheduled slots
-      const targetTeacher = updated.assignedTeacher || null;
+    } else if (teacherChanged) {
+      // If dates/timings didn't change, surgically update teacher on all upcoming scheduled slots
       const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });
       for (const fs of futureScheds) {
         fs.teacher = targetTeacher;
@@ -556,16 +638,27 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       }
     }
 
-    // Automatically sync assigned teacher to all enrolled students in this batch!
-    const targetTeacher = updated.assignedTeacher || null;
+    // Automatically sync assigned teacher to all enrolled students in this batch and record teacherHistory
     const batchIdStr = updated._id ? updated._id.toString() : '';
     const allStudents = await Student.find({});
     for (const st of allStudents) {
       const stBatchId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
       if (stBatchId === batchIdStr) {
         const currentTutor = st.assignedTutor?._id ? st.assignedTutor._id.toString() : (st.assignedTutor ? st.assignedTutor.toString() : '');
-        const targetTeacherStr = targetTeacher ? (targetTeacher._id || targetTeacher).toString() : '';
-        if (currentTutor !== targetTeacherStr) {
+        if (teacherChanged && currentTutor !== targetTeacherStr && targetTeacherStr) {
+          if (!st.teacherHistory || !Array.isArray(st.teacherHistory)) st.teacherHistory = [];
+          st.teacherHistory.push({
+            teacher: targetTeacherStr,
+            teacherName: newTeacherName,
+            previousTeacher: currentTutor || undefined,
+            previousTeacherName: oldTeacherName || undefined,
+            changedAt: new Date(),
+            changedBy: (req as any).user?._id || undefined,
+            reason: 'Batch assigned teacher changed',
+          });
+          st.assignedTutor = targetTeacher;
+          await st.save();
+        } else if (currentTutor !== targetTeacherStr) {
           st.assignedTutor = targetTeacher;
           await st.save();
         }

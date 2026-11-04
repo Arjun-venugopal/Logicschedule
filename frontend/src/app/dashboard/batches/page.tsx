@@ -4,20 +4,21 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2 } from "lucide-react";
+import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Info } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
-import { getSafeDateOnly, formatTime12h } from "@/lib/utils";
+import { getSafeDateOnly, formatTime12h, computeEndTime } from "@/lib/utils";
+import { calculateBatchProgressAndSchedule } from "@/lib/scheduleCalculation";
 
 const BatchAnalyticsModal = dynamic(
-  () => import("@/components/batches/BatchAnalyticsModal"),
+  () => import("@/components/batches/BatchAnalyticsModal").then((mod) => mod.BatchAnalyticsModal || mod.default),
   { ssr: false, loading: () => null }
 );
 
 const ActiveBatchesAnalyticsModal = dynamic(
-  () => import("@/components/batches/ActiveBatchesAnalyticsModal"),
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then((mod) => mod.ActiveBatchesAnalyticsModal || mod.default),
   { ssr: false, loading: () => null }
 );
 
@@ -49,19 +50,6 @@ const formatSafeDisplayDate = (val: any): string => {
 };
 
 const DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
-
-const computeEndTime = (startTime?: string, durationMinutes = 60): string => {
-  if (!startTime) return "10:00";
-  const parts = startTime.split(":");
-  if (parts.length < 2) return startTime;
-  const hours = parseInt(parts[0], 10);
-  const minutes = parseInt(parts[1], 10);
-  if (isNaN(hours) || isNaN(minutes)) return startTime;
-  const totalMin = hours * 60 + minutes + durationMinutes;
-  const endHours = Math.floor((totalMin / 60) % 24);
-  const endMin = totalMin % 60;
-  return `${String(endHours).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
-};
 
 const formatBatchTiming = (batch: any): string => {
   if (batch?.dayTimings && typeof batch.dayTimings === "object") {
@@ -115,7 +103,7 @@ type BatchForm = {
 const emptyForm = (): BatchForm => ({
   name: "",
   subject: "",
-  studentsCount: 0,
+  studentsCount: 1,
   assignedTeacher: "",
   startTime: "09:00",
   endTime: "10:00",
@@ -148,6 +136,7 @@ export default function BatchesPage() {
   const [filterStatus, setFilterStatus] = useState<string>("");
   const [filterCourse, setFilterCourse] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [showAllPreview, setShowAllPreview] = useState<boolean>(false);
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -163,12 +152,46 @@ export default function BatchesPage() {
     refetchOnWindowFocus: false,
   });
 
+  const editingBatch = useMemo(() => {
+    if (!editingId) return null;
+    return batches.find((b: any) => b._id === editingId) || null;
+  }, [editingId, batches]);
+
+  // Intelligent class progress and calendar schedule calculation
+  const progressCalculation = useMemo(() => {
+    return calculateBatchProgressAndSchedule({
+      startDate: form.startDate,
+      days: form.days,
+      dayTimings: form.dayTimings,
+      fallbackStartTime: form.startTime,
+      fallbackEndTime: form.endTime,
+      numberOfSessions: form.numberOfSessions,
+      preCompletedClassesInput: form.preCompletedClasses,
+      existingCompletedCount: editingBatch?.completedClassesCount || 0,
+      isEditing: Boolean(editingId),
+    });
+  }, [
+    form.startDate,
+    form.days,
+    form.dayTimings,
+    form.startTime,
+    form.endTime,
+    form.numberOfSessions,
+    form.preCompletedClasses,
+    editingBatch,
+    editingId,
+  ]);
+
   const validateAndPreparePayload = (data: BatchForm) => {
     if (!data.name || !data.name.trim()) {
       throw new Error("Batch name is required.");
     }
     if (!data.days || data.days.length === 0) {
       throw new Error("Please select at least one class day.");
+    }
+
+    if (progressCalculation.validationError) {
+      throw new Error(progressCalculation.validationError);
     }
 
     const preparedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
@@ -203,7 +226,7 @@ export default function BatchesPage() {
 
     return {
       ...data,
-      preCompletedClasses: data.preCompletedClasses !== "" && data.preCompletedClasses !== undefined ? Number(data.preCompletedClasses) : 0,
+      preCompletedClasses: progressCalculation.effectiveCompletedCount,
       numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
       timing: { startTime: primaryStart, endTime: primaryEnd },
       timeMode: data.timeMode,
@@ -245,6 +268,7 @@ export default function BatchesPage() {
     setForm(emptyForm());
     setFormError(null);
     setEditingId(null);
+    setShowAllPreview(false);
     setModal(true);
   };
 
@@ -281,7 +305,7 @@ export default function BatchesPage() {
     setForm({
       name: b.name || "",
       subject: b.subject || "",
-      studentsCount: b.studentsCount || 0,
+      studentsCount: b.studentsCount || 1,
       assignedTeacher: b.assignedTeacher?._id || b.assignedTeacher || "",
       startTime: fallbackStart,
       endTime: fallbackEnd,
@@ -297,6 +321,7 @@ export default function BatchesPage() {
     });
     setFormError(null);
     setEditingId(b._id);
+    setShowAllPreview(false);
     setModal(true);
   };
 
@@ -305,6 +330,7 @@ export default function BatchesPage() {
     setForm(emptyForm());
     setFormError(null);
     setEditingId(null);
+    setShowAllPreview(false);
   };
 
   const toggleDay = (day: string) => {
@@ -416,7 +442,7 @@ export default function BatchesPage() {
 
   const filteredBatches = batches.filter((b: any) => {
     if (filterTeacher && (b.assignedTeacher?._id || b.assignedTeacher) !== filterTeacher) return false;
-    
+
     if (filterStatus) {
       const effective = getBatchEffectiveStatus(b);
       if (filterStatus === "Ongoing" && effective !== "Ongoing") return false;
@@ -471,11 +497,10 @@ export default function BatchesPage() {
         {/* Total Batches Card */}
         <div
           onClick={() => setFilterStatus("")}
-          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
-            filterStatus === ""
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === ""
               ? "border-amber-500/50 ring-1 ring-amber-500/30 bg-amber-500/5 shadow-lg shadow-amber-500/10"
               : "border-neutral-800 hover:border-amber-500/30"
-          }`}
+            }`}
           title="Click to view all batches"
         >
           <div className="flex justify-between items-start">
@@ -486,9 +511,8 @@ export default function BatchesPage() {
                 <span className="text-xs text-neutral-400 font-medium">batches</span>
               </div>
             </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              filterStatus === "" ? "bg-amber-500/20 text-amber-400" : "bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "" ? "bg-amber-500/20 text-amber-400" : "bg-amber-500/10 text-amber-500 group-hover:bg-amber-500/20"
+              }`}>
               <BookOpen className="w-5 h-5" />
             </div>
           </div>
@@ -500,11 +524,10 @@ export default function BatchesPage() {
         {/* Ongoing / Active Card */}
         <div
           onClick={() => setFilterStatus(filterStatus === "Ongoing" ? "" : "Ongoing")}
-          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
-            filterStatus === "Ongoing"
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Ongoing"
               ? "border-emerald-500/50 ring-1 ring-emerald-500/30 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
               : "border-neutral-800 hover:border-emerald-500/30"
-          }`}
+            }`}
           title="Click to filter by Ongoing batches"
         >
           <div className="flex justify-between items-start">
@@ -515,9 +538,8 @@ export default function BatchesPage() {
                 <span className="text-xs text-neutral-400 font-medium">batches</span>
               </div>
             </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              filterStatus === "Ongoing" ? "bg-emerald-500/20 text-emerald-400" : "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "Ongoing" ? "bg-emerald-500/20 text-emerald-400" : "bg-emerald-500/10 text-emerald-500 group-hover:bg-emerald-500/20"
+              }`}>
               <Clock3 className="w-5 h-5" />
             </div>
           </div>
@@ -529,11 +551,10 @@ export default function BatchesPage() {
         {/* Completed Card */}
         <div
           onClick={() => setFilterStatus(filterStatus === "Completed" ? "" : "Completed")}
-          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
-            filterStatus === "Completed"
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Completed"
               ? "border-teal-500/50 ring-1 ring-teal-500/30 bg-teal-500/5 shadow-lg shadow-teal-500/10"
               : "border-neutral-800 hover:border-teal-500/30"
-          }`}
+            }`}
           title="Click to filter by Completed batches"
         >
           <div className="flex justify-between items-start">
@@ -544,9 +565,8 @@ export default function BatchesPage() {
                 <span className="text-xs text-neutral-400 font-medium">batches</span>
               </div>
             </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              filterStatus === "Completed" ? "bg-teal-500/20 text-teal-400" : "bg-teal-500/10 text-teal-500 group-hover:bg-teal-500/20"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "Completed" ? "bg-teal-500/20 text-teal-400" : "bg-teal-500/10 text-teal-500 group-hover:bg-teal-500/20"
+              }`}>
               <CheckCircle2 className="w-5 h-5" />
             </div>
           </div>
@@ -558,11 +578,10 @@ export default function BatchesPage() {
         {/* Upcoming Card */}
         <div
           onClick={() => setFilterStatus(filterStatus === "Upcoming" ? "" : "Upcoming")}
-          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
-            filterStatus === "Upcoming"
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Upcoming"
               ? "border-blue-500/50 ring-1 ring-blue-500/30 bg-blue-500/5 shadow-lg shadow-blue-500/10"
               : "border-neutral-800 hover:border-blue-500/30"
-          }`}
+            }`}
           title="Click to filter by Upcoming batches"
         >
           <div className="flex justify-between items-start">
@@ -573,9 +592,8 @@ export default function BatchesPage() {
                 <span className="text-xs text-neutral-400 font-medium">batches</span>
               </div>
             </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              filterStatus === "Upcoming" ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "Upcoming" ? "bg-blue-500/20 text-blue-400" : "bg-blue-500/10 text-blue-500 group-hover:bg-blue-500/20"
+              }`}>
               <Calendar className="w-5 h-5" />
             </div>
           </div>
@@ -587,11 +605,10 @@ export default function BatchesPage() {
         {/* Dropped / Cancelled Card */}
         <div
           onClick={() => setFilterStatus(filterStatus === "Dropped" ? "" : "Dropped")}
-          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${
-            filterStatus === "Dropped"
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Dropped"
               ? "border-rose-500/50 ring-1 ring-rose-500/30 bg-rose-500/5 shadow-lg shadow-rose-500/10"
               : "border-neutral-800 hover:border-rose-500/30"
-          }`}
+            }`}
           title="Click to filter by Dropped / Cancelled batches"
         >
           <div className="flex justify-between items-start">
@@ -602,9 +619,8 @@ export default function BatchesPage() {
                 <span className="text-xs text-neutral-400 font-medium">batches</span>
               </div>
             </div>
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${
-              filterStatus === "Dropped" ? "bg-rose-500/20 text-rose-400" : "bg-rose-500/10 text-rose-500 group-hover:bg-rose-500/20"
-            }`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "Dropped" ? "bg-rose-500/20 text-rose-400" : "bg-rose-500/10 text-rose-500 group-hover:bg-rose-500/20"
+              }`}>
               <AlertTriangle className="w-5 h-5" />
             </div>
           </div>
@@ -701,7 +717,7 @@ export default function BatchesPage() {
 
             const completedCount = Math.max(batch.completedClassesCount || 0, Number(batch.preCompletedClasses) || 0);
             const isCompleted = batch.status === "Completed" || (targetSessions > 0 && completedCount >= targetSessions);
-            
+
             return (
               <motion.div
                 key={batch._id}
@@ -709,11 +725,10 @@ export default function BatchesPage() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: i * 0.06 }}
                 onClick={() => setAnalyticsBatchId(batch._id)}
-                className={`bg-neutral-900 border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer transition-colors relative overflow-hidden ${
-                  isCompleted 
-                    ? "border-emerald-500/40 hover:border-emerald-400 shadow-lg shadow-emerald-950/20" 
+                className={`bg-neutral-900 border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer transition-colors relative overflow-hidden ${isCompleted
+                    ? "border-emerald-500/40 hover:border-emerald-400 shadow-lg shadow-emerald-950/20"
                     : "border-neutral-800 hover:border-amber-500/50"
-                }`}
+                  }`}
               >
                 {/* Top Accent bar for completed batches */}
                 {isCompleted && (
@@ -762,7 +777,7 @@ export default function BatchesPage() {
                   ) : null}
                   {batch.durationType && (
                     <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
-                      <Clock3 className="w-2.5 h-2.5" /> 
+                      <Clock3 className="w-2.5 h-2.5" />
                       {batch.durationType === 'Custom' && batch.numberOfSessions ? `${batch.numberOfSessions} Hours` : batch.durationType}
                     </span>
                   )}
@@ -771,8 +786,11 @@ export default function BatchesPage() {
                 {/* Info Row */}
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-neutral-800/60 rounded-xl p-3">
-                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Students</p>
-                    <p className="text-lg font-bold text-white">{batch.studentsCount || 0}</p>
+                    <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Format</p>
+                    <p className="text-sm font-bold text-amber-400 flex items-center gap-1.5 pt-0.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      1-on-1 Class
+                    </p>
                   </div>
                   <div className="bg-neutral-800/60 rounded-xl p-3">
                     <p className="text-[10px] text-neutral-500 uppercase font-semibold mb-0.5">Classes Done</p>
@@ -807,9 +825,8 @@ export default function BatchesPage() {
                     )}
                     <div className="h-2 bg-neutral-800 rounded-full overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all ${
-                          isCompleted ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50" : "brand-gradient"
-                        }`}
+                        className={`h-full rounded-full transition-all ${isCompleted ? "bg-gradient-to-r from-emerald-500 to-teal-400 shadow-sm shadow-emerald-500/50" : "brand-gradient"
+                          }`}
                         style={{ width: `${isCompleted ? 100 : batchProgress(completedCount, targetSessions)}%` }}
                       />
                     </div>
@@ -844,55 +861,54 @@ export default function BatchesPage() {
                   </div>
                 )}
 
-              {/* Days */}
-              {batch.days?.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {DAYS.map((d) => (
-                    <span
-                      key={d}
-                      className={`text-[10px] px-2 py-0.5 rounded-md font-medium border ${
-                        batch.days.includes(d)
-                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                          : "bg-transparent text-neutral-700 border-neutral-800"
-                      }`}
+                {/* Days */}
+                {batch.days?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5">
+                    {DAYS.map((d) => (
+                      <span
+                        key={d}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-medium border ${batch.days.includes(d)
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            : "bg-transparent text-neutral-700 border-neutral-800"
+                          }`}
+                      >
+                        {d.slice(0, 3)}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Teacher */}
+                {batch.assignedTeacher && (
+                  <div className="flex items-center gap-2 text-sm text-neutral-400">
+                    <Users className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{batch.assignedTeacher?.name || "—"}</span>
+                  </div>
+                )}
+
+                {/* Meet Link */}
+                {batch.meetingLink && (
+                  <div className="flex items-center gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl" onClick={(e) => e.stopPropagation()}>
+                    <LinkIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                    <a
+                      href={batch.meetingLink}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-blue-400 text-xs truncate flex-1 hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
-                      {d.slice(0, 3)}
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Teacher */}
-              {batch.assignedTeacher && (
-                <div className="flex items-center gap-2 text-sm text-neutral-400">
-                  <Users className="w-3.5 h-3.5 shrink-0" />
-                  <span className="truncate">{batch.assignedTeacher?.name || "—"}</span>
-                </div>
-              )}
-
-              {/* Meet Link */}
-              {batch.meetingLink && (
-                <div className="flex items-center gap-2 p-2.5 bg-blue-500/10 border border-blue-500/20 rounded-xl" onClick={(e) => e.stopPropagation()}>
-                  <LinkIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <a
-                    href={batch.meetingLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-blue-400 text-xs truncate flex-1 hover:underline"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    {batch.meetingLink}
-                  </a>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); copyLink(batch.meetingLink, batch._id); }}
-                    className="shrink-0 text-blue-400 hover:text-blue-300"
-                  >
-                    {linkCopied === batch._id
-                      ? <Check className="w-3.5 h-3.5" />
-                      : <LinkIcon className="w-3.5 h-3.5" />}
-                  </button>
-                </div>
-              )}
+                      {batch.meetingLink}
+                    </a>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); copyLink(batch.meetingLink, batch._id); }}
+                      className="shrink-0 text-blue-400 hover:text-blue-300"
+                    >
+                      {linkCopied === batch._id
+                        ? <Check className="w-3.5 h-3.5" />
+                        : <LinkIcon className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                )}
               </motion.div>
             );
           })}
@@ -958,11 +974,10 @@ export default function BatchesPage() {
                             if (!current) setForm({ ...form, subject: tag });
                             else if (!current.includes(tag)) setForm({ ...form, subject: `${current} - ${tag}` });
                           }}
-                          className={`text-[10px] px-2 py-0.5 rounded-md border font-medium transition-all ${
-                            form.subject.includes(tag)
+                          className={`text-[10px] px-2 py-0.5 rounded-md border font-medium transition-all ${form.subject.includes(tag)
                               ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold"
                               : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-600"
-                          }`}
+                            }`}
                         >
                           + {tag}
                         </button>
@@ -971,39 +986,35 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Students + Teacher */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Students Count</label>
-                    <input
-                      type="number"
-                      min={0}
-                      value={form.studentsCount}
-                      onChange={(e) => setForm({ ...form, studentsCount: Number(e.target.value) })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Assigned Teacher</label>
-                    <select
-                      value={form.assignedTeacher}
-                      onChange={(e) => setForm({ ...form, assignedTeacher: e.target.value })}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
-                    >
-                      <option value="">None</option>
-                      {teachers.map((t: any) => (
-                        <option key={t._id} value={t._id}>{t.name}</option>
-                      ))}
-                    </select>
-                  </div>
+                {/* Assigned Teacher (1-on-1 Class) */}
+                <div>
+                  <label className="block text-sm font-medium text-neutral-300 mb-1.5 flex items-center justify-between">
+                    <span>Assigned Teacher</span>
+                    <span className="text-xs text-amber-400 font-normal bg-amber-500/10 px-2.5 py-0.5 rounded-full border border-amber-500/20">
+                      1-on-1 Class
+                    </span>
+                  </label>
+                  <select
+                    value={form.assignedTeacher}
+                    onChange={(e) => setForm({ ...form, assignedTeacher: e.target.value })}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
+                  >
+                    <option value="">None</option>
+                    {teachers.map((t: any) => (
+                      <option key={t._id} value={t._id}>{t.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 {/* Start Date & Total Classes */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Start Date</label>
+                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">
+                      Start Date <span className="text-amber-500">*</span>
+                    </label>
                     <input
                       type="date"
+                      required
                       value={form.startDate}
                       onChange={(e) => setForm({ ...form, startDate: e.target.value })}
                       className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
@@ -1026,29 +1037,100 @@ export default function BatchesPage() {
                   </div>
                 </div>
 
-                {/* Classes Already Completed */}
-                <div className="animate-in fade-in slide-in-from-top-1 duration-200">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <label className="block text-sm font-medium text-neutral-300">
-                      {form.status === "Completed" ? "Total Completed Classes" : "Classes Already Completed"}
-                    </label>
-                    <span className="text-[11px] text-neutral-500">Optional</span>
+                {/* Summary Statistics Bar (Requirement 6) */}
+                {form.startDate && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 bg-neutral-900/90 border border-neutral-800 rounded-xl">
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Start Date</span>
+                      <span className="text-xs sm:text-sm font-bold text-white truncate block">
+                        {progressCalculation.formattedStartDate || "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Total Classes</span>
+                      <span className="text-xs sm:text-sm font-bold text-white block">
+                        {progressCalculation.totalClasses > 0 ? progressCalculation.totalClasses : "Ongoing"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Completed</span>
+                      <span className="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        {progressCalculation.effectiveCompletedCount}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Remaining</span>
+                      <span className="text-xs sm:text-sm font-bold text-amber-400 block">
+                        {progressCalculation.remainingClasses}
+                      </span>
+                    </div>
                   </div>
-                  <input
-                    type="number"
-                    min={0}
-                    max={form.numberOfSessions ? Number(form.numberOfSessions) : undefined}
-                    placeholder="e.g. 5"
-                    value={form.preCompletedClasses}
-                    onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
-                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all placeholder-neutral-600"
-                  />
-                  <p className="text-xs text-neutral-500 mt-1.5">
-                    {form.status === "Completed"
-                      ? "Specify how many classes were completed for this batch."
-                      : "If this batch has already completed classes prior to today, specify how many here."}
-                  </p>
-                </div>
+                )}
+
+                {/* Conditional Completed Classes Calculation / Manual Input (Requirements 1, 2, 6) */}
+                {progressCalculation.scenario === "past" ? (
+                  // Scenario C: Start Date is in the past -> Mandatory manual input
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-amber-300">
+                        Total Completed Classes <span className="text-amber-500">*</span>
+                      </label>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                        Mandatory (Past Start Date)
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={form.numberOfSessions ? Number(form.numberOfSessions) : undefined}
+                      placeholder="e.g. 5"
+                      value={form.preCompletedClasses}
+                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
+                      className="w-full bg-neutral-900 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20 transition-all placeholder-neutral-600"
+                    />
+                    <p className="text-[11px] text-neutral-400">
+                      Start date ({progressCalculation.formattedStartDate}) is earlier than today. Enter how many classes this student/batch has already completed.
+                    </p>
+                    {progressCalculation.validationError && (
+                      <p className="text-xs text-red-400 font-medium flex items-center gap-1 pt-0.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        {progressCalculation.validationError}
+                      </p>
+                    )}
+                  </div>
+                ) : progressCalculation.scenario === "today" ? (
+                  // Scenario A: Start Date is Today -> Auto calculated, input hidden
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-start gap-2.5 text-xs text-blue-200">
+                    <Sparkles className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-blue-300">
+                        Start Date is Today ({progressCalculation.formattedStartDate})
+                      </p>
+                      <p className="text-[11px] text-neutral-300 mt-0.5 leading-relaxed">
+                        Total completed classes are calculated automatically based on whether today&apos;s scheduled class time has already passed (
+                        <strong className="text-white font-semibold">
+                          {progressCalculation.effectiveCompletedCount} completed
+                        </strong>
+                        ). No manual entry required.
+                      </p>
+                    </div>
+                  </div>
+                ) : progressCalculation.scenario === "future" ? (
+                  // Scenario B: Start Date is in the future -> Input hidden, defaults to 0
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start gap-2.5 text-xs text-emerald-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-emerald-300">
+                        Start Date is in the Future ({progressCalculation.formattedStartDate})
+                      </p>
+                      <p className="text-[11px] text-neutral-300 mt-0.5 leading-relaxed">
+                        All classes will be generated as upcoming starting from {progressCalculation.formattedStartDate}. Total completed classes default to 0.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
 
                 {/* Status */}
                 <div>
@@ -1064,11 +1146,10 @@ export default function BatchesPage() {
                         key={s.value}
                         type="button"
                         onClick={() => setForm({ ...form, status: s.value })}
-                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${
-                          form.status === s.value || (s.value === "Active" && form.status === "Ongoing") || (s.value === "Dropped" && form.status === "Cancelled")
+                        className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${form.status === s.value || (s.value === "Active" && form.status === "Ongoing") || (s.value === "Dropped" && form.status === "Cancelled")
                             ? STATUS_COLORS[s.value] || STATUS_COLORS.Upcoming
                             : "bg-neutral-800 text-neutral-600 border-neutral-700 hover:border-neutral-500"
-                        }`}
+                          }`}
                       >
                         {s.label}
                       </button>
@@ -1096,11 +1177,10 @@ export default function BatchesPage() {
                           key={day}
                           type="button"
                           onClick={() => toggleDay(day)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${
-                            isSelected
+                          className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${isSelected
                               ? "brand-gradient text-black border-transparent shadow-sm shadow-amber-500/20"
                               : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
-                          }`}
+                            }`}
                         >
                           {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
                           {day.slice(0, 3)}
@@ -1131,11 +1211,10 @@ export default function BatchesPage() {
                               timeMode: "same",
                             }));
                           }}
-                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
-                            form.timeMode === "same"
+                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${form.timeMode === "same"
                               ? "brand-gradient text-black shadow-sm"
                               : "text-neutral-400 hover:text-white"
-                          }`}
+                            }`}
                         >
                           <Clock className="w-3.5 h-3.5" />
                           Same time for all days
@@ -1160,11 +1239,10 @@ export default function BatchesPage() {
                               };
                             });
                           }}
-                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${
-                            form.timeMode === "different"
+                          className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${form.timeMode === "different"
                               ? "brand-gradient text-black shadow-sm"
                               : "text-neutral-400 hover:text-white"
-                          }`}
+                            }`}
                         >
                           <Sliders className="w-3.5 h-3.5" />
                           Different time for each day
@@ -1276,6 +1354,95 @@ export default function BatchesPage() {
                     )}
                   </div>
                 )}
+
+                {/* Generated Class Schedule Preview (Requirement 6) */}
+                <div className="bg-neutral-900/70 border border-neutral-800 rounded-xl p-3.5 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-4 h-4 text-amber-500" />
+                      <span className="text-xs font-bold text-white">Generated Class Schedule Preview</span>
+                    </div>
+                    {progressCalculation.schedulePreview.length > 0 && (
+                      <span className="text-[11px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                        {progressCalculation.schedulePreview.length} sessions
+                      </span>
+                    )}
+                  </div>
+
+                  {progressCalculation.schedulePreview.length === 0 ? (
+                    <p className="text-xs text-neutral-500 text-center py-3 bg-neutral-950/40 rounded-lg border border-neutral-800/60">
+                      Select Start Date and at least one class day above to preview the automatic calendar schedule.
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
+                        {(showAllPreview
+                          ? progressCalculation.schedulePreview
+                          : progressCalculation.schedulePreview.slice(0, 6)
+                        ).map((item) => (
+                          <div
+                            key={item.classNumber}
+                            className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs border transition-all ${item.status === "Completed"
+                                ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
+                                : item.isToday
+                                  ? "bg-amber-500/10 border-amber-500/30 text-white"
+                                  : "bg-neutral-800/60 border-neutral-700/60 text-neutral-300"
+                              }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.status === "Completed"
+                                    ? "bg-emerald-500/20 text-emerald-300"
+                                    : "bg-neutral-700 text-neutral-300"
+                                  }`}
+                              >
+                                Class {item.classNumber}
+                              </span>
+                              <span className="font-semibold text-white truncate">{item.displayDate}</span>
+                              {item.isToday && (
+                                <span className="text-[10px] px-1 rounded bg-amber-500 text-black font-extrabold uppercase">
+                                  Today
+                                </span>
+                              )}
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="text-[11px] text-neutral-400 font-medium">
+                                {item.formattedTime}
+                              </span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.status === "Completed"
+                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                    : "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                  }`}
+                              >
+                                {item.status === "Completed" ? "Completed" : "Upcoming"}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {progressCalculation.schedulePreview.length > 6 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAllPreview(!showAllPreview)}
+                          className="w-full py-1.5 text-center text-xs text-amber-400 hover:text-amber-300 transition-colors font-medium flex items-center justify-center gap-1"
+                        >
+                          {showAllPreview ? (
+                            <>
+                              <ChevronUp className="w-3.5 h-3.5" /> Show fewer
+                            </>
+                          ) : (
+                            <>
+                              <ChevronDown className="w-3.5 h-3.5" /> Show all {progressCalculation.schedulePreview.length} classes
+                            </>
+                          )}
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 {/* Google Meet Link */}
                 <div>

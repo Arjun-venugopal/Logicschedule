@@ -102,8 +102,33 @@ export default function PwaProvider({ children }: { children: React.ReactNode })
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIos(isIosDevice);
 
-    // Register Service Worker
+    // Register Service Worker only in production and non-local environments
     if ("serviceWorker" in navigator) {
+      const isDevHost =
+        typeof window !== "undefined" &&
+        (window.location.hostname === "localhost" ||
+          window.location.hostname === "127.0.0.1" ||
+          window.location.hostname.startsWith("192.168.") ||
+          window.location.hostname.startsWith("10.") ||
+          window.location.hostname.endsWith(".local") ||
+          process.env.NODE_ENV === "development");
+
+      if (isDevHost) {
+        // Automatically unregister active service workers and clear cache in development
+        // to prevent stale Webpack chunks from causing 'reading .call' runtime crashes
+        navigator.serviceWorker.getRegistrations().then((registrations) => {
+          for (const registration of registrations) {
+            registration.unregister();
+          }
+        });
+        if ("caches" in window) {
+          caches.keys().then((keys) => {
+            keys.forEach((key) => caches.delete(key));
+          });
+        }
+        return;
+      }
+
       window.addEventListener("load", () => {
         navigator.serviceWorker
           .register("/sw.js")

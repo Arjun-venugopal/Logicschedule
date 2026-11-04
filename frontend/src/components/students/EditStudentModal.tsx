@@ -19,9 +19,14 @@ import {
   GraduationCap,
   Check,
   Loader2,
+  Calendar,
+  Clock,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { format } from "date-fns";
 import { formatTime12h } from "@/lib/utils";
+import { calculateBatchProgressAndSchedule } from "@/lib/scheduleCalculation";
 
 const POPULAR_SUBJECTS = [
   "Scratch",
@@ -47,6 +52,9 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
   const isEditing = Boolean(student?._id);
 
   // Core Student Form State
+  const initialTeacherId = (typeof student?.assignedTutor === "string" ? student?.assignedTutor : student?.assignedTutor?._id) ||
+    (typeof student?.batch?.assignedTeacher === "string" ? student?.batch?.assignedTeacher : student?.batch?.assignedTeacher?._id) || "";
+
   const [formData, setFormData] = useState({
     name: student?.name || "",
     batch: student?.batch?._id || (typeof student?.batch === "string" ? student?.batch : "") || "",
@@ -54,6 +62,8 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     mobileNumber: student?.mobileNumber || "",
     whatsappNumber: student?.whatsappNumber || "",
     email: student?.email || "",
+    assignedTutor: initialTeacherId,
+    reassignReason: "",
   });
 
   // Batch Assignment Mode: "select" (filter/choose existing) vs "create" (create batch in form)
@@ -67,6 +77,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     subject: "",
     assignedTeacher: "",
     numberOfSessions: 15 as number | "",
+    preCompletedClasses: "" as number | "",
     days: ["Monday", "Wednesday", "Friday"] as string[],
     startTime: "09:00",
     endTime: "10:00",
@@ -76,6 +87,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
   });
   const [isBatchNameCustomized, setIsBatchNameCustomized] = useState(false);
   const [inlineCreatingBatch, setInlineCreatingBatch] = useState(false);
+  const [showAllNewBatchPreview, setShowAllNewBatchPreview] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
@@ -234,6 +246,43 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     };
   }, [batches, formData.batch, formData.name, batchSearchQuery, batchStatusFilter, matchingDemoSession]);
 
+  // Intelligent schedule calculation for newly created batch in form
+  const newBatchProgressCalculation = useMemo(() => {
+    return calculateBatchProgressAndSchedule({
+      startDate: newBatchForm.startDate,
+      days: newBatchForm.days,
+      fallbackStartTime: newBatchForm.startTime,
+      fallbackEndTime: newBatchForm.endTime,
+      numberOfSessions: newBatchForm.numberOfSessions,
+      preCompletedClassesInput: newBatchForm.preCompletedClasses,
+      existingCompletedCount: 0,
+      isEditing: false,
+    });
+  }, [
+    newBatchForm.startDate,
+    newBatchForm.days,
+    newBatchForm.startTime,
+    newBatchForm.endTime,
+    newBatchForm.numberOfSessions,
+    newBatchForm.preCompletedClasses,
+  ]);
+
+  // Intelligent schedule details for selected existing batch
+  const selectedBatchProgress = useMemo(() => {
+    if (!selectedBatchObj) return null;
+    return calculateBatchProgressAndSchedule({
+      startDate: selectedBatchObj.startDate,
+      days: selectedBatchObj.days || [],
+      dayTimings: selectedBatchObj.dayTimings,
+      fallbackStartTime: selectedBatchObj.timing?.startTime,
+      fallbackEndTime: selectedBatchObj.timing?.endTime,
+      numberOfSessions: selectedBatchObj.numberOfSessions,
+      preCompletedClassesInput: selectedBatchObj.preCompletedClasses || selectedBatchObj.completedClassesCount,
+      existingCompletedCount: selectedBatchObj.completedClassesCount || 0,
+      isEditing: true,
+    });
+  }, [selectedBatchObj]);
+
   // Mutations
   const createStudentMutation = useMutation({
     mutationFn: (data: any) => api.post("/students", data),
@@ -284,6 +333,10 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
       setErrorMsg("Please enter or select a course / subject for the batch");
       return null;
     }
+    if (newBatchProgressCalculation.validationError) {
+      setErrorMsg(newBatchProgressCalculation.validationError);
+      return null;
+    }
 
     try {
       const payload: any = {
@@ -295,6 +348,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
         timing: { startTime: newBatchForm.startTime, endTime: newBatchForm.endTime },
         startDate: newBatchForm.startDate,
         numberOfSessions: newBatchForm.numberOfSessions ? Number(newBatchForm.numberOfSessions) : null,
+        preCompletedClasses: newBatchProgressCalculation.effectiveCompletedCount,
         status: newBatchForm.status || "Upcoming",
         meetingLink: newBatchForm.meetingLink || "",
         durationType: "Custom",
@@ -603,6 +657,48 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
             </div>
           </div>
 
+          {/* Section 1.5: Teacher Assignment & Transfer (When editing student) */}
+          {isEditing && (
+            <div className="p-3.5 bg-neutral-800/50 border border-neutral-700/80 rounded-xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-neutral-200 uppercase tracking-wider flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-amber-500" /> Assigned Teacher / Tutor
+                </label>
+                {formData.assignedTutor && formData.assignedTutor !== initialTeacherId && (
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">
+                    Teacher Changed
+                  </span>
+                )}
+              </div>
+              <select
+                value={formData.assignedTutor}
+                onChange={(e) => setFormData({ ...formData, assignedTutor: e.target.value })}
+                className="w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded-xl text-white text-xs focus:outline-none focus:border-amber-500 transition-colors"
+              >
+                <option value="">Default (Follow Batch Teacher)</option>
+                {teachers.map((t: any) => (
+                  <option key={t._id} value={t._id}>
+                    {t.name || t.user?.name || "Teacher"} ({t.email || t.user?.email || ""})
+                  </option>
+                ))}
+              </select>
+              {formData.assignedTutor && formData.assignedTutor !== initialTeacherId && (
+                <div className="space-y-2 pt-1">
+                  <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg text-[11px] text-amber-300 leading-relaxed">
+                    <strong>Reassignment Policy:</strong> Saving will assign all upcoming and pending classes to the new teacher. All previously completed class records will permanently retain their original teacher who conducted them.
+                  </div>
+                  <input
+                    type="text"
+                    value={formData.reassignReason}
+                    onChange={(e) => setFormData({ ...formData, reassignReason: e.target.value })}
+                    placeholder="Reason for teacher change (Optional, e.g. schedule conflict)"
+                    className="w-full px-3 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-xs placeholder-neutral-500 focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="border-t border-neutral-800/80 my-4" />
 
           {/* Section 2: Batch / Course Assignment (Core Feature) */}
@@ -739,6 +835,37 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
                       </div>
                     </div>
 
+                    {/* Summary Statistics for Selected Batch */}
+                    {selectedBatchProgress && (
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-neutral-900/90 border border-neutral-800 rounded-xl text-xs">
+                        <div>
+                          <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Start Date</span>
+                          <span className="font-bold text-white truncate block">
+                            {selectedBatchProgress.formattedStartDate || "—"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Total Classes</span>
+                          <span className="font-bold text-white block">
+                            {selectedBatchProgress.totalClasses > 0 ? selectedBatchProgress.totalClasses : "Ongoing"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Completed</span>
+                          <span className="font-bold text-emerald-400 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3" />
+                            {selectedBatchProgress.effectiveCompletedCount}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Remaining</span>
+                          <span className="font-bold text-amber-400 block">
+                            {selectedBatchProgress.remainingClasses}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Weekday Timings */}
                     {selectedBatchObj.days?.length > 0 && (
                       <div className="bg-neutral-900/60 rounded-lg p-2 border border-neutral-800/80">
@@ -759,6 +886,46 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
                               </span>
                             );
                           })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Schedule Preview for Selected Batch */}
+                    {selectedBatchProgress && selectedBatchProgress.schedulePreview.length > 0 && (
+                      <div className="bg-neutral-900/70 border border-neutral-800 rounded-lg p-2.5 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
+                            <Calendar className="w-3.5 h-3.5 text-amber-500" /> Schedule Preview (from Start Date)
+                          </span>
+                          <span className="text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full">
+                            {selectedBatchProgress.schedulePreview.length} sessions
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-40 overflow-y-auto">
+                          {selectedBatchProgress.schedulePreview.slice(0, 6).map((item) => (
+                            <div
+                              key={item.classNumber}
+                              className={`flex items-center justify-between px-2.5 py-1.5 rounded-md text-[11px] border ${
+                                item.status === "Completed"
+                                  ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
+                                  : "bg-neutral-800/60 border-neutral-700/60 text-neutral-300"
+                              }`}
+                            >
+                              <div className="flex items-center gap-1.5 min-w-0">
+                                <span className="font-bold text-amber-400">#{item.classNumber}</span>
+                                <span className="text-white truncate">{item.displayDate}</span>
+                              </div>
+                              <span
+                                className={`text-[9px] font-bold px-1.5 py-0.2 rounded-full ${
+                                  item.status === "Completed"
+                                    ? "bg-emerald-500/10 text-emerald-400"
+                                    : "bg-blue-500/10 text-blue-400"
+                                }`}
+                              >
+                                {item.status}
+                              </span>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     )}
@@ -1008,16 +1175,196 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
                   </div>
                   <div>
                     <label className="text-[11px] font-semibold text-neutral-300 mb-1 block">
-                      Start Date
+                      Start Date <span className="text-amber-500">*</span>
                     </label>
                     <input
                       type="date"
+                      required
                       value={newBatchForm.startDate}
                       onChange={(e) => setNewBatchForm({ ...newBatchForm, startDate: e.target.value })}
                       className="w-full px-2.5 py-1.5 bg-neutral-900 border border-neutral-700 rounded-lg text-white text-xs focus:outline-none focus:border-amber-500"
                     />
                   </div>
                 </div>
+
+                {/* Summary Statistics Bar (Requirement 6) */}
+                {newBatchForm.startDate && (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-2.5 bg-neutral-900 border border-neutral-800 rounded-xl text-xs">
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Start Date</span>
+                      <span className="font-bold text-white truncate block">
+                        {newBatchProgressCalculation.formattedStartDate || "—"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Total Classes</span>
+                      <span className="font-bold text-white block">
+                        {newBatchProgressCalculation.totalClasses > 0 ? newBatchProgressCalculation.totalClasses : "Ongoing"}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Completed</span>
+                      <span className="font-bold text-emerald-400 flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        {newBatchProgressCalculation.effectiveCompletedCount}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-neutral-500 uppercase font-semibold block">Remaining</span>
+                      <span className="font-bold text-amber-400 block">
+                        {newBatchProgressCalculation.remainingClasses}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Conditional Completed Classes Calculation / Manual Input (Requirements 1, 2, 6) */}
+                {newBatchProgressCalculation.scenario === "past" ? (
+                  // Scenario C: Start Date in the past -> Mandatory manual input
+                  <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-amber-300">
+                        Total Completed Classes <span className="text-amber-500">*</span>
+                      </label>
+                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30">
+                        Mandatory
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      required
+                      min={0}
+                      max={newBatchForm.numberOfSessions ? Number(newBatchForm.numberOfSessions) : undefined}
+                      placeholder="e.g. 3"
+                      value={newBatchForm.preCompletedClasses}
+                      onChange={(e) =>
+                        setNewBatchForm({
+                          ...newBatchForm,
+                          preCompletedClasses: e.target.value ? Number(e.target.value) : "",
+                        })
+                      }
+                      className="w-full px-2.5 py-1.5 bg-neutral-900 border border-amber-500/40 rounded-lg text-white text-xs focus:outline-none focus:border-amber-400"
+                    />
+                    <p className="text-[10px] text-neutral-400">
+                      Start Date is earlier than today. Enter how many classes have already been completed.
+                    </p>
+                    {newBatchProgressCalculation.validationError && (
+                      <p className="text-[11px] text-red-400 font-medium flex items-center gap-1">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        {newBatchProgressCalculation.validationError}
+                      </p>
+                    )}
+                  </div>
+                ) : newBatchProgressCalculation.scenario === "today" ? (
+                  // Scenario A: Start Date is Today
+                  <div className="p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-200 flex items-start gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-blue-300 text-[11px]">
+                        Start Date is Today ({newBatchProgressCalculation.formattedStartDate})
+                      </p>
+                      <p className="text-[10px] text-neutral-300 mt-0.5">
+                        Completed classes auto-calculated: {newBatchProgressCalculation.effectiveCompletedCount} completed based on class start time.
+                      </p>
+                    </div>
+                  </div>
+                ) : newBatchProgressCalculation.scenario === "future" ? (
+                  // Scenario B: Start Date is in the future
+                  <div className="p-2.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-200 flex items-start gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div>
+                      <p className="font-semibold text-emerald-300 text-[11px]">
+                        Start Date is Future ({newBatchProgressCalculation.formattedStartDate})
+                      </p>
+                      <p className="text-[10px] text-neutral-300 mt-0.5">
+                        Completed classes set to 0. All upcoming classes will be generated from Start Date forward.
+                      </p>
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Generated Schedule Preview for New Batch */}
+                {newBatchProgressCalculation.schedulePreview.length > 0 && (
+                  <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3 space-y-2">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-bold text-neutral-200 flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5 text-amber-500" /> Class Schedule Preview
+                      </span>
+                      <span className="text-[10px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full">
+                        {newBatchProgressCalculation.schedulePreview.length} sessions
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-1.5 max-h-40 overflow-y-auto pr-0.5">
+                      {(showAllNewBatchPreview
+                        ? newBatchProgressCalculation.schedulePreview
+                        : newBatchProgressCalculation.schedulePreview.slice(0, 6)
+                      ).map((item) => (
+                        <div
+                          key={item.classNumber}
+                          className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-[11px] border ${
+                            item.status === "Completed"
+                              ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
+                              : item.isToday
+                              ? "bg-amber-500/10 border-amber-500/30 text-white"
+                              : "bg-neutral-800/60 border-neutral-700/60 text-neutral-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                item.status === "Completed"
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-neutral-700 text-neutral-300"
+                              }`}
+                            >
+                              Class {item.classNumber}
+                            </span>
+                            <span className="text-white truncate font-medium">{item.displayDate}</span>
+                            {item.isToday && (
+                              <span className="text-[9px] px-1 rounded bg-amber-500 text-black font-extrabold uppercase">
+                                Today
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-[10px] text-neutral-400 font-medium">
+                              {item.formattedTime}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-2 py-0.2 rounded-full border ${
+                                item.status === "Completed"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                              }`}
+                            >
+                              {item.status}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {newBatchProgressCalculation.schedulePreview.length > 6 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAllNewBatchPreview(!showAllNewBatchPreview)}
+                        className="w-full py-1 text-center text-[11px] text-amber-400 hover:text-amber-300 font-medium flex items-center justify-center gap-1"
+                      >
+                        {showAllNewBatchPreview ? (
+                          <>
+                            <ChevronUp className="w-3 h-3" /> Show fewer
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-3 h-3" /> Show all {newBatchProgressCalculation.schedulePreview.length} classes
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Meeting Link (Optional) */}
                 <div>

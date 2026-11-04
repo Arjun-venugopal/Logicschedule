@@ -2,7 +2,7 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, addDays, startOfWeek, isSameDay, parseISO, startOfMonth, endOfMonth, endOfWeek, eachDayOfInterval, isSameMonth, addMonths } from "date-fns";
 import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle, Link as LinkIcon, User, Users, BookOpen, Calendar, AlignLeft, Info, Loader2, CheckCircle2, Sparkles } from "lucide-react";
@@ -396,6 +396,36 @@ export default function SchedulePage() {
     }
   };
 
+  // Memoized batches filtered by selected teacher in filter option
+  const filteredTeacherBatches = useMemo(() => {
+    const list = Array.isArray(batches) ? batches : [];
+    if (!filterTeacher) return list;
+    return list.filter((b: any) => {
+      if (!b || !b._id) return false;
+      const tId = b.assignedTeacher?._id
+        ? b.assignedTeacher._id.toString()
+        : (b.assignedTeacher ? b.assignedTeacher.toString() : "");
+      if (tId === filterTeacher) return true;
+      // Also match if any schedule for this batch is assigned to this teacher
+      return Array.isArray(schedules) && schedules.some((s: any) => {
+        if (!s) return false;
+        const sBatchId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : "");
+        const sTeacherId = s.teacher?._id ? s.teacher._id.toString() : (s.teacher ? s.teacher.toString() : "");
+        return sBatchId === b._id && sTeacherId === filterTeacher;
+      });
+    });
+  }, [batches, filterTeacher, schedules]);
+
+  // When teacher filter changes, reset batch filter if current batch does not belong to selected teacher
+  useEffect(() => {
+    if (filterTeacher && filterBatch) {
+      const isBatchValid = filteredTeacherBatches.some((b: Batch) => b && b._id === filterBatch);
+      if (!isBatchValid) {
+        setFilterBatch("");
+      }
+    }
+  }, [filterTeacher, filterBatch, filteredTeacherBatches]);
+
   // Memoized filtered schedules and O(1) lookup maps
   const filteredSchedules = useMemo(() => {
     return schedules.filter((s: any) => {
@@ -614,8 +644,8 @@ export default function SchedulePage() {
               onChange={(e) => setFilterBatch(e.target.value)}
               className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white outline-none focus:border-amber-500 transition-all"
             >
-              <option value="">All Batches</option>
-              {batches.map((b: Batch) => (
+              <option value="">{filterTeacher ? "All Teacher's Batches" : "All Batches"}</option>
+              {filteredTeacherBatches.map((b: Batch) => (
                 <option key={b._id} value={b._id}>{b.name}</option>
               ))}
             </select>

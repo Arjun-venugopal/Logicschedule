@@ -267,7 +267,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
       let queryChain = Student.find({
         $or: [
           { batch: { $in: teacherBatchIds } },
-          { 'pastBatches.batch': { $in: teacherBatchIds } }
+          { 'pastBatches.batch': { $in: teacherBatchIds } },
+          { assignedTutor: teacher._id }
         ]
       });
       if (limit) queryChain = queryChain.limit(limit);
@@ -275,7 +276,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
 
       const students = await queryChain
         .populate('batch', 'name subject status assignedTeacher numberOfSessions')
-        .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+        .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions')
+        .populate('assignedTutor', 'name email');
       serverCache.set(cacheKey, students, 30_000);
       res.status(200).json(students);
       return;
@@ -287,7 +289,8 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
 
     const students = await queryChain
       .populate('batch', 'name subject status assignedTeacher numberOfSessions')
-      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions')
+      .populate('assignedTutor', 'name email');
     serverCache.set(cacheKey, students, 30_000);
     res.status(200).json(students);
   } catch (error) {
@@ -299,7 +302,8 @@ export const getStudentById = async (req: Request, res: Response): Promise<void>
   try {
     const student = await Student.findById(req.params.id as string)
       .populate('batch', 'name subject status assignedTeacher numberOfSessions')
-      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+      .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions')
+      .populate('assignedTutor', 'name email');
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
       return;
@@ -710,6 +714,12 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       student.level = level;
     }
     if (classesNeeded !== undefined) student.classesNeeded = Number(classesNeeded);
+    const oldTutorId = student.assignedTutor?._id
+      ? student.assignedTutor._id.toString()
+      : (student.assignedTutor ? student.assignedTutor.toString() : '');
+    const newTutorId = assignedTutor !== undefined ? (assignedTutor ? assignedTutor.toString() : '') : oldTutorId;
+    const tutorChanged = assignedTutor !== undefined && String(newTutorId) !== String(oldTutorId);
+
     if (assignedTutor !== undefined) {
       student.assignedTutor = assignedTutor;
     } else if (newBatchId) {
@@ -719,6 +729,71 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
           student.assignedTutor = nb.assignedTeacher?._id ? nb.assignedTeacher._id.toString() : nb.assignedTeacher.toString();
         }
       } catch {}
+    }
+
+    // If assigned teacher changed, record history and transfer upcoming/pending classes to new teacher
+    if (tutorChanged && newTutorId) {
+      try {
+        let oldTeacherName = '';
+        if (oldTutorId) {
+          const oldTDoc = await Teacher.findById(oldTutorId).populate('user', 'name');
+          oldTeacherName = oldTDoc?.name || (oldTDoc as any)?.user?.name || '';
+        }
+        let newTeacherName = '';
+        const newTDoc = await Teacher.findById(newTutorId).populate('user', 'name');
+        newTeacherName = newTDoc?.name || (newTDoc as any)?.user?.name || 'Teacher';
+
+        // 1. Maintain accurate record of teacher changes in student.teacherHistory
+        if (!student.teacherHistory || !Array.isArray(student.teacherHistory)) {
+          student.teacherHistory = [];
+        }
+        student.teacherHistory.push({
+          teacher: newTutorId,
+          teacherName: newTeacherName,
+          previousTeacher: oldTutorId || undefined,
+          previousTeacherName: oldTeacherName || undefined,
+          changedAt: new Date(),
+          changedBy: (req as any).user?._id || undefined,
+          reason: req.body.reassignReason || 'Teacher reassigned by admin',
+        });
+
+        // 2. Transfer all upcoming and pending classes to the new teacher while preserving completed classes
+        const targetBatchId = newBatchId || oldBatchId || (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
+        const allStudentSchedules = targetBatchId ? await Schedule.find({ batch: targetBatchId }) : [];
+        for (const s of allStudentSchedules) {
+          if (s.status === 'Completed') {
+            // Strictly preserve historical teacher assignments on completed classes
+            let mod = false;
+            if (!s.completedBy) {
+              s.completedBy = s.replacementTeacher || s.teacher || oldTutorId;
+              mod = true;
+            }
+            if (!s.completedByName) {
+              s.completedByName = oldTeacherName || s.teacher?.name || 'Teacher';
+              mod = true;
+            }
+            if (mod) await s.save();
+          } else if (s.status === 'Scheduled') {
+            // Assign upcoming/pending classes to new teacher
+            s.teacher = newTutorId;
+            await s.save();
+          }
+        }
+
+        // 3. If target batch is assigned to old teacher or unassigned, update batch assignedTeacher
+        if (targetBatchId) {
+          const batchDoc = await Batch.findById(targetBatchId);
+          if (batchDoc) {
+            const currentBTeacher = batchDoc.assignedTeacher?._id ? batchDoc.assignedTeacher._id.toString() : (batchDoc.assignedTeacher ? batchDoc.assignedTeacher.toString() : '');
+            if (!currentBTeacher || currentBTeacher === oldTutorId) {
+              batchDoc.assignedTeacher = newTutorId;
+              await batchDoc.save();
+            }
+          }
+        }
+      } catch (reassignErr: any) {
+        console.warn('Error during teacher reassignment transfer:', reassignErr?.message);
+      }
     }
 
     await student.save();
@@ -740,6 +815,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
 
     await student.populate('batch', 'name subject status assignedTeacher numberOfSessions');
     await student.populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+    await student.populate('assignedTutor', 'name email');
 
     res.status(200).json(student);
   } catch (error) {

@@ -10,7 +10,7 @@ import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, C
 import dynamic from "next/dynamic";
 
 const ActiveBatchesAnalyticsModal = dynamic(
-  () => import("@/components/batches/ActiveBatchesAnalyticsModal"),
+  () => import("@/components/batches/ActiveBatchesAnalyticsModal").then((mod) => mod.ActiveBatchesAnalyticsModal || mod.default),
   { ssr: false, loading: () => null }
 );
 

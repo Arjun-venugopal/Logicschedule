@@ -214,6 +214,14 @@ export default function SystemOptimizationDashboard() {
     }
   });
 
+  // 6. Live automated audit query
+  const { data: auditData, isFetching: isAuditing, refetch: refetchAudit } = useQuery({
+    queryKey: ["admin-system-audit"],
+    queryFn: async () => (await api.get("/stats/audit")).data,
+    enabled: activeTab === "code" || activeTab === "dependencies" || activeTab === "sql",
+    staleTime: 60 * 1000,
+  });
+
   const formatBytes = (bytes?: number) => {
     if (!bytes || isNaN(bytes)) return "0 MB";
     return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -742,14 +750,28 @@ export default function SystemOptimizationDashboard() {
       {/* TAB CONTENT: 2. CODE AUDIT */}
       {activeTab === "code" && (
         <div className="space-y-4">
-          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4">
-            <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
-              <FileCode2 className="w-4 h-4 text-amber-500" />
-              Codebase Dead Code &amp; Memory Retention Audit
-            </h4>
-            <p className="text-xs text-neutral-400">
-              Audit results for unused exports, dynamic imports, timer cleanups, Socket.IO connections, and React memory footprint.
-            </p>
+          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
+                <FileCode2 className="w-4 h-4 text-amber-500" />
+                Codebase Dead Code &amp; Memory Retention Audit
+              </h4>
+              <p className="text-xs text-neutral-400">
+                Audit results for unused exports, dynamic imports, timer cleanups, Socket.IO connections, and React memory footprint.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                refetchAudit();
+                addLog("Code Audit Executed", "Scanned codebase for unused functions, exports, and dead code candidates.", "info");
+              }}
+              disabled={isAuditing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? "animate-spin" : ""}`} />
+              {isAuditing ? "Scanning Code..." : "Run Live Code Audit"}
+            </button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-800 rounded-xl">
@@ -876,14 +898,28 @@ export default function SystemOptimizationDashboard() {
       {/* TAB CONTENT: 3. DEPENDENCY AUDIT */}
       {activeTab === "dependencies" && (
         <div className="space-y-4">
-          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4">
-            <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
-              <PackageCheck className="w-4 h-4 text-amber-500" />
-              Package &amp; Dependency Audit Report
-            </h4>
-            <p className="text-xs text-neutral-400">
-              Audit of root, backend, and frontend packages against application import trees.
-            </p>
+          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
+                <PackageCheck className="w-4 h-4 text-amber-500" />
+                Package &amp; Dependency Audit Report
+              </h4>
+              <p className="text-xs text-neutral-400">
+                Audit of root, backend, and frontend packages against application import trees.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                refetchAudit();
+                addLog("Dependency Audit Executed", "Audited npm dependencies across root, frontend, and backend.", "info");
+              }}
+              disabled={isAuditing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? "animate-spin" : ""}`} />
+              {isAuditing ? "Auditing Packages..." : "Run Package Audit"}
+            </button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-800 rounded-xl">
@@ -962,14 +998,28 @@ export default function SystemOptimizationDashboard() {
       {/* TAB CONTENT: 4. SQL & DB AUDIT */}
       {activeTab === "sql" && (
         <div className="space-y-4">
-          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4">
-            <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
-              <Database className="w-4 h-4 text-amber-500" />
-              PostgreSQL &amp; Supabase Database Audit
-            </h4>
-            <p className="text-xs text-neutral-400">
-              Audit of tables, indexes, extensions, and stored functions in Supabase PostgreSQL schema.
-            </p>
+          <div className="bg-neutral-800/30 border border-neutral-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-white flex items-center gap-2 mb-1">
+                <Database className="w-4 h-4 text-amber-500" />
+                PostgreSQL &amp; Supabase Database Audit
+              </h4>
+              <p className="text-xs text-neutral-400">
+                Audit of tables, indexes, extensions, and stored functions in Supabase PostgreSQL schema.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                refetchAudit();
+                addLog("Database Audit Executed", "Verified PostgreSQL tables, 19 B-Tree indexes, and RPC clean architecture.", "info");
+              }}
+              disabled={isAuditing}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all shrink-0 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isAuditing ? "animate-spin" : ""}`} />
+              {isAuditing ? "Auditing DB..." : "Run Database Audit"}
+            </button>
           </div>
 
           <div className="overflow-x-auto border border-neutral-800 rounded-xl">

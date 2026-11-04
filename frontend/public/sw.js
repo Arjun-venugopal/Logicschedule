@@ -1,4 +1,4 @@
-const CACHE_NAME = 'schedulix-pwa-v1';
+const CACHE_NAME = 'schedulix-pwa-v2';
 const OFFLINE_URL = '/offline.html';
 
 const PRECACHE_ASSETS = [
@@ -61,6 +61,25 @@ self.addEventListener('fetch', (event) => {
 
   // Skip browser extensions or cross-origin analytics/schemes
   if (!url.protocol.startsWith('http')) {
+    return;
+  }
+
+  // Bypass localhost, private dev IPs, HMR, and webpack hot-updates entirely
+  if (
+    url.hostname === 'localhost' ||
+    url.hostname === '127.0.0.1' ||
+    url.hostname.startsWith('192.168.') ||
+    url.hostname.startsWith('10.') ||
+    url.pathname.includes('/_next/webpack-hmr') ||
+    url.pathname.includes('/_next/static/webpack/') ||
+    url.pathname.includes('.hot-update.')
+  ) {
+    return;
+  }
+
+  // Next.js chunks (_next/static/chunks/): NEVER intercept with stale SW cache
+  // Next.js chunks already have content hashes; bypassing SW prevents Webpack undefined module .call crashes
+  if (url.pathname.startsWith('/_next/static/chunks/')) {
     return;
   }
 

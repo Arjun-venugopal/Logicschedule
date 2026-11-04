@@ -45,3 +45,19 @@ export function extractLevel(text?: string, fallback = "Level 1"): string {
   const match = text.match(/level\s*[-]?\s*(\d+)/i) || text.match(/lvl\s*[-]?\s*(\d+)/i);
   return match ? `Level ${match[1]}` : fallback;
 }
+
+/**
+ * Computes end time ("HH:mm") given start time and duration in minutes (defaults to 60).
+ */
+export function computeEndTime(startTime?: string, durationMinutes = 60): string {
+  if (!startTime) return "10:00";
+  const parts = startTime.split(":");
+  if (parts.length < 2) return startTime;
+  const hours = parseInt(parts[0], 10);
+  const minutes = parseInt(parts[1], 10);
+  if (isNaN(hours) || isNaN(minutes)) return startTime;
+  const totalMin = hours * 60 + minutes + durationMinutes;
+  const endHours = Math.floor((totalMin / 60) % 24);
+  const endMin = totalMin % 60;
+  return `${String(endHours).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
+}

@@ -123,8 +123,12 @@ function getCollectionNameForPath(path: string): string {
     path === 'teacher' ||
     path === 'replacementTeacher' ||
     path === 'classAssignedTutor' ||
+    path === 'assignedTutor' ||
+    path === 'completedBy' ||
     path.endsWith('.teacher') ||
-    path.endsWith('.assignedTeacher')
+    path.endsWith('.assignedTeacher') ||
+    path.endsWith('.assignedTutor') ||
+    path.endsWith('.completedBy')
   ) {
     return 'teachers';
   }

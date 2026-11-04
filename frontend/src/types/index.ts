@@ -50,6 +50,15 @@ export interface Student {
   level?: string;
   classesNeeded?: number;
   assignedTutor?: string | Teacher;
+  teacherHistory?: {
+    teacher: string | Teacher;
+    teacherName?: string;
+    previousTeacher?: string | Teacher;
+    previousTeacherName?: string;
+    changedAt: string | Date;
+    changedBy?: string;
+    reason?: string;
+  }[];
   parentName?: string;
   mobileNumber?: string;
   whatsappNumber?: string;
@@ -104,6 +113,8 @@ export interface Schedule {
   endTime: string;
   status: 'Scheduled' | 'Completed' | 'Cancelled';
   replacementTeacher?: string | Teacher | null;
+  completedBy?: string | Teacher | null;
+  completedByName?: string;
   conflict: boolean;
   meetingLink?: string;
   subject?: string;
