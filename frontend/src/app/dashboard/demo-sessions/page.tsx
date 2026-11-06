@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths } from "date-fns";
+import { format, parseISO, isSameDay, isSameWeek, isSameMonth, subMonths, addDays } from "date-fns";
 import { formatTime12h } from "@/lib/utils";
 import {
   Plus,
@@ -714,10 +714,11 @@ export default function DemoSessionsPage() {
     // Date filter
     if (filterDate !== "All") {
       if (!d.date) return false;
-      const dDate = new Date(d.date);
+      const dDate = typeof d.date === "string" && d.date.length === 10 ? parseISO(d.date) : new Date(d.date);
       if (isNaN(dDate.getTime())) return false;
       const today = new Date();
       if (filterDate === "Today" && !isSameDay(dDate, today)) return false;
+      if (filterDate === "Tomorrow" && !isSameDay(dDate, addDays(today, 1))) return false;
       if (filterDate === "This Week" && !isSameWeek(dDate, today)) return false;
       if (filterDate === "This Month" && !isSameMonth(dDate, today)) return false;
       if (filterDate === "Last Month" && !isSameMonth(dDate, subMonths(today, 1))) return false;
@@ -782,10 +783,11 @@ export default function DemoSessionsPage() {
     }
     if (filterDate !== "All") {
       if (!slot.date) return false;
-      const sDate = new Date(slot.date);
+      const sDate = typeof slot.date === "string" && slot.date.length === 10 ? parseISO(slot.date) : new Date(slot.date);
       if (isNaN(sDate.getTime())) return false;
       const today = new Date();
       if (filterDate === "Today" && !isSameDay(sDate, today)) return false;
+      if (filterDate === "Tomorrow" && !isSameDay(sDate, addDays(today, 1))) return false;
       if (filterDate === "This Week" && !isSameWeek(sDate, today)) return false;
       if (filterDate === "This Month" && !isSameMonth(sDate, today)) return false;
       if (filterDate === "Last Month" && !isSameMonth(sDate, subMonths(today, 1))) return false;
@@ -971,6 +973,7 @@ export default function DemoSessionsPage() {
                 >
                   <option value="All">All Time</option>
                   <option value="Today">Today</option>
+                  <option value="Tomorrow">Tomorrow</option>
                   <option value="This Week">This Week</option>
                   <option value="This Month">This Month</option>
                   <option value="Last Month">Last Month</option>
@@ -1608,6 +1611,7 @@ export default function DemoSessionsPage() {
                 >
                   <option value="All">All Time</option>
                   <option value="Today">Today</option>
+                  <option value="Tomorrow">Tomorrow</option>
                   <option value="This Week">This Week</option>
                   <option value="This Month">This Month</option>
                   <option value="Last Month">Last Month</option>
