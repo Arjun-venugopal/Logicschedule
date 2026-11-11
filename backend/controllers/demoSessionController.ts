@@ -186,6 +186,90 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
   }
 };
 
+// Helper to automatically provision batch and student records when demo admission is confirmed
+async function provisionBatchAndStudentForDemo(demoSession: any): Promise<void> {
+  const isConfirmedOnCreate =
+    demoSession.admissionConfirmed === 'Yes' ||
+    demoSession.admissionConfirmed === 'Won' ||
+    demoSession.admissionConfirmed === 'Teacher is not confirmed' ||
+    demoSession.admissionConfirmed === 'Teacher Not Confirmed';
+
+  if (!isConfirmedOnCreate || demoSession.batchAssigned) {
+    return;
+  }
+
+  const studentCleanName = (demoSession.studentName || '').trim();
+  const existingStudent = await findExistingStudent(
+    studentCleanName,
+    demoSession.studentEmail,
+    demoSession.phoneNumber
+  );
+
+  const count = await Batch.countDocuments();
+  const serialNo = count + 1;
+  const batchName = `${studentCleanName} 1:1 ${serialNo}`;
+
+  const isTutorNotConfirmed =
+    demoSession.classAssignedTutor === 'Teacher is not confirmed' ||
+    demoSession.classAssignedTutor === 'Teacher Not Confirmed' ||
+    demoSession.admissionConfirmed === 'Teacher is not confirmed' ||
+    demoSession.admissionConfirmed === 'Teacher Not Confirmed';
+
+  const teacherId = isTutorNotConfirmed
+    ? undefined
+    : (demoSession.classAssignedTutor ||
+      (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher) ||
+      undefined);
+
+  const newBatch = await Batch.create({
+    name: batchName,
+    subject: demoSession.subject,
+    assignedTeacher: teacherId,
+    studentsCount: 1,
+    status: 'Upcoming',
+    timing: { startTime: demoSession.startTime || '09:00', endTime: demoSession.endTime || '10:00' },
+    days: [],
+    durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
+    numberOfSessions: demoSession.numberOfSessions || null,
+  });
+
+  demoSession.batchAssigned = newBatch._id;
+  await demoSession.save();
+
+  if (existingStudent) {
+    const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
+    if (oldBatchId && oldBatchId !== newBatch._id.toString()) {
+      if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
+      const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
+        const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
+        return pbId === oldBatchId;
+      });
+      if (!alreadyInPast) {
+        existingStudent.pastBatches.push({
+          batch: oldBatchId,
+          leftAt: new Date(),
+        });
+      }
+      await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
+    }
+
+    existingStudent.batch = newBatch._id;
+    if (demoSession.customerName && !existingStudent.parentName) existingStudent.parentName = demoSession.customerName;
+    if (demoSession.phoneNumber && !existingStudent.mobileNumber) existingStudent.mobileNumber = demoSession.phoneNumber;
+    if (demoSession.studentEmail && !existingStudent.email) existingStudent.email = demoSession.studentEmail;
+    if (studentCleanName) existingStudent.name = studentCleanName;
+    await existingStudent.save();
+  } else {
+    await Student.create({
+      name: studentCleanName,
+      batch: newBatch._id,
+      parentName: demoSession.customerName || '',
+      mobileNumber: demoSession.phoneNumber || '',
+      email: demoSession.studentEmail || '',
+    });
+  }
+}
+
 // @desc    Create a demo session
 // @route   POST /demo-sessions
 // @access  Private/Admin
@@ -193,13 +277,28 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
   try {
     const {
       teacher: rawTeacher, studentName, studentEmail, subject, date, startTime, endTime, meetingLink, notes,
-      customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions
+      customerName, phoneNumber, place, age, feeDiscussed, admissionConfirmed, salesExecutive, classAssignedTutor, batchAssigned, numberOfSessions,
+      students: rawStudents
     } = req.body;
 
     // Treat 'unassigned' as null (no teacher)
     const teacher = rawTeacher === 'unassigned' ? null : rawTeacher;
 
-    if (!studentName || (!subject && req.body.status !== 'Cancelled') || !date || !startTime || !endTime) {
+    // Parse multi-student list if provided
+    const validStudents = Array.isArray(rawStudents)
+      ? rawStudents
+          .filter((s: any) => s && s.studentName && s.studentName.trim().length > 0)
+          .map((s: any) => ({
+            studentName: s.studentName.trim(),
+            studentEmail: s.studentEmail ? s.studentEmail.trim() : (studentEmail || ''),
+            age: s.age !== undefined && s.age !== '' ? Number(s.age) : (age || null),
+            subject: s.subject && s.subject.trim() ? s.subject.trim() : subject,
+          }))
+      : [];
+
+    const effectiveStudentName = validStudents.length > 0 ? validStudents[0].studentName : studentName;
+
+    if (!effectiveStudentName || (!subject && req.body.status !== 'Cancelled') || !date || !startTime || !endTime) {
       res.status(400).json({ message: 'Please provide all required fields: studentName, subject, date, startTime, endTime' });
       return;
     }
@@ -220,20 +319,89 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       isConflict = conflictRes.hasConflict;
     }
 
+    // MULTI-STUDENT BOOKING (Single parent booking for 2 or more children)
+    if (validStudents.length > 1) {
+      const groupBookingId = `grp_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const allStudentNames = validStudents.map((s: any) => s.studentName);
+      const createdSessions: any[] = [];
+
+      for (let i = 0; i < validStudents.length; i++) {
+        const currentStudent = validStudents[i];
+        const siblingNamesList = allStudentNames.filter((n: string) => n !== currentStudent.studentName);
+        const siblingNote = `Sibling of ${siblingNamesList.join(', ')}`;
+        const studentNotes = notes ? `${notes} • ${siblingNote}` : siblingNote;
+
+        const sessionDoc = await DemoSession.create({
+          teacher: teacher || null,
+          studentName: currentStudent.studentName,
+          studentEmail: currentStudent.studentEmail || '',
+          customerName: customerName || '',
+          phoneNumber: phoneNumber || '',
+          place: place || '',
+          age: currentStudent.age,
+          feeDiscussed,
+          admissionConfirmed: admissionConfirmed || 'Pending',
+          salesExecutive: salesExecutive || '',
+          classAssignedTutor: classAssignedTutor || undefined,
+          batchAssigned: undefined,
+          subject: currentStudent.subject || subject,
+          date: dateObj,
+          startTime,
+          endTime,
+          status: req.body.status || 'Scheduled',
+          meetingLink: meetingLink || '',
+          notes: studentNotes,
+          cancellationReason: req.body.cancellationReason || '',
+          conflict: isConflict,
+          numberOfSessions: numberOfSessions !== undefined ? numberOfSessions : null,
+          createdBy: req.user ? req.user._id.toString() : null,
+          groupBookingId,
+          siblingCount: validStudents.length,
+          siblingNames: allStudentNames,
+        });
+
+        await provisionBatchAndStudentForDemo(sessionDoc);
+        const populated = await sessionDoc.populate('teacher', 'name email status availability');
+        createdSessions.push(populated);
+      }
+
+      serverCache.clearPattern('demo_sessions_');
+      serverCache.delete('teachers_all');
+      serverCache.clearPattern('stats_');
+      deleteDiskCache('demo_sessions_all');
+
+      const primaryResponse = { ...createdSessions[0] };
+      if (req.user && req.user.role === 'Sales Person') {
+        const isAssigned = primaryResponse.salesExecutive?.trim().toLowerCase() === req.user.name?.trim().toLowerCase();
+        if (!isAssigned) {
+          primaryResponse.feeDiscussed = 'Hidden';
+        }
+      }
+
+      res.status(201).json({
+        message: `${createdSessions.length} demo sessions scheduled successfully for siblings`,
+        sessions: createdSessions,
+        groupBookingId,
+        ...primaryResponse,
+      });
+      return;
+    }
+
+    // SINGLE STUDENT BOOKING (Standard / Existing Flow)
     const demoSession = await DemoSession.create({
       teacher: teacher || null,
-      studentName,
-      studentEmail: studentEmail || '',
+      studentName: effectiveStudentName,
+      studentEmail: (validStudents[0]?.studentEmail) || studentEmail || '',
       customerName: customerName || '',
       phoneNumber: phoneNumber || '',
       place: place || '',
-      age,
+      age: (validStudents[0]?.age !== undefined && validStudents[0]?.age !== null) ? validStudents[0].age : age,
       feeDiscussed,
       admissionConfirmed: admissionConfirmed || 'Pending',
       salesExecutive: salesExecutive || '',
       classAssignedTutor: classAssignedTutor || undefined,
       batchAssigned: batchAssigned || undefined,
-      subject,
+      subject: (validStudents[0]?.subject) || subject,
       date: dateObj,
       startTime,
       endTime,
@@ -246,77 +414,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       createdBy: req.user ? req.user._id.toString() : null,
     });
 
-    const isConfirmedOnCreate = demoSession.admissionConfirmed === 'Yes' || demoSession.admissionConfirmed === 'Won' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
-    if (isConfirmedOnCreate) {
-      if (!demoSession.batchAssigned) {
-        const studentCleanName = (demoSession.studentName || '').trim();
-        const existingStudent = await findExistingStudent(
-          studentCleanName,
-          demoSession.studentEmail,
-          demoSession.phoneNumber
-        );
-
-        const count = await Batch.countDocuments();
-        const serialNo = count + 1;
-        const batchName = `${studentCleanName} 1:1 ${serialNo}`;
-
-        const isTutorNotConfirmed = demoSession.classAssignedTutor === 'Teacher is not confirmed' || demoSession.classAssignedTutor === 'Teacher Not Confirmed' || demoSession.admissionConfirmed === 'Teacher is not confirmed' || demoSession.admissionConfirmed === 'Teacher Not Confirmed';
-        const teacherId = isTutorNotConfirmed
-          ? undefined
-          : (demoSession.classAssignedTutor
-            || (demoSession.teacher && typeof demoSession.teacher === 'object' ? demoSession.teacher._id : demoSession.teacher)
-            || undefined);
-
-        const newBatch = await Batch.create({
-          name: batchName,
-          subject: demoSession.subject,
-          assignedTeacher: teacherId,
-          studentsCount: 1,
-          status: 'Upcoming',
-          timing: { startTime: demoSession.startTime || '09:00', endTime: demoSession.endTime || '10:00' },
-          days: [],
-          durationType: demoSession.numberOfSessions ? 'Custom' : '1 Month',
-          numberOfSessions: demoSession.numberOfSessions || null,
-        });
-
-        demoSession.batchAssigned = newBatch._id;
-        await demoSession.save();
-
-        if (existingStudent) {
-          // Advance/move existing student to new batch without duplicating!
-          const oldBatchId = existingStudent.batch?._id ? existingStudent.batch._id.toString() : existingStudent.batch?.toString();
-          if (oldBatchId && oldBatchId !== newBatch._id.toString()) {
-            if (!existingStudent.pastBatches) existingStudent.pastBatches = [];
-            const alreadyInPast = existingStudent.pastBatches.some((pb: any) => {
-              const pbId = pb.batch?._id ? pb.batch._id.toString() : pb.batch?.toString();
-              return pbId === oldBatchId;
-            });
-            if (!alreadyInPast) {
-              existingStudent.pastBatches.push({
-                batch: oldBatchId,
-                leftAt: new Date(),
-              });
-            }
-            await Batch.findByIdAndUpdate(oldBatchId, { $inc: { studentsCount: -1 } });
-          }
-
-          existingStudent.batch = newBatch._id;
-          if (demoSession.customerName && !existingStudent.parentName) existingStudent.parentName = demoSession.customerName;
-          if (demoSession.phoneNumber && !existingStudent.mobileNumber) existingStudent.mobileNumber = demoSession.phoneNumber;
-          if (demoSession.studentEmail && !existingStudent.email) existingStudent.email = demoSession.studentEmail;
-          if (studentCleanName) existingStudent.name = studentCleanName;
-          await existingStudent.save();
-        } else {
-          await Student.create({
-            name: studentCleanName,
-            batch: newBatch._id,
-            parentName: demoSession.customerName || '',
-            mobileNumber: demoSession.phoneNumber || '',
-            email: demoSession.studentEmail || '',
-          });
-        }
-      }
-    }
+    await provisionBatchAndStudentForDemo(demoSession);
 
     const populated = await demoSession.populate('teacher', 'name email status availability');
 
@@ -332,6 +430,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     serverCache.clearPattern('demo_sessions_');
     serverCache.delete('teachers_all');
     serverCache.clearPattern('stats_');
+    deleteDiskCache('demo_sessions_all');
     res.status(201).json(responseObj);
   } catch (error: any) {
     console.error('Create demo session error:', error.message);

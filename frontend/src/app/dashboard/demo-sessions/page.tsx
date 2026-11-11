@@ -15,6 +15,7 @@ import {
   AlertTriangle,
   Link as LinkIcon,
   User,
+  Users,
   Calendar,
   AlignLeft,
   Info,
@@ -83,7 +84,18 @@ interface DemoSession {
   paymentStatus?: string;
   paymentType?: string;
   remainingAmount?: number;
+  groupBookingId?: string;
+  siblingCount?: number;
+  siblingNames?: string[];
 }
+
+export type DemoStudentItem = {
+  id: string;
+  studentName: string;
+  studentEmail?: string;
+  age?: number | string;
+  subject?: string;
+};
 
 type DemoSessionForm = {
   teacher: string;
@@ -92,7 +104,7 @@ type DemoSessionForm = {
   customerName: string;
   phoneNumber: string;
   place: string;
-  age: number | "";
+  age: number | string;
   feeDiscussed: string;
   numberOfSessions: number | "";
   admissionConfirmed: "Pending" | "Yes" | "No" | "Teacher is not confirmed" | string;
@@ -110,6 +122,7 @@ type DemoSessionForm = {
   rescheduleDate?: string;
   rescheduleStartTime?: string;
   rescheduleEndTime?: string;
+  students?: DemoStudentItem[];
 };
 
 const emptyForm = (): DemoSessionForm => ({
@@ -137,6 +150,9 @@ const emptyForm = (): DemoSessionForm => ({
   rescheduleDate: "",
   rescheduleStartTime: "",
   rescheduleEndTime: "",
+  students: [
+    { id: "1", studentName: "", studentEmail: "", age: "", subject: "" },
+  ],
 });
 
 export default function DemoSessionsPage() {
@@ -255,7 +271,7 @@ export default function DemoSessionsPage() {
   }, [isTeacher, user, teachers]);
 
   const updateDemoMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: DemoSessionForm }) =>
+    mutationFn: ({ id, data }: { id: string; data: Partial<DemoSessionForm> | any }) =>
       api.put(`/demo-sessions/${id}`, data),
     onSuccess: (_res, variables) => {
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
@@ -423,9 +439,71 @@ export default function DemoSessionsPage() {
       rescheduleDate: formatDateSafe(d.date, "yyyy-MM-dd"),
       rescheduleStartTime: d.startTime || "09:00",
       rescheduleEndTime: d.endTime || "10:00",
+      students: [
+        {
+          id: "1",
+          studentName: d.studentName || "",
+          studentEmail: d.studentEmail || "",
+          age: d.age || "",
+          subject: d.subject || "",
+        },
+      ],
     });
     setEditingId(d._id);
     setModal({ open: true, mode: "edit" });
+  };
+
+  const handleAddStudent = () => {
+    setForm((prev) => {
+      const nextId = `stu_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+      const currentStudents = prev.students && prev.students.length > 0 ? prev.students : [
+        { id: "1", studentName: prev.studentName || "", studentEmail: prev.studentEmail || "", age: prev.age || "", subject: prev.subject || "" }
+      ];
+      return {
+        ...prev,
+        students: [
+          ...currentStudents,
+          {
+            id: nextId,
+            studentName: "",
+            studentEmail: "",
+            age: "",
+            subject: prev.subject || "",
+          },
+        ],
+      };
+    });
+  };
+
+  const handleRemoveStudent = (indexToRemove: number) => {
+    setForm((prev) => {
+      const currentStudents = prev.students || [];
+      if (currentStudents.length <= 1) return prev;
+      const updated = currentStudents.filter((_, idx) => idx !== indexToRemove);
+      return {
+        ...prev,
+        students: updated,
+        studentName: updated[0]?.studentName || "",
+        studentEmail: updated[0]?.studentEmail || "",
+        age: updated[0]?.age || "",
+      };
+    });
+  };
+
+  const handleUpdateStudent = (index: number, field: keyof DemoStudentItem, value: any) => {
+    setForm((prev) => {
+      const currentStudents = prev.students && prev.students.length > 0 ? [...prev.students] : [
+        { id: "1", studentName: prev.studentName || "", studentEmail: prev.studentEmail || "", age: prev.age || "", subject: prev.subject || "" }
+      ];
+      currentStudents[index] = { ...currentStudents[index], [field]: value };
+      const patch: any = { students: currentStudents };
+      if (index === 0) {
+        if (field === "studentName") patch.studentName = value;
+        if (field === "studentEmail") patch.studentEmail = value;
+        if (field === "age") patch.age = value;
+      }
+      return { ...prev, ...patch };
+    });
   };
 
   const handleQuickStatusChange = (session: DemoSession, newStatus: "Scheduled" | "Completed" | "Cancelled" | "Rescheduled") => {
@@ -469,13 +547,30 @@ export default function DemoSessionsPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const payload = { ...form };
+    const payload: any = { ...form };
     payload.status = payload.status || "Scheduled";
     if (payload.status === "Rescheduled") {
       if (payload.rescheduleDate) payload.date = payload.rescheduleDate;
       if (payload.rescheduleStartTime) payload.startTime = payload.rescheduleStartTime;
       if (payload.rescheduleEndTime) payload.endTime = payload.rescheduleEndTime;
     }
+
+    // Filter valid students with non-empty names
+    const validStudents = (form.students || []).filter(
+      (s) => s && s.studentName && s.studentName.trim().length > 0
+    );
+
+    if (modal?.mode === "create") {
+      if (validStudents.length === 0) {
+        alert("Please enter at least one student name.");
+        return;
+      }
+      payload.studentName = validStudents[0].studentName.trim();
+      payload.studentEmail = validStudents[0].studentEmail || payload.studentEmail || "";
+      payload.age = validStudents[0].age !== undefined && validStudents[0].age !== "" ? validStudents[0].age : payload.age;
+      payload.students = validStudents;
+    }
+
     if (modal?.mode === "edit" && editingId) {
       updateDemoMutation.mutate({ id: editingId, data: payload });
     } else {
@@ -1236,9 +1331,20 @@ export default function DemoSessionsPage() {
                     {/* Header */}
                     <div className="flex justify-between items-start">
                       <div>
-                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">
-                          PROSPECT DEMO
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">
+                            PROSPECT DEMO
+                          </span>
+                          {((session.siblingNames && session.siblingNames.length > 1) || (session.siblingCount && session.siblingCount > 1)) && (
+                            <span
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                              title={`Sibling Demo Booking: ${session.siblingNames?.join(", ") || `${session.siblingCount} students`}`}
+                            >
+                              <Users className="w-2.5 h-2.5" />
+                              Sibling ({session.siblingCount || session.siblingNames?.length})
+                            </span>
+                          )}
+                        </div>
                         <h3 className="font-bold text-white text-base mt-0.5 truncate max-w-[180px]" title={session.studentName}>
                           {session.studentName}
                         </h3>
@@ -1424,7 +1530,20 @@ export default function DemoSessionsPage() {
               <tbody className="divide-y divide-neutral-800">
                 {sortedSessions.map((session) => (
                   <tr key={session._id} className="hover:bg-neutral-800/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-white">{session.studentName}</td>
+                    <td className="px-4 py-3 font-medium text-white">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{session.studentName}</span>
+                        {((session.siblingNames && session.siblingNames.length > 1) || (session.siblingCount && session.siblingCount > 1)) && (
+                          <span
+                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                            title={`Sibling Demo Booking: ${session.siblingNames?.join(", ") || `${session.siblingCount} students`}`}
+                          >
+                            <Users className="w-2.5 h-2.5" />
+                            Sibling ({session.siblingCount || session.siblingNames?.length})
+                          </span>
+                        )}
+                      </div>
+                    </td>
                     <td className="px-4 py-3">{session.customerName || "-"}</td>
                     <td className="px-4 py-3">{session.phoneNumber || "-"}</td>
                     <td className="px-4 py-3">{session.place || "-"}</td>
@@ -1803,7 +1922,7 @@ export default function DemoSessionsPage() {
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
+              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-xl shadow-2xl max-h-[92vh] flex flex-col overflow-hidden"
             >
               {/* Modal Header */}
               <div className="flex items-center justify-between p-4 sm:p-6 border-b border-neutral-800 bg-neutral-900 sticky top-0 z-10 shrink-0">
@@ -1956,94 +2075,196 @@ export default function DemoSessionsPage() {
                 ) : (
                   /* Admin Full Edit/Create View */
                   <div className="space-y-4">
-                    {/* Student details */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Student Name</label>
-                        <input
-                          type="text"
-                          required
-                          placeholder="e.g. Rahul Sen"
-                          value={form.studentName}
-                          onChange={(e) => setForm({ ...form, studentName: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
+                    {/* Parent / Customer Details (Entered Once) */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                          <User className="w-4 h-4 text-amber-500" /> Parent / Customer Details
+                        </h3>
+                        <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">
+                          Parent Contact
+                        </span>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400 flex justify-between">
-                          <span>Student Email</span>
-                          <span className="text-[9px] text-neutral-600 font-semibold uppercase">Optional</span>
-                        </label>
-                        <input
-                          type="email"
-                          placeholder="rahul@example.com"
-                          value={form.studentEmail}
-                          onChange={(e) => setForm({ ...form, studentEmail: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-neutral-850/60 p-3.5 rounded-xl border border-neutral-800">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Customer Name *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="Parent or Guardian Name"
+                            value={form.customerName}
+                            onChange={(e) => setForm({ ...form, customerName: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Phone Number *</label>
+                          <input
+                            type="text"
+                            required
+                            placeholder="e.g. +91 9876543210"
+                            value={form.phoneNumber}
+                            onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Place / City</label>
+                          <input
+                            type="text"
+                            placeholder="City or Area"
+                            value={form.place}
+                            onChange={(e) => setForm({ ...form, place: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
+                          <select
+                            value={form.salesExecutive}
+                            onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
+                            className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
+                          >
+                            <option value="">Select Sales Executive</option>
+                            {uniqueSalesPeople.map((sp: any) => (
+                              <option key={sp._id} value={sp.name}>
+                                {sp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     </div>
 
-                    <hr className="border-neutral-800 my-4" />
-                    <h3 className="text-sm font-bold text-white mb-2">Admission Tracker Details</h3>
+                    <hr className="border-neutral-800/80 my-3" />
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Customer Name</label>
-                        <input
-                          type="text"
-                          placeholder="Parent or Guardian Name"
-                          value={form.customerName}
-                          onChange={(e) => setForm({ ...form, customerName: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
+                    {/* Student Details Section with Dynamic Cards */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                            <Users className="w-4 h-4 text-amber-500" /> Student Details
+                          </h3>
+                          <p className="text-[11px] text-neutral-500 mt-0.5">
+                            Register one or more children under this parent booking
+                          </p>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 text-[10px] font-bold">
+                          {(form.students?.length || 1)} {(form.students?.length || 1) === 1 ? "Child" : "Children"}
+                        </span>
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Phone Number</label>
-                        <input
-                          type="text"
-                          placeholder="e.g. +91 9876543210"
-                          value={form.phoneNumber}
-                          onChange={(e) => setForm({ ...form, phoneNumber: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
+
+                      {/* Dynamically added student cards */}
+                      <div className="space-y-3">
+                        {(form.students && form.students.length > 0
+                          ? form.students
+                          : [{ id: "1", studentName: form.studentName, studentEmail: form.studentEmail, age: form.age, subject: form.subject }]
+                        ).map((student, idx) => (
+                          <div
+                            key={student.id || idx}
+                            className="bg-neutral-850/80 border border-neutral-800 rounded-xl p-3.5 space-y-3 transition-all relative group/card hover:border-neutral-700"
+                          >
+                            <div className="flex items-center justify-between border-b border-neutral-800/60 pb-2">
+                              <span className="text-xs font-bold text-amber-400 flex items-center gap-1.5">
+                                <User className="w-3.5 h-3.5 text-amber-500" />
+                                Student {idx + 1}
+                              </span>
+                              {form.students && form.students.length > 1 && idx > 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveStudent(idx)}
+                                  className="text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2 py-1 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors"
+                                  title="Remove this student"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Remove</span>
+                                </button>
+                              )}
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-neutral-400">
+                                  Student Name <span className="text-amber-500">*</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  required
+                                  placeholder="e.g. Rahul Sen"
+                                  value={student.studentName}
+                                  onChange={(e) => handleUpdateStudent(idx, "studentName", e.target.value)}
+                                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-neutral-400 flex justify-between">
+                                  <span>Student Email</span>
+                                  <span className="text-[9px] text-neutral-600 font-semibold uppercase">Optional</span>
+                                </label>
+                                <input
+                                  type="email"
+                                  placeholder="rahul@example.com"
+                                  value={student.studentEmail || ""}
+                                  onChange={(e) => handleUpdateStudent(idx, "studentEmail", e.target.value)}
+                                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-neutral-400">Age</label>
+                                <input
+                                  type="number"
+                                  placeholder="Student Age"
+                                  value={student.age ?? ""}
+                                  onChange={(e) =>
+                                    handleUpdateStudent(idx, "age", e.target.value ? Number(e.target.value) : "")
+                                  }
+                                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                                />
+                              </div>
+                              <div className="space-y-1.5">
+                                <label className="text-xs font-semibold text-neutral-400 flex justify-between">
+                                  <span>Subject / Topic</span>
+                                  <span className="text-[9px] text-neutral-500 font-normal">Optional</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder={form.subject || "e.g. Scratch / Python"}
+                                  value={student.subject || ""}
+                                  onChange={(e) => handleUpdateStudent(idx, "subject", e.target.value)}
+                                  className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Place</label>
-                        <input
-                          type="text"
-                          placeholder="City or Area"
-                          value={form.place}
-                          onChange={(e) => setForm({ ...form, place: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Age</label>
-                        <input
-                          type="number"
-                          placeholder="Student Age"
-                          value={form.age}
-                          onChange={(e) => setForm({ ...form, age: e.target.value ? Number(e.target.value) : "" })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
-                        />
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-semibold text-neutral-400">Sales Executive</label>
-                        <select
-                          value={form.salesExecutive}
-                          onChange={(e) => setForm({ ...form, salesExecutive: e.target.value })}
-                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors appearance-none"
+
+                      {/* "+ Add Another Student" button */}
+                      {modal?.mode === "create" && (
+                        <button
+                          type="button"
+                          onClick={handleAddStudent}
+                          className="w-full py-2.5 px-4 rounded-xl border border-dashed border-amber-500/40 bg-amber-500/5 hover:bg-amber-500/10 text-amber-400 hover:text-amber-300 font-semibold text-xs flex items-center justify-center gap-2 transition-all group"
                         >
-                          <option value="">Select Sales Executive</option>
-                          {uniqueSalesPeople.map((sp: any) => (
-                            <option key={sp._id} value={sp.name}>
-                              {sp.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          <Plus className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                          <span>+ Add Another Student</span>
+                        </button>
+                      )}
+
+                      {form.students && form.students.length > 1 && (
+                        <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-center gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-amber-400 shrink-0" />
+                          <p className="text-[11px] text-amber-300">
+                            <strong>{form.students.length} children</strong> will be registered together under <strong>{form.customerName || "this parent"}</strong> for the same demo class slot.
+                          </p>
+                        </div>
+                      )}
                     </div>
+
+                    <hr className="border-neutral-800/80 my-3" />
 
                     <div className="space-y-1.5">
                       <label className="text-xs font-semibold text-neutral-400">Admission Confirmed</label>
@@ -2416,6 +2637,34 @@ export default function DemoSessionsPage() {
                 </button>
               </div>
               <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                 {/* Sibling Booking Banner if applicable */}
+                 {((viewingSession.siblingNames && viewingSession.siblingNames.length > 1) || (viewingSession.siblingCount && viewingSession.siblingCount > 1)) && (
+                   <div className="bg-indigo-950/30 border border-indigo-500/30 p-4 rounded-xl space-y-2">
+                     <h3 className="text-sm font-bold text-indigo-300 flex items-center gap-2">
+                       <Users className="w-4 h-4 text-indigo-400" /> Sibling Demo Booking ({viewingSession.siblingCount || viewingSession.siblingNames?.length} Students)
+                     </h3>
+                     <p className="text-xs text-neutral-300">
+                       This demo session was booked together under the same parent for multiple children.
+                     </p>
+                     {viewingSession.siblingNames && viewingSession.siblingNames.length > 0 && (
+                       <div className="flex flex-wrap gap-2 pt-1">
+                         {viewingSession.siblingNames.map((name, idx) => (
+                           <span
+                             key={idx}
+                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
+                               name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase()
+                                 ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                                 : "bg-neutral-800 text-neutral-300 border-neutral-700"
+                             }`}
+                           >
+                             {name} {name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase() && "(This Student)"}
+                           </span>
+                         ))}
+                       </div>
+                     )}
+                   </div>
+                 )}
+
                  {/* Basic Info */}
                  <div>
                    <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
