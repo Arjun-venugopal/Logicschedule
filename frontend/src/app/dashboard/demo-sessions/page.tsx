@@ -312,6 +312,11 @@ export default function DemoSessionsPage() {
     return formatTime12h(timeStr);
   };
 
+  const isAdmissionConfirmedYes = (status?: string) => {
+    const normalized = (status || "").trim().toLowerCase();
+    return normalized === "yes" || normalized === "won";
+  };
+
   const getAdmissionBadge = (status?: string) => {
     const val = status || "Pending";
     if (val === "Won" || val === "Yes") {
@@ -1404,7 +1409,7 @@ export default function DemoSessionsPage() {
                         <CheckCircle2 className="w-3.5 h-3.5 text-neutral-500" />
                         <span>Admn Status: <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>{session.admissionConfirmed || "Pending"}</span></span>
                       </div>
-                      {session.payment && (
+                      {isAdmissionConfirmedYes(session.admissionConfirmed) && session.payment && (
                         <div className="flex items-center gap-2">
                           <CreditCard className="w-3.5 h-3.5 text-neutral-500" />
                           <span>
@@ -1482,7 +1487,7 @@ export default function DemoSessionsPage() {
                             <FileText className="w-3.5 h-3.5" />
                           </button>
                         )}
-                        {(session.admissionConfirmed === "Yes" || session.admissionConfirmed === "Won" || session.status === "Completed" || session.payment) && (
+                        {isAdmissionConfirmedYes(session.admissionConfirmed) && (
                           <button
                             onClick={() => handlePaymentClick(session)}
                             className={`p-1.5 rounded-lg border transition-all ${getPaymentButtonProps(session).colorClass}`}
@@ -1598,7 +1603,7 @@ export default function DemoSessionsPage() {
                       {session.status === "Completed" && (
                         <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
                       )}
-                      {(session.admissionConfirmed === "Yes" || session.admissionConfirmed === "Won" || session.status === "Completed" || session.payment) && (
+                      {isAdmissionConfirmedYes(session.admissionConfirmed) && (
                         <button
                           onClick={() => handlePaymentClick(session)}
                           className={`p-1 rounded-md border transition-all ${getPaymentButtonProps(session).colorClass}`}
