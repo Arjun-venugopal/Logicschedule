@@ -49,6 +49,10 @@ interface PaymentAnalyticsOverviewProps {
   onNavigateToLeaderboard: () => void;
   onNavigateToPending: () => void;
   onNavigateToAll: () => void;
+  onFilterByStatus?: (status: string) => void;
+  onSelectMonthYear?: (month: number, year: number) => void;
+  selectedMonth?: number;
+  selectedYear?: number;
 }
 
 export function PaymentAnalyticsOverview({
@@ -58,6 +62,10 @@ export function PaymentAnalyticsOverview({
   onNavigateToLeaderboard,
   onNavigateToPending,
   onNavigateToAll,
+  onFilterByStatus,
+  onSelectMonthYear,
+  selectedMonth,
+  selectedYear,
 }: PaymentAnalyticsOverviewProps) {
   const totalCollected = Number(kpis.totalFeesCollected || 0);
   const pendingAmount = Number(kpis.pendingAmount || 0);
@@ -85,10 +93,16 @@ export function PaymentAnalyticsOverview({
       {/* 6 Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3.5 sm:gap-4">
         {/* 1. Total Fees Collected */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 space-y-2 relative overflow-hidden flex flex-col justify-between">
+        <div
+          onClick={() => {
+            if (onFilterByStatus) onFilterByStatus("Paid This Month");
+            onNavigateToAll();
+          }}
+          className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-emerald-500/40 cursor-pointer transition-all space-y-2 relative overflow-hidden flex flex-col justify-between group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Total Collected</span>
-            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Total Collected</span>
+            <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
@@ -120,11 +134,14 @@ export function PaymentAnalyticsOverview({
 
         {/* 2. Closings Credited This Month */}
         <div
-          onClick={onNavigateToLeaderboard}
+          onClick={() => {
+            if (onFilterByStatus) onFilterByStatus("Closed This Month");
+            onNavigateToAll();
+          }}
           className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-amber-500/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Closings Credited</span>
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Closings Credited</span>
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
               <Users className="w-4 h-4" />
             </div>
@@ -142,11 +159,14 @@ export function PaymentAnalyticsOverview({
 
         {/* 3. Balances Completed This Month */}
         <div
-          onClick={onNavigateToAll}
+          onClick={() => {
+            if (onFilterByStatus) onFilterByStatus("Balance Completed");
+            onNavigateToAll();
+          }}
           className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-emerald-500/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Balances Completed</span>
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Balances Completed</span>
             <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400 group-hover:scale-105 transition-transform">
               <CheckCircle2 className="w-4 h-4" />
             </div>
@@ -168,7 +188,7 @@ export function PaymentAnalyticsOverview({
           className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-amber-500/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Total Pending</span>
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Total Pending</span>
             <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400 group-hover:scale-105 transition-transform">
               <IndianRupee className="w-4 h-4" />
             </div>
@@ -186,11 +206,14 @@ export function PaymentAnalyticsOverview({
 
         {/* 5. Due & Overdue Amount */}
         <div
-          onClick={onNavigateToPending}
+          onClick={() => {
+            if (onFilterByStatus) onFilterByStatus("Due");
+            onNavigateToAll();
+          }}
           className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-red-500/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between group"
         >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Due / Overdue</span>
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Due / Overdue</span>
             <div className="w-8 h-8 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 group-hover:scale-105 transition-transform">
               <AlertCircle className="w-4 h-4" />
             </div>
@@ -202,15 +225,22 @@ export function PaymentAnalyticsOverview({
             <p className="text-[11px] text-red-400/90 font-medium mt-1 flex items-center gap-1">
               <Clock className="w-3 h-3" />
               {kpis.dueCount} students at due mark
+              <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-red-400" />
             </p>
           </div>
         </div>
 
         {/* 6. Total Expected Collection */}
-        <div className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 space-y-2 flex flex-col justify-between">
+        <div
+          onClick={() => {
+            if (onFilterByStatus) onFilterByStatus("All");
+            onNavigateToAll();
+          }}
+          className="p-4 sm:p-5 rounded-2xl bg-neutral-900/90 border border-neutral-800 hover:border-purple-500/40 cursor-pointer transition-all space-y-2 flex flex-col justify-between group"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-neutral-400">Expected Total</span>
-            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
+            <span className="text-xs font-semibold text-neutral-400 group-hover:text-neutral-200 transition-colors">Expected Total</span>
+            <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400 group-hover:scale-105 transition-transform">
               <Calendar className="w-4 h-4" />
             </div>
           </div>
@@ -218,8 +248,9 @@ export function PaymentAnalyticsOverview({
             <p className="text-lg sm:text-2xl font-extrabold text-purple-300">
               ₹{expectedCollection.toLocaleString("en-IN")}
             </p>
-            <p className="text-[11px] text-neutral-400 font-medium mt-1">
+            <p className="text-[11px] text-neutral-400 font-medium mt-1 flex items-center gap-1">
               {txCount} payments received
+              <ArrowUpRight className="w-3 h-3 opacity-0 group-hover:opacity-100 transition-opacity text-purple-400" />
             </p>
           </div>
         </div>
@@ -260,35 +291,39 @@ export function PaymentAnalyticsOverview({
                     ? Math.max(8, Math.round((item.collected / maxTrendCollected) * 100))
                     : 8;
                   const isCurrent = idx === monthlyTrend.length - 1;
+                  const isSelected = selectedMonth && selectedYear
+                    ? item.month === selectedMonth && item.year === selectedYear
+                    : isCurrent;
 
                   return (
                     <div
                       key={item.monthKey}
-                      className="flex-1 flex flex-col items-center h-full justify-end group relative"
+                      onClick={() => onSelectMonthYear && onSelectMonthYear(item.month, item.year)}
+                      className="flex-1 flex flex-col items-center h-full justify-end group relative cursor-pointer"
                     >
                       {/* Tooltip on hover */}
-                      <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-12 z-20 pointer-events-none bg-neutral-950 border border-neutral-700 px-2.5 py-1.5 rounded-lg shadow-xl text-center whitespace-nowrap">
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity absolute -top-14 z-20 pointer-events-none bg-neutral-950 border border-neutral-700 px-2.5 py-1.5 rounded-lg shadow-xl text-center whitespace-nowrap">
                         <span className="text-[10px] text-neutral-400 block font-medium">
                           {item.monthName}
                         </span>
                         <span className="text-xs font-bold text-emerald-400">
                           ₹{item.collected.toLocaleString("en-IN")}
                         </span>
-                        <span className="text-[10px] text-neutral-500 block">
-                          {item.txCount} payments
+                        <span className="text-[10px] text-amber-400 font-semibold block">
+                          Click to filter by this month
                         </span>
                       </div>
 
                       {/* Rupee Label above bar */}
-                      <span className="text-[10px] font-bold text-neutral-300 mb-1.5 opacity-80 group-hover:opacity-100 transition-opacity">
+                      <span className={`text-[10px] font-bold mb-1.5 transition-colors ${isSelected ? "text-amber-400 font-black" : "text-neutral-300 opacity-80 group-hover:opacity-100"}`}>
                         ₹{(item.collected / 1000).toFixed(item.collected >= 10000 ? 0 : 1)}k
                       </span>
 
                       {/* Bar */}
                       <div
-                        className={`w-full max-w-[48px] rounded-t-xl transition-all duration-300 ${
-                          isCurrent
-                            ? "bg-gradient-to-t from-emerald-600 to-emerald-400 shadow-lg shadow-emerald-500/20"
+                        className={`w-full max-w-[48px] rounded-t-xl transition-all duration-300 group-hover:scale-y-105 origin-bottom ${
+                          isSelected
+                            ? "bg-gradient-to-t from-amber-600 via-amber-500 to-amber-400 shadow-lg shadow-amber-500/25 ring-2 ring-amber-400/50"
                             : "bg-gradient-to-t from-neutral-800 to-neutral-700 group-hover:from-emerald-700/60 group-hover:to-emerald-500/60"
                         }`}
                         style={{ height: `${heightPercent}%` }}
@@ -296,8 +331,8 @@ export function PaymentAnalyticsOverview({
 
                       {/* Month label */}
                       <span
-                        className={`text-[11px] font-semibold mt-2 truncate max-w-full text-center ${
-                          isCurrent ? "text-amber-400 font-bold" : "text-neutral-400"
+                        className={`text-[11px] font-semibold mt-2 truncate max-w-full text-center transition-colors ${
+                          isSelected ? "text-amber-400 font-bold" : "text-neutral-400 group-hover:text-white"
                         }`}
                       >
                         {item.monthName}
@@ -351,36 +386,72 @@ export function PaymentAnalyticsOverview({
 
             {/* Status Breakdown List */}
             <div className="mt-5 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80">
+              <div
+                onClick={() => {
+                  if (onFilterByStatus) onFilterByStatus("Paid");
+                  onNavigateToAll();
+                }}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 hover:border-emerald-500/50 hover:bg-neutral-900 cursor-pointer transition-all group"
+              >
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                  <span className="text-neutral-300 font-medium">Fully Paid Students</span>
+                  <span className="text-neutral-300 font-medium group-hover:text-white transition-colors">Fully Paid Students</span>
                 </div>
-                <span className="font-bold text-white">{kpis.paidCount}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-white">{kpis.paidCount}</span>
+                  <ArrowUpRight className="w-3 h-3 text-neutral-500 group-hover:text-emerald-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80">
+              <div
+                onClick={() => {
+                  if (onFilterByStatus) onFilterByStatus("Partially Paid");
+                  onNavigateToAll();
+                }}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 hover:border-sky-500/50 hover:bg-neutral-900 cursor-pointer transition-all group"
+              >
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-sky-400" />
-                  <span className="text-neutral-300 font-medium">Partially Paid Students</span>
+                  <span className="text-neutral-300 font-medium group-hover:text-white transition-colors">Partially Paid Students</span>
                 </div>
-                <span className="font-bold text-sky-400">{kpis.partiallyPaidCount}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-sky-400">{kpis.partiallyPaidCount}</span>
+                  <ArrowUpRight className="w-3 h-3 text-neutral-500 group-hover:text-sky-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80">
+              <div
+                onClick={() => {
+                  if (onFilterByStatus) onFilterByStatus("Upcoming");
+                  onNavigateToAll();
+                }}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 hover:border-amber-500/50 hover:bg-neutral-900 cursor-pointer transition-all group"
+              >
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                  <span className="text-neutral-300 font-medium">Upcoming Milestone Due</span>
+                  <span className="text-neutral-300 font-medium group-hover:text-white transition-colors">Upcoming Milestone Due</span>
                 </div>
-                <span className="font-bold text-amber-400">{kpis.upcomingCount}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-amber-400">{kpis.upcomingCount}</span>
+                  <ArrowUpRight className="w-3 h-3 text-neutral-500 group-hover:text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
 
-              <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80">
+              <div
+                onClick={() => {
+                  if (onFilterByStatus) onFilterByStatus("Due");
+                  onNavigateToAll();
+                }}
+                className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 hover:border-red-500/50 hover:bg-neutral-900 cursor-pointer transition-all group"
+              >
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-                  <span className="text-neutral-300 font-medium">Overdue / Action Needed</span>
+                  <span className="text-neutral-300 font-medium group-hover:text-white transition-colors">Overdue / Action Needed</span>
                 </div>
-                <span className="font-bold text-red-400">{kpis.overdueCount}</span>
+                <div className="flex items-center gap-1.5">
+                  <span className="font-bold text-red-400">{kpis.overdueCount}</span>
+                  <ArrowUpRight className="w-3 h-3 text-neutral-500 group-hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
               </div>
             </div>
           </div>

@@ -22,6 +22,14 @@ import {
   BarChart3,
   Download,
   RotateCcw,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  Phone,
+  MessageSquare,
+  Copy,
+  Check,
+  RefreshCw,
 } from "lucide-react";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { ConfigRulesModal } from "@/components/payments/ConfigRulesModal";
@@ -99,7 +107,39 @@ export default function PaymentsPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [methodFilter, setMethodFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const { searchQuery, setSearchQuery } = useSearchStore();
+
+  // Sorting state for interactive records table
+  const [sortField, setSortField] = useState<"name" | "fee" | "paid" | "due" | "progress" | "status" | "date">("due");
+  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
+
+  // Temporary copied phone indicator
+  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
+
+  const handleCopyPhone = (phone: string) => {
+    if (!phone) return;
+    navigator.clipboard.writeText(phone);
+    setCopiedPhone(phone);
+    setTimeout(() => setCopiedPhone(null), 2000);
+  };
+
+  const handleSort = (field: "name" | "fee" | "paid" | "due" | "progress" | "status" | "date") => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortField(field);
+      setSortDirection(field === "name" ? "asc" : "desc");
+    }
+  };
+
+  // Debounce search input by 350ms to keep client input 60fps and avoid redundant backend requests
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(search.trim());
+    }, 350);
+    return () => clearTimeout(handler);
+  }, [search]);
 
   // Sync with top navbar global search query
   useEffect(() => {
@@ -119,8 +159,8 @@ export default function PaymentsPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
-  // TanStack Query to fetch payments and rich aggregation data
-  const { data, isLoading, refetch } = useQuery({
+  // TanStack Query to fetch payments with optimized staleTime, window focus guards, and placeholderData
+  const { data, isLoading, isFetching, refetch } = useQuery({
     queryKey: [
       "payments",
       timeRangeFilter,
@@ -132,7 +172,7 @@ export default function PaymentsPage() {
       salesFilter,
       statusFilter,
       methodFilter,
-      search,
+      debouncedSearch,
     ],
     queryFn: async () => {
       const params: any = {};
@@ -151,11 +191,14 @@ export default function PaymentsPage() {
       if (salesFilter !== "all") params.salesExecutive = salesFilter;
       if (statusFilter !== "All") params.status = statusFilter;
       if (methodFilter !== "all") params.paymentMethod = methodFilter;
-      if (search) params.search = search;
+      if (debouncedSearch) params.search = debouncedSearch;
 
       const res = await api.get("/payments", { params });
       return res.data;
     },
+    staleTime: 60_000, // 60s cache per CODE_OPTIMIZATION.md
+    refetchOnWindowFocus: false, // Prevents window blur/focus network waterfalls
+    placeholderData: (previousData) => previousData, // Keeps previous UI data while fetching to avoid layout flicker
     refetchInterval: 30_000,
   });
 
@@ -210,7 +253,7 @@ export default function PaymentsPage() {
 
   // Client-side quick filter on payments table
   const filteredPayments = useMemo(() => {
-    return payments.filter((item: any) => {
+    const list = payments.filter((item: any) => {
       const sName = item.student?.name || item.studentName || "";
       const sEmail = item.student?.email || item.studentEmail || item.email || "";
       const sPhone = item.student?.phone || item.student?.mobileNumber || item.student?.whatsappNumber || item.contactNumber || "";
@@ -250,7 +293,35 @@ export default function PaymentsPage() {
       if (statusFilter === "Paid This Month") return Number(item.periodCollected) > 0;
       return item.paymentStatus === statusFilter;
     });
-  }, [payments, search, salesFilter, statusFilter]);
+
+    return [...list].sort((a: any, b: any) => {
+      let comparison = 0;
+      if (sortField === "name") {
+        const aName = (a.student?.name || a.studentName || "").toLowerCase();
+        const bName = (b.student?.name || b.studentName || "").toLowerCase();
+        comparison = aName.localeCompare(bName);
+      } else if (sortField === "fee") {
+        comparison = (Number(a.totalFee) || 0) - (Number(b.totalFee) || 0);
+      } else if (sortField === "paid") {
+        comparison = (Number(a.amountPaid) || 0) - (Number(b.amountPaid) || 0);
+      } else if (sortField === "due") {
+        comparison = (Number(a.remainingAmount) || 0) - (Number(b.remainingAmount) || 0);
+      } else if (sortField === "progress") {
+        const aProg = (Number(a.completedClasses) || 0) / (Number(a.assignedClasses) || 15);
+        const bProg = (Number(b.completedClasses) || 0) / (Number(b.assignedClasses) || 15);
+        comparison = aProg - bProg;
+      } else if (sortField === "date") {
+        const aDate = a.lastPaymentDate ? new Date(a.lastPaymentDate).getTime() : 0;
+        const bDate = b.lastPaymentDate ? new Date(b.lastPaymentDate).getTime() : 0;
+        comparison = aDate - bDate;
+      } else if (sortField === "status") {
+        const aSt = a.paymentStatus || "";
+        const bSt = b.paymentStatus || "";
+        comparison = aSt.localeCompare(bSt);
+      }
+      return sortDirection === "asc" ? comparison : -comparison;
+    });
+  }, [payments, search, salesFilter, statusFilter, sortField, sortDirection]);
 
   // Filter rankings when user searches a salesperson's name
   const filteredRankings = useMemo(() => {
@@ -424,6 +495,17 @@ export default function PaymentsPage() {
     exportToCsv(`LogicBox_Pending_Receivables_${format(new Date(), "yyyyMMdd")}.csv`, headers, rows);
   };
 
+  const renderSortIcon = (field: typeof sortField) => {
+    if (sortField !== field) {
+      return <ArrowUpDown className="w-3 h-3 text-neutral-600 opacity-60" />;
+    }
+    return sortDirection === "asc" ? (
+      <ArrowUp className="w-3 h-3 text-amber-400" />
+    ) : (
+      <ArrowDown className="w-3 h-3 text-amber-400" />
+    );
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "Paid":
@@ -456,6 +538,15 @@ export default function PaymentsPage() {
         </div>
 
         <div className="flex items-center gap-2.5 self-start sm:self-auto flex-wrap">
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm disabled:opacity-50"
+            title="Refresh payment data"
+          >
+            <RefreshCw className={`w-4 h-4 text-amber-400 ${isFetching ? "animate-spin" : ""}`} />
+          </button>
+
           <button
             onClick={() => setShowConfigModal(true)}
             className="px-3.5 py-2 rounded-xl bg-neutral-900 border border-neutral-800 hover:border-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
@@ -508,11 +599,10 @@ export default function PaymentsPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as any)}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${
-                isActive
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 transition-all whitespace-nowrap ${isActive
                   ? "bg-amber-500 text-black shadow-lg shadow-amber-500/20"
                   : "bg-neutral-900 text-neutral-400 hover:text-white border border-neutral-800"
-              }`}
+                }`}
             >
               <Icon className="w-4 h-4" />
               {tab.label}
@@ -548,11 +638,10 @@ export default function PaymentsPage() {
                     setSelectedDate("");
                   }
                 }}
-                className={`px-3 py-1.5 rounded-xl font-semibold whitespace-nowrap transition-colors ${
-                  timeRangeFilter === t.id
+                className={`px-3 py-1.5 rounded-xl font-semibold whitespace-nowrap transition-colors ${timeRangeFilter === t.id
                     ? "bg-amber-500 text-black font-bold shadow-sm"
                     : "bg-neutral-800 text-neutral-400 hover:text-white"
-                }`}
+                  }`}
               >
                 {t.label}
               </button>
@@ -746,11 +835,10 @@ export default function PaymentsPage() {
                 <button
                   key={st}
                   onClick={() => setStatusFilter(st)}
-                  className={`px-2.5 py-1 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-                    statusFilter === st
+                  className={`px-2.5 py-1 rounded-lg font-semibold whitespace-nowrap transition-colors ${statusFilter === st
                       ? "bg-amber-500 text-black font-bold"
                       : "bg-neutral-850 text-neutral-400 hover:text-white"
-                  }`}
+                    }`}
                 >
                   {st}
                 </button>
@@ -758,6 +846,67 @@ export default function PaymentsPage() {
             </div>
           </div>
         </div>
+
+        {/* Row 3: Active Filters Quick Dismiss Chips */}
+        {hasActiveFilters && (
+          <div className="flex items-center gap-1.5 flex-wrap pt-2.5 border-t border-neutral-800/80 text-xs">
+            <span className="text-[11px] font-semibold text-neutral-400 flex items-center gap-1 shrink-0">
+              <Sliders className="w-3 h-3 text-amber-400" /> Active Filters:
+            </span>
+            {selectedDate && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px]">
+                Date: {selectedDate}
+                <button type="button" onClick={() => setSelectedDate("")} className="hover:text-white ml-0.5 text-xs">×</button>
+              </span>
+            )}
+            {timeRangeFilter !== "month" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px]">
+                Range: {timeRangeFilter}
+                <button type="button" onClick={() => setTimeRangeFilter("month")} className="hover:text-white ml-0.5 text-xs">×</button>
+              </span>
+            )}
+            {salesFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px]">
+                Sales: {salesFilter}
+                <button type="button" onClick={() => setSalesFilter("all")} className="hover:text-white ml-0.5 text-xs">×</button>
+              </span>
+            )}
+            {statusFilter !== "All" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px]">
+                Status: {statusFilter}
+                <button type="button" onClick={() => setStatusFilter("All")} className="hover:text-white ml-0.5 text-xs">×</button>
+              </span>
+            )}
+            {methodFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 border border-neutral-700 text-[11px]">
+                Method: {methodFilter}
+                <button type="button" onClick={() => setMethodFilter("all")} className="hover:text-white ml-0.5 text-xs">×</button>
+              </span>
+            )}
+            {search.trim() && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[11px]">
+                Search: &quot;{search.trim()}&quot;
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setSearchQuery("");
+                  }}
+                  className="hover:text-white ml-0.5 text-xs"
+                >
+                  ×
+                </button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={handleResetFilters}
+              className="text-[11px] text-neutral-400 hover:text-amber-400 underline ml-1 font-medium transition-colors"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tab 1: Monthly Overview & Collections */}
@@ -769,6 +918,18 @@ export default function PaymentsPage() {
           onNavigateToLeaderboard={() => setActiveTab("leaderboard")}
           onNavigateToPending={() => setActiveTab("pending")}
           onNavigateToAll={() => setActiveTab("records")}
+          onFilterByStatus={(st) => {
+            setStatusFilter(st);
+            setActiveTab("records");
+          }}
+          onSelectMonthYear={(m, y) => {
+            setTimeRangeFilter("month");
+            setSelectedMonth(m);
+            setSelectedYear(y);
+            setSelectedDate("");
+          }}
+          selectedMonth={selectedMonth}
+          selectedYear={selectedYear}
         />
       )}
 
@@ -827,6 +988,11 @@ export default function PaymentsPage() {
                     Closed in {selectedMonthLabel}
                   </span>
                 ) : null}
+                {isFetching && !isLoading && (
+                  <span className="text-[10px] text-amber-400 font-semibold flex items-center gap-1 animate-pulse ml-1.5">
+                    <RefreshCw className="w-3 h-3 animate-spin" /> Syncing...
+                  </span>
+                )}
               </h3>
               <p className="text-[11px] text-neutral-400 mt-0.5">
                 Class progress milestone triggers, payment records, and fee status
@@ -853,23 +1019,59 @@ export default function PaymentsPage() {
                 {search.trim()
                   ? `No payment records matched "${search.trim()}". Check spelling or clear search filters.`
                   : selectedDate
-                  ? `No student admissions were closed on ${selectedMonthLabel}.`
-                  : timeRangeFilter === "month" && selectedMonth > 0
-                  ? `No student admissions were closed in ${selectedMonthLabel}.`
-                  : "Confirmed demo admissions or manually added fees matching filters will appear here."}
+                    ? `No student admissions were closed on ${selectedMonthLabel}.`
+                    : timeRangeFilter === "month" && selectedMonth > 0
+                      ? `No student admissions were closed in ${selectedMonthLabel}.`
+                      : "Confirmed demo admissions or manually added fees matching filters will appear here."}
               </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse text-xs sm:text-sm">
                 <thead>
-                  <tr className="border-b border-neutral-800 bg-neutral-950/60 text-neutral-400 text-[11px] uppercase tracking-wider font-semibold">
-                    <th className="px-4 py-3.5">Student</th>
+                  <tr className="border-b border-neutral-800 bg-neutral-950/60 text-neutral-400 text-[11px] uppercase tracking-wider font-semibold select-none">
+                    <th
+                      onClick={() => handleSort("name")}
+                      className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors"
+                      title="Sort by student name"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Student</span>
+                        {renderSortIcon("name")}
+                      </div>
+                    </th>
                     <th className="px-4 py-3.5">Course / Batch</th>
                     <th className="px-4 py-3.5">Closed By</th>
-                    <th className="px-4 py-3.5">Fee Overview</th>
-                    <th className="px-4 py-3.5">Class Progress & Due Trigger</th>
-                    <th className="px-4 py-3.5">Status</th>
+                    <th
+                      onClick={() => handleSort("fee")}
+                      className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors"
+                      title="Sort by fee / balance"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Fee Overview</span>
+                        {renderSortIcon("fee")}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort("progress")}
+                      className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors"
+                      title="Sort by class progress"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Class Progress & Due Trigger</span>
+                        {renderSortIcon("progress")}
+                      </div>
+                    </th>
+                    <th
+                      onClick={() => handleSort("status")}
+                      className="px-4 py-3.5 cursor-pointer hover:text-white transition-colors"
+                      title="Sort by payment status"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span>Status</span>
+                        {renderSortIcon("status")}
+                      </div>
+                    </th>
                     <th className="px-4 py-3.5 text-right">Actions</th>
                   </tr>
                 </thead>
@@ -877,6 +1079,7 @@ export default function PaymentsPage() {
                   {filteredPayments.map((p: any) => {
                     const studentName = p.student?.name || p.studentName || "Student";
                     const studentPhone = p.student?.phone || p.student?.mobileNumber || "";
+                    const cleanPhone = String(studentPhone || "").replace(/\D/g, "");
                     const courseName = p.batch?.subject || p.batch?.name || p.courseName || "Course";
                     const closedByPerson = p.closedBy || p.salesExecutive || "Direct / Admin";
                     const total = Number(p.totalFee) || 0;
@@ -901,8 +1104,36 @@ export default function PaymentsPage() {
                             {studentName}
                           </div>
                           {studentPhone && (
-                            <div className="text-[11px] text-neutral-400 mt-0.5">
-                              {studentPhone}
+                            <div className="text-[11px] text-neutral-400 mt-0.5 flex items-center gap-1.5">
+                              <span className="font-mono text-neutral-300">{studentPhone}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyPhone(studentPhone)}
+                                className="p-0.5 text-neutral-500 hover:text-white rounded transition-colors"
+                                title={copiedPhone === studentPhone ? "Copied!" : "Copy Phone Number"}
+                              >
+                                {copiedPhone === studentPhone ? (
+                                  <Check className="w-3 h-3 text-emerald-400" />
+                                ) : (
+                                  <Copy className="w-3 h-3" />
+                                )}
+                              </button>
+                              {cleanPhone.length >= 10 && remaining > 0 && (
+                                <a
+                                  href={`https://wa.me/${cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone
+                                    }?text=${encodeURIComponent(
+                                      `Hello, this is regarding ${studentName}'s classes. A gentle reminder regarding the remaining course fee balance of ₹${remaining.toLocaleString(
+                                        "en-IN"
+                                      )}. Please let us know if you need any assistance!`
+                                    )}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="p-0.5 text-emerald-400/80 hover:text-emerald-300 transition-colors"
+                                  title="Send WhatsApp Fee Reminder"
+                                >
+                                  <MessageSquare className="w-3 h-3" />
+                                </a>
+                              )}
                             </div>
                           )}
                           <span className="text-[10px] text-neutral-500 font-medium">
@@ -929,11 +1160,10 @@ export default function PaymentsPage() {
                           <div className="flex items-center gap-1 mt-1 flex-wrap">
                             {p.closingMonth && (
                               <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  p.isClosedInPeriod
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.isClosedInPeriod
                                     ? "bg-amber-500/15 text-amber-300 border border-amber-500/30"
                                     : "bg-neutral-800 text-neutral-400"
-                                }`}
+                                  }`}
                                 title={`Admission closing credited to ${p.closingMonth}`}
                               >
                                 Closed: {p.closingMonth}
@@ -941,11 +1171,10 @@ export default function PaymentsPage() {
                             )}
                             {p.balanceCompletedMonth ? (
                               <span
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                  p.isBalanceCompletedInPeriod
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${p.isBalanceCompletedInPeriod
                                     ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30"
                                     : "bg-neutral-800 text-emerald-400/80"
-                                }`}
+                                  }`}
                                 title={`Full balance settlement completed in ${p.balanceCompletedMonth}`}
                               >
                                 Settled: {p.balanceCompletedMonth}
@@ -1022,13 +1251,12 @@ export default function PaymentsPage() {
                             )}`}
                           >
                             <span
-                              className={`w-1.5 h-1.5 rounded-full ${
-                                p.paymentStatus === "Paid"
+                              className={`w-1.5 h-1.5 rounded-full ${p.paymentStatus === "Paid"
                                   ? "bg-emerald-400"
                                   : p.paymentStatus === "Due" || p.paymentStatus === "Overdue"
-                                  ? "bg-red-400"
-                                  : "bg-amber-400"
-                              }`}
+                                    ? "bg-red-400"
+                                    : "bg-amber-400"
+                                }`}
                             />
                             {p.paymentStatus}
                           </span>
@@ -1183,7 +1411,7 @@ export default function PaymentsPage() {
                       ₹{Math.max(
                         0,
                         Number(selectedPaymentForHistory.totalFee || 0) -
-                          Number(selectedPaymentForHistory.amountPaid || 0)
+                        Number(selectedPaymentForHistory.amountPaid || 0)
                       ).toLocaleString("en-IN")}
                     </span>
                   </div>
@@ -1234,7 +1462,7 @@ export default function PaymentsPage() {
                   </h4>
 
                   {!selectedPaymentForHistory.paymentHistory ||
-                  selectedPaymentForHistory.paymentHistory.length === 0 ? (
+                    selectedPaymentForHistory.paymentHistory.length === 0 ? (
                     <p className="text-xs text-neutral-500 py-4 text-center">
                       No transactions recorded yet.
                     </p>

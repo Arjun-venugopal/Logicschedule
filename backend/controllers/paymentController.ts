@@ -376,19 +376,28 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
 // @access  Private
 export const getPayments = async (req: Request, res: Response): Promise<void> => {
   try {
-    const rawPayments = await Payment.safeFind({});
-    const students = await Student.find({});
-    const batches = await Batch.find({});
-    const completedSchedules = await Schedule.find({ status: 'Completed' });
-    const demoSessions = await DemoSession.find({});
-
-    let salesUsers: any[] = [];
-    try {
-      const { data } = await getSupabase().from('users').select('name').eq('role', 'Sales Person');
-      salesUsers = data || [];
-    } catch {
-      // ignore
+    const cacheKey = `payments_list_${JSON.stringify(req.query)}`;
+    const cachedResponse = serverCache.get(cacheKey);
+    if (cachedResponse) {
+      res.json(cachedResponse);
+      return;
     }
+
+    const [rawPayments, students, batches, completedSchedules, demoSessions, salesUsers] = await Promise.all([
+      Payment.safeFind({}),
+      Student.find({}),
+      Batch.find({}),
+      Schedule.find({ status: 'Completed' }).select('_id batch status'),
+      DemoSession.find({}),
+      (async () => {
+        try {
+          const { data } = await getSupabase().from('users').select('name').eq('role', 'Sales Person');
+          return data || [];
+        } catch {
+          return [];
+        }
+      })(),
+    ]);
 
     // Filter query parameters
     const timeRange = ((req.query.timeRange as string) || 'all').toLowerCase(); // 'all' | 'today' | 'day' | 'week' | 'month' | 'custom'
@@ -1083,7 +1092,7 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
       targetMonthKey,
     };
 
-    res.json({
+    const resultPayload = {
       payments: processedPayments,
       kpis: kpisData,
       filteredKpis: kpisData,
@@ -1096,7 +1105,10 @@ export const getPayments = async (req: Request, res: Response): Promise<void> =>
       monthlyTrend,
       salesExecutives: Array.from(salesExecutivesSet).filter(Boolean).sort(),
       rules: getPaymentConfig(),
-    });
+    };
+
+    serverCache.set(cacheKey, resultPayload, 30_000);
+    res.json(resultPayload);
   } catch (error: any) {
     console.error('Get payments error:', error);
     res.status(500).json({ message: error.message || 'Error fetching payments' });
