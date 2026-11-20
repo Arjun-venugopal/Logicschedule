@@ -77,9 +77,11 @@ type ScheduleEntry = {
   rescheduleEndTime?: string;
   isExtraClass?: boolean;
   extraClassReason?: string;
+  sessionNumber?: number;
   nextExtraClassStartTime?: string;
   nextExtraClassEndTime?: string;
   nextExtraClassDate?: string;
+  syncBatchTiming?: boolean;
 };
 
 type PopulatedScheduleEntry = {
@@ -93,6 +95,7 @@ type PopulatedScheduleEntry = {
   meetingLink?: string;
   subject?: string;
   notes?: string;
+  sessionNumber?: number;
   attendance?: { studentId: any; isPresent: boolean; date?: string; notes?: string }[];
   cancellationReason?: string;
   rescheduleDate?: string;
@@ -103,6 +106,7 @@ type PopulatedScheduleEntry = {
   nextExtraClassStartTime?: string;
   nextExtraClassEndTime?: string;
   nextExtraClassDate?: string;
+  syncBatchTiming?: boolean;
 };
 
 const emptyForm = (): ScheduleEntry => ({
@@ -125,6 +129,7 @@ const emptyForm = (): ScheduleEntry => ({
   nextExtraClassStartTime: "09:00",
   nextExtraClassEndTime: "10:00",
   nextExtraClassDate: "",
+  syncBatchTiming: true,
 });
 
 export default function SchedulePage() {
@@ -170,11 +175,11 @@ export default function SchedulePage() {
   }
 
   // Queries with caching and background fetch prevention
-  const { 
-    data: schedules = [], 
-    isLoading: isLoadingSchedules, 
-    isError: isErrorSchedules, 
-    refetch: refetchSchedules 
+  const {
+    data: schedules = [],
+    isLoading: isLoadingSchedules,
+    isError: isErrorSchedules,
+    refetch: refetchSchedules
   } = useQuery<PopulatedScheduleEntry[]>({
     queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
@@ -216,6 +221,8 @@ export default function SchedulePage() {
     mutationFn: (data: ScheduleEntry) => api.post("/schedules", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["my-performance"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       closeModal();
@@ -226,6 +233,8 @@ export default function SchedulePage() {
     mutationFn: ({ id, data }: { id: string; data: ScheduleEntry }) => api.put(`/schedules/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["my-performance"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       closeModal();
@@ -288,7 +297,7 @@ export default function SchedulePage() {
             try {
               const p = new Date(match[1]);
               if (!isNaN(p.getTime())) return format(p, "yyyy-MM-dd");
-            } catch {}
+            } catch { }
           }
         }
         return "";
@@ -300,6 +309,7 @@ export default function SchedulePage() {
       nextExtraClassStartTime: s.nextExtraClassStartTime || s.startTime || "09:00",
       nextExtraClassEndTime: s.nextExtraClassEndTime || s.endTime || "10:00",
       nextExtraClassDate: s.nextExtraClassDate ? (typeof s.nextExtraClassDate === "string" ? s.nextExtraClassDate.split("T")[0] : "") : "",
+      syncBatchTiming: true,
     });
     setEditingId(s._id);
     setModal({ open: true, mode: "edit" });
@@ -348,8 +358,8 @@ export default function SchedulePage() {
         const cancelledAttendance = activeStudents.length > 0
           ? activeStudents.map((st: any) => ({ studentId: st._id, isPresent: false }))
           : (effectiveForm.attendance?.map((a: any) => ({ ...a, isPresent: false })) || []);
-        const updateData = { 
-          ...effectiveForm, 
+        const updateData = {
+          ...effectiveForm,
           cancellationReason: reasonText,
           notes: effectiveForm.notes ? (effectiveForm.notes.includes(notesSuffix) ? effectiveForm.notes : `${notesSuffix}\n\n${effectiveForm.notes}`) : notesSuffix,
           attendance: cancelledAttendance
@@ -357,8 +367,8 @@ export default function SchedulePage() {
         updateSchedule.mutate({ id: editingId, data: updateData });
       } else if (effectiveForm.status === "Rescheduled" && effectiveForm.rescheduleDate && effectiveForm.rescheduleStartTime && effectiveForm.rescheduleEndTime) {
         const notesSuffix = `Rescheduled to ${format(parseISO(effectiveForm.rescheduleDate), "MMM d, yyyy")} ${effectiveForm.rescheduleStartTime}-${effectiveForm.rescheduleEndTime}.${effectiveForm.cancellationReason ? ` Reason: ${effectiveForm.cancellationReason}` : ''}`;
-        const updateData = { 
-          ...effectiveForm, 
+        const updateData = {
+          ...effectiveForm,
           rescheduleDate: effectiveForm.rescheduleDate,
           rescheduleStartTime: effectiveForm.rescheduleStartTime,
           rescheduleEndTime: effectiveForm.rescheduleEndTime,
@@ -383,12 +393,12 @@ export default function SchedulePage() {
       } else if (effectiveForm.status === "Completed") {
         const resolvedAttendance = activeStudents.length > 0
           ? activeStudents.map((st: any) => {
-              const existing = effectiveForm.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
-              return {
-                studentId: st._id,
-                isPresent: existing !== undefined ? existing.isPresent : true
-              };
-            })
+            const existing = effectiveForm.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
+            return {
+              studentId: st._id,
+              isPresent: existing !== undefined ? existing.isPresent : true
+            };
+          })
           : (effectiveForm.attendance || []);
         updateSchedule.mutate({ id: editingId, data: { ...effectiveForm, attendance: resolvedAttendance } });
       } else {
@@ -576,11 +586,10 @@ export default function SchedulePage() {
               <button
                 key={mode}
                 onClick={() => setViewMode(mode)}
-                className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg capitalize transition-all cursor-pointer ${
-                  viewMode === mode 
-                    ? "bg-neutral-800 text-white shadow-sm" 
-                    : "text-neutral-500 hover:text-white hover:bg-neutral-800/50"
-                }`}
+                className={`px-2.5 sm:px-4 py-1 sm:py-1.5 text-[11px] sm:text-xs font-semibold rounded-lg capitalize transition-all cursor-pointer ${viewMode === mode
+                  ? "bg-neutral-800 text-white shadow-sm"
+                  : "text-neutral-500 hover:text-white hover:bg-neutral-800/50"
+                  }`}
               >
                 {mode}
               </button>
@@ -599,11 +608,11 @@ export default function SchedulePage() {
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="px-2 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium text-white border-x border-neutral-800 min-w-[105px] sm:min-w-[130px] text-center truncate">
-              {viewMode === "day" 
-                ? format(currentDate, "MMM d, yyyy") 
+              {viewMode === "day"
+                ? format(currentDate, "MMM d, yyyy")
                 : viewMode === "week"
-                ? `${format(startDate, "MMM d")} – ${format(addDays(startDate, 6), "MMM d")}`
-                : format(currentDate, "MMMM yyyy")}
+                  ? `${format(startDate, "MMM d")} – ${format(addDays(startDate, 6), "MMM d")}`
+                  : format(currentDate, "MMMM yyyy")}
             </span>
             <button
               onClick={() => {
@@ -705,10 +714,10 @@ export default function SchedulePage() {
                   const isToday = isSameDay(dayDate, new Date());
                   const isCurrentMonth = isSameMonth(dayDate, currentDate);
                   const dayEvents = getEventsForDay(dayDate);
-                  
+
                   return (
-                    <div 
-                      key={i} 
+                    <div
+                      key={i}
                       className={`border-b border-r border-neutral-800/40 p-1.5 md:p-2 flex flex-col group cursor-pointer hover:bg-neutral-800/40 transition-colors ${isCurrentMonth ? 'bg-transparent' : 'bg-neutral-950/50'}`}
                       onClick={() => {
                         if (hasWriteAccess || isTeacher) openCreate(format(dayDate, "yyyy-MM-dd"));
@@ -730,7 +739,7 @@ export default function SchedulePage() {
                           const color = getEventColor(event);
                           const rescheduledInfo = isRescheduled ? getRescheduledTargetInfo(event) : null;
                           return (
-                            <div 
+                            <div
                               key={event._id}
                               onClick={(e) => { e.stopPropagation(); openEdit(event); }}
                               className={`px-2 py-1.5 rounded-lg border border-transparent hover:border-current ${color.bg} border-l-2 ${color.border} cursor-pointer hover:brightness-110 transition-all`}
@@ -746,6 +755,11 @@ export default function SchedulePage() {
                                   {event.teacher?.name}
                                 </div>
                                 <div className="flex items-center gap-1 shrink-0">
+                                  {event.sessionNumber && (
+                                    <span className="text-[8px] px-1 py-0.2 rounded font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                      #{event.sessionNumber}
+                                    </span>
+                                  )}
                                   {event.isExtraClass && (
                                     <span className="text-[8px] px-1 py-0.2 rounded font-bold bg-purple-500/30 text-purple-200 border border-purple-500/40">
                                       ⭐ Extra Class
@@ -795,9 +809,8 @@ export default function SchedulePage() {
                         {format(date, "EEE")}
                       </div>
                       <div
-                        className={`text-sm font-bold inline-flex items-center justify-center w-7 h-7 rounded-full mx-auto ${
-                          isToday ? "brand-gradient text-black" : "text-neutral-300"
-                        }`}
+                        className={`text-sm font-bold inline-flex items-center justify-center w-7 h-7 rounded-full mx-auto ${isToday ? "brand-gradient text-black" : "text-neutral-300"
+                          }`}
                       >
                         {format(date, "d")}
                       </div>
@@ -805,7 +818,7 @@ export default function SchedulePage() {
                   );
                 })}
               </div>
-  
+
               {/* Time Rows */}
               <div className="flex-1 overflow-y-auto">
                 {HOURS.map((hour) => (
@@ -816,154 +829,159 @@ export default function SchedulePage() {
                   >
                     {/* Hour label */}
                     <div className="p-2 text-center text-[10px] text-neutral-600 font-medium pt-2.5 border-r border-neutral-800/40 sticky left-0 bg-neutral-900 z-10">
-                    {hour >= 12
-                      ? `${hour === 12 ? 12 : hour - 12}:00 PM`
-                      : `${hour}:00 AM`}
-                  </div>
+                      {hour >= 12
+                        ? `${hour === 12 ? 12 : hour - 12}:00 PM`
+                        : `${hour}:00 AM`}
+                    </div>
 
-                  {calendarDays.map((dayDate, dayIdx) => {
-                    const events = getEventsForCell(dayDate, hour);
-                    return (
-                      <div
-                        key={dayIdx}
-                        className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer min-h-[76px]"
-                        onClick={() => {
-                          if (events.length === 0 && (hasWriteAccess || isTeacher)) openCreate(format(dayDate, "yyyy-MM-dd"));
-                        }}
-                      >
-                        {events.length > 0 ? (
-                          <div className="h-full flex flex-col gap-1 overflow-y-auto custom-scrollbar">
-                            {events.map((event) => {
-                              const isRescheduled = event.status === "Rescheduled";
-                              const color = getEventColor(event);
-                              const rescheduledInfo = isRescheduled ? getRescheduledTargetInfo(event) : null;
-                              return (
-                                <motion.div
-                                  key={event._id}
-                                  initial={{ opacity: 0, scale: 0.96 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  className={`relative rounded-xl border ${color.bg} ${color.border} p-2 overflow-hidden group/item cursor-default shadow-sm`}
-                                >
-                                  {/* Event content */}
-                                  <div className="flex items-center justify-between gap-1">
-                                    <span className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
-                                      {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
-                                    </span>
-                                    <div className="flex items-center gap-1 shrink-0">
-                                      {event.isExtraClass && (
-                                        <span className="text-[8px] px-1 py-0.5 rounded font-bold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40">
-                                          ⭐ Extra Class {event.startTime && event.endTime ? `(${event.startTime}–${event.endTime})` : ""}
-                                        </span>
-                                      )}
-                                      {event.status === "Completed" ? (
-                                        <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
-                                          ✓ Completed{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
-                                        </span>
-                                      ) : event.status === "Cancelled" ? (
-                                        <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
-                                          ✕ Cancelled
-                                        </span>
-                                      ) : isRescheduled ? (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40 flex items-center gap-1">
-                                          <Clock className="w-2.5 h-2.5 text-purple-300" /> Rescheduled
-                                        </span>
-                                      ) : null}
-                                    </div>
-                                  </div>
-
-                                  <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
-                                    {event.teacher?.name || (typeof event.teacher === "string" ? event.teacher : "Teacher")}
-                                  </div>
-
-                                  {/* Distinct banner marking the scheduled day for rescheduled classes */}
-                                  {isRescheduled && rescheduledInfo && (
-                                    <div className="mt-1 px-2 py-1 rounded-lg bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-200 font-medium flex items-center gap-1.5 shadow-sm">
-                                      <Clock className="w-3 h-3 text-purple-400 shrink-0" />
-                                      <span className="truncate">
-                                        <strong className="text-purple-100 font-semibold">{rescheduledInfo.targetText}</strong>
+                    {calendarDays.map((dayDate, dayIdx) => {
+                      const events = getEventsForCell(dayDate, hour);
+                      return (
+                        <div
+                          key={dayIdx}
+                          className="border-l border-neutral-800/40 relative p-1 hover:bg-neutral-800/20 transition-colors group cursor-pointer min-h-[76px]"
+                          onClick={() => {
+                            if (events.length === 0 && (hasWriteAccess || isTeacher)) openCreate(format(dayDate, "yyyy-MM-dd"));
+                          }}
+                        >
+                          {events.length > 0 ? (
+                            <div className="h-full flex flex-col gap-1 overflow-y-auto custom-scrollbar">
+                              {events.map((event) => {
+                                const isRescheduled = event.status === "Rescheduled";
+                                const color = getEventColor(event);
+                                const rescheduledInfo = isRescheduled ? getRescheduledTargetInfo(event) : null;
+                                return (
+                                  <motion.div
+                                    key={event._id}
+                                    initial={{ opacity: 0, scale: 0.96 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    className={`relative rounded-xl border ${color.bg} ${color.border} p-2 overflow-hidden group/item cursor-default shadow-sm`}
+                                  >
+                                    {/* Event content */}
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className={`text-[11px] font-bold truncate leading-tight ${color.text}`}>
+                                        {event.batch?.name || (typeof event.batch === "string" ? event.batch : "Class")}
                                       </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        {event.sessionNumber && (
+                                          <span className="text-[8px] px-1 py-0.5 rounded font-bold shrink-0 bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                            Class #{event.sessionNumber}
+                                          </span>
+                                        )}
+                                        {event.isExtraClass && (
+                                          <span className="text-[8px] px-1 py-0.5 rounded font-bold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40">
+                                            ⭐ Extra Class {event.startTime && event.endTime ? `(${event.startTime}–${event.endTime})` : ""}
+                                          </span>
+                                        )}
+                                        {event.status === "Completed" ? (
+                                          <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-emerald-500/30 text-emerald-300 border border-emerald-500/40">
+                                            ✓ Completed{event.attendance && event.attendance.length > 0 ? ` (${event.attendance.filter((a: any) => a.isPresent).length}/${event.attendance.length} P)` : ''}
+                                          </span>
+                                        ) : event.status === "Cancelled" ? (
+                                          <span className="text-[8px] px-1 py-0.5 rounded font-semibold shrink-0 bg-red-500/30 text-red-300">
+                                            ✕ Cancelled
+                                          </span>
+                                        ) : isRescheduled ? (
+                                          <span className="text-[8px] px-1.5 py-0.5 rounded font-semibold shrink-0 bg-purple-500/30 text-purple-200 border border-purple-500/40 flex items-center gap-1">
+                                            <Clock className="w-2.5 h-2.5 text-purple-300" /> Rescheduled
+                                          </span>
+                                        ) : null}
+                                      </div>
                                     </div>
-                                  )}
 
-                                  {/* Mark indicator on the newly scheduled class on the target day */}
-                                  {!isRescheduled && event.notes && event.notes.startsWith("Rescheduled from") && (
-                                    <div className="mt-1 px-2 py-0.5 rounded bg-neutral-800/80 border border-neutral-700/80 text-[9px] text-amber-300/90 font-medium flex items-center gap-1">
-                                      <Clock className="w-2.5 h-2.5 shrink-0 text-amber-400" />
-                                      <span className="truncate">{event.notes.split(".")[0]}</span>
+                                    <div className={`text-[10px] truncate opacity-70 ${color.text} mt-0.5`}>
+                                      {event.teacher?.name || (typeof event.teacher === "string" ? event.teacher : "Teacher")}
                                     </div>
-                                  )}
 
-                                  {event.subject && (
-                                    <div className="text-[9px] truncate font-medium border border-amber-500/20 px-1 py-0.5 rounded bg-black/30 text-amber-300 inline-block mt-0.5 max-w-full">
-                                      Topic: {event.subject}
-                                    </div>
-                                  )}
-
-                                  <div className={`text-[9px] truncate opacity-50 ${color.text} mt-0.5`}>
-                                    {event.startTime} – {event.endTime}
-                                  </div>
-
-                                  {/* Action buttons (hover) */}
-                                  <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
-                                    {event.meetingLink && (
-                                      <a
-                                        href={event.meetingLink}
-                                        target="_blank"
-                                        rel="noreferrer"
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="p-1 rounded bg-blue-500/30 hover:bg-blue-500/50 transition-colors"
-                                        title="Join Meeting"
-                                      >
-                                        <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
-                                      </a>
+                                    {/* Distinct banner marking the scheduled day for rescheduled classes */}
+                                    {isRescheduled && rescheduledInfo && (
+                                      <div className="mt-1 px-2 py-1 rounded-lg bg-purple-950/70 border border-purple-500/40 text-[10px] text-purple-200 font-medium flex items-center gap-1.5 shadow-sm">
+                                        <Clock className="w-3 h-3 text-purple-400 shrink-0" />
+                                        <span className="truncate">
+                                          <strong className="text-purple-100 font-semibold">{rescheduledInfo.targetText}</strong>
+                                        </span>
+                                      </div>
                                     )}
-                                    {canEditSchedule(event) && (
-                                      <>
-                                        {event.status === "Completed" && (
+
+                                    {/* Mark indicator on the newly scheduled class on the target day */}
+                                    {!isRescheduled && event.notes && event.notes.startsWith("Rescheduled from") && (
+                                      <div className="mt-1 px-2 py-0.5 rounded bg-neutral-800/80 border border-neutral-700/80 text-[9px] text-amber-300/90 font-medium flex items-center gap-1">
+                                        <Clock className="w-2.5 h-2.5 shrink-0 text-amber-400" />
+                                        <span className="truncate">{event.notes.split(".")[0]}</span>
+                                      </div>
+                                    )}
+
+                                    {event.subject && (
+                                      <div className="text-[9px] truncate font-medium border border-amber-500/20 px-1 py-0.5 rounded bg-black/30 text-amber-300 inline-block mt-0.5 max-w-full">
+                                        Topic: {event.subject}
+                                      </div>
+                                    )}
+
+                                    <div className={`text-[9px] truncate opacity-50 ${color.text} mt-0.5`}>
+                                      {event.startTime} – {event.endTime}
+                                    </div>
+
+                                    {/* Action buttons (hover) */}
+                                    <div className="absolute bottom-1 right-1 flex gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity">
+                                      {event.meetingLink && (
+                                        <a
+                                          href={event.meetingLink}
+                                          target="_blank"
+                                          rel="noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="p-1 rounded bg-blue-500/30 hover:bg-blue-500/50 transition-colors"
+                                          title="Join Meeting"
+                                        >
+                                          <LinkIcon className="w-2.5 h-2.5 text-blue-300" />
+                                        </a>
+                                      )}
+                                      {canEditSchedule(event) && (
+                                        <>
+                                          {event.status === "Completed" && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); openEdit(event); }}
+                                              className="p-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 transition-colors"
+                                              title="View / Edit Attendance"
+                                            >
+                                              <Users className="w-2.5 h-2.5 text-emerald-300" />
+                                            </button>
+                                          )}
                                           <button
                                             onClick={(e) => { e.stopPropagation(); openEdit(event); }}
-                                            className="p-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 transition-colors"
-                                            title="View / Edit Attendance"
+                                            className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
+                                            title={isTeacher ? "Add session notes / topic" : "Edit Class"}
                                           >
-                                            <Users className="w-2.5 h-2.5 text-emerald-300" />
+                                            <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
                                           </button>
-                                        )}
-                                        <button
-                                          onClick={(e) => { e.stopPropagation(); openEdit(event); }}
-                                          className="p-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-                                          title={isTeacher ? "Add session notes / topic" : "Edit Class"}
-                                        >
-                                          <Edit2 className={`w-2.5 h-2.5 ${color.text}`} />
-                                        </button>
-                                        {!isTeacher && (
-                                          <button
-                                            onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
-                                            className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
-                                          >
-                                            <Trash2 className="w-2.5 h-2.5 text-red-300" />
-                                          </button>
-                                        )}
-                                      </>
-                                    )}
-                                  </div>
-                                </motion.div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          !isTeacher && hasWriteAccess && (
-                            <div className="absolute inset-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity border border-dashed border-neutral-700 flex items-center justify-center">
-                              <Plus className="w-3.5 h-3.5 text-neutral-600" />
+                                          {!isTeacher && (
+                                            <button
+                                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(event._id); }}
+                                              className="p-1 rounded bg-red-500/20 hover:bg-red-500/40 transition-colors"
+                                            >
+                                              <Trash2 className="w-2.5 h-2.5 text-red-300" />
+                                            </button>
+                                          )}
+                                        </>
+                                      )}
+                                    </div>
+                                  </motion.div>
+                                );
+                              })}
                             </div>
-                          )
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+                          ) : (
+                            !isTeacher && hasWriteAccess && (
+                              <div className="absolute inset-1 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity border border-dashed border-neutral-700 flex items-center justify-center">
+                                <Plus className="w-3.5 h-3.5 text-neutral-600" />
+                              </div>
+                            )
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
           </div>
         )}
       </div>
@@ -1035,7 +1053,7 @@ export default function SchedulePage() {
                       <h3 className="text-xs font-bold text-neutral-500 uppercase tracking-wider flex items-center gap-2 border-b border-neutral-800 pb-2">
                         <Info className="w-4 h-4" /> Assignment Details
                       </h3>
-                      
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         {/* Teacher */}
                         <div className="space-y-1.5">
@@ -1147,6 +1165,22 @@ export default function SchedulePage() {
                             className="w-full bg-neutral-800/50 border border-neutral-700 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-amber-500 transition-colors"
                           />
                         </div>
+
+                        {modal.mode === "edit" && Boolean(form.batch) && !isTeacher && (
+                          <div className="sm:col-span-3 mt-1 p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2.5">
+                            <input
+                              type="checkbox"
+                              id="syncBatchTiming"
+                              checked={form.syncBatchTiming ?? true}
+                              onChange={(e) => setForm({ ...form, syncBatchTiming: e.target.checked })}
+                              className="mt-0.5 rounded border-neutral-700 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                            />
+                            <label htmlFor="syncBatchTiming" className="text-xs text-neutral-300 cursor-pointer select-none">
+                              <span className="font-semibold text-white block">Sync new time with batch and all upcoming sessions</span>
+                              <span className="text-[11px] text-neutral-400">Maintains one single source of truth: updates batch timing and synchronizes all upcoming classes on the calendar.</span>
+                            </label>
+                          </div>
+                        )}
                       </div>
                     </div>
                   </>
@@ -1181,13 +1215,12 @@ export default function SchedulePage() {
                             }
                             setForm({ ...form, status: newStatus, attendance: newAttendance });
                           }}
-                          className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm appearance-none focus:outline-none transition-colors ${
-                            form.status === "Scheduled" ? "text-amber-400 border-amber-500/30" :
+                          className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm appearance-none focus:outline-none transition-colors ${form.status === "Scheduled" ? "text-amber-400 border-amber-500/30" :
                             form.status === "Completed" ? "text-emerald-400 border-emerald-500/30" :
-                            form.status === "Cancelled" ? "text-red-400 border-red-500/30" :
-                            form.status === "Rescheduled" ? "text-purple-400 border-purple-500/30" :
-                            "text-white border-neutral-700"
-                          }`}
+                              form.status === "Cancelled" ? "text-red-400 border-red-500/30" :
+                                form.status === "Rescheduled" ? "text-purple-400 border-purple-500/30" :
+                                  "text-white border-neutral-700"
+                            }`}
                         >
                           {STATUS_OPTIONS.map((s) => {
                             const todayStr = format(new Date(), "yyyy-MM-dd");
@@ -1215,7 +1248,7 @@ export default function SchedulePage() {
                       <h4 className="text-xs font-bold text-red-400 uppercase tracking-wider flex items-center gap-2">
                         <AlertTriangle className="w-4 h-4" /> Cancellation Reason
                       </h4>
-                      
+
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">
                           Reason for Cancellation <span className="text-red-400">*</span>
@@ -1251,7 +1284,7 @@ export default function SchedulePage() {
                           </span>
                         )}
                       </div>
-                      
+
                       <div className="space-y-1.5">
                         <label className="text-xs font-semibold text-neutral-400">Reason (Optional)</label>
                         <input
@@ -1422,11 +1455,10 @@ export default function SchedulePage() {
                         setForm({ ...form, subject: e.target.value });
                         if (formError) setFormError(null);
                       }}
-                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 ${
-                        (isTeacher || form.status === "Completed") && !form.subject?.trim() && formError
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-neutral-700 focus:border-amber-500"
-                      }`}
+                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 ${(isTeacher || form.status === "Completed") && !form.subject?.trim() && formError
+                        ? "border-red-500 focus:border-red-500"
+                        : "border-neutral-700 focus:border-amber-500"
+                        }`}
                     />
                     {(isTeacher || form.status === "Completed") && !form.subject?.trim() && formError && (
                       <p className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
@@ -1462,11 +1494,10 @@ export default function SchedulePage() {
                         setForm({ ...form, notes: e.target.value });
                         if (formError) setFormError(null);
                       }}
-                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 resize-none ${
-                        form.status === "Completed" && !form.notes?.trim() && formError
-                          ? "border-red-500 focus:border-red-500"
-                          : "border-neutral-700 focus:border-amber-500"
-                      }`}
+                      className={`w-full bg-neutral-800/50 border rounded-xl px-3 py-2.5 text-sm text-white focus:outline-none transition-colors placeholder:text-neutral-600 resize-none ${form.status === "Completed" && !form.notes?.trim() && formError
+                        ? "border-red-500 focus:border-red-500"
+                        : "border-neutral-700 focus:border-amber-500"
+                        }`}
                     />
                     {form.status === "Completed" && !form.notes?.trim() && formError && (
                       <p className="text-[11px] text-red-400 flex items-center gap-1 mt-1">
@@ -1504,11 +1535,10 @@ export default function SchedulePage() {
                         return (
                           <label
                             key={student._id}
-                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${
-                              isPresent
-                                ? "bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15"
-                                : "bg-red-500/5 border-red-500/20 opacity-90 hover:bg-red-500/10"
-                            }`}
+                            className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer transition-all ${isPresent
+                              ? "bg-emerald-500/10 border-emerald-500/30 hover:bg-emerald-500/15"
+                              : "bg-red-500/5 border-red-500/20 opacity-90 hover:bg-red-500/10"
+                              }`}
                           >
                             <div className="flex items-center gap-3">
                               <input
@@ -1530,9 +1560,8 @@ export default function SchedulePage() {
                                 )}
                               </div>
                             </div>
-                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${
-                              isPresent ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"
-                            }`}>
+                            <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-md ${isPresent ? "text-emerald-400 bg-emerald-500/10" : "text-red-400 bg-red-500/10"
+                              }`}>
                               {isPresent ? "Present" : "Absent"}
                             </span>
                           </label>

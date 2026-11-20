@@ -252,8 +252,11 @@ export default function BatchesPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       closeModal();
+      setSuccessMessage("Batch timing and schedule calendar synchronized successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -503,8 +506,8 @@ export default function BatchesPage() {
         <div
           onClick={() => setFilterStatus("")}
           className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === ""
-              ? "border-amber-500/50 ring-1 ring-amber-500/30 bg-amber-500/5 shadow-lg shadow-amber-500/10"
-              : "border-neutral-800 hover:border-amber-500/30"
+            ? "border-amber-500/50 ring-1 ring-amber-500/30 bg-amber-500/5 shadow-lg shadow-amber-500/10"
+            : "border-neutral-800 hover:border-amber-500/30"
             }`}
           title="Click to view all batches"
         >
@@ -530,8 +533,8 @@ export default function BatchesPage() {
         <div
           onClick={() => setFilterStatus(filterStatus === "Ongoing" ? "" : "Ongoing")}
           className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Ongoing"
-              ? "border-emerald-500/50 ring-1 ring-emerald-500/30 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
-              : "border-neutral-800 hover:border-emerald-500/30"
+            ? "border-emerald-500/50 ring-1 ring-emerald-500/30 bg-emerald-500/5 shadow-lg shadow-emerald-500/10"
+            : "border-neutral-800 hover:border-emerald-500/30"
             }`}
           title="Click to filter by Ongoing batches"
         >
@@ -557,8 +560,8 @@ export default function BatchesPage() {
         <div
           onClick={() => setFilterStatus(filterStatus === "Completed" ? "" : "Completed")}
           className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Completed"
-              ? "border-teal-500/50 ring-1 ring-teal-500/30 bg-teal-500/5 shadow-lg shadow-teal-500/10"
-              : "border-neutral-800 hover:border-teal-500/30"
+            ? "border-teal-500/50 ring-1 ring-teal-500/30 bg-teal-500/5 shadow-lg shadow-teal-500/10"
+            : "border-neutral-800 hover:border-teal-500/30"
             }`}
           title="Click to filter by Completed batches"
         >
@@ -584,8 +587,8 @@ export default function BatchesPage() {
         <div
           onClick={() => setFilterStatus(filterStatus === "Upcoming" ? "" : "Upcoming")}
           className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Upcoming"
-              ? "border-blue-500/50 ring-1 ring-blue-500/30 bg-blue-500/5 shadow-lg shadow-blue-500/10"
-              : "border-neutral-800 hover:border-blue-500/30"
+            ? "border-blue-500/50 ring-1 ring-blue-500/30 bg-blue-500/5 shadow-lg shadow-blue-500/10"
+            : "border-neutral-800 hover:border-blue-500/30"
             }`}
           title="Click to filter by Upcoming batches"
         >
@@ -611,8 +614,8 @@ export default function BatchesPage() {
         <div
           onClick={() => setFilterStatus(filterStatus === "Dropped" ? "" : "Dropped")}
           className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Dropped"
-              ? "border-rose-500/50 ring-1 ring-rose-500/30 bg-rose-500/5 shadow-lg shadow-rose-500/10"
-              : "border-neutral-800 hover:border-rose-500/30"
+            ? "border-rose-500/50 ring-1 ring-rose-500/30 bg-rose-500/5 shadow-lg shadow-rose-500/10"
+            : "border-neutral-800 hover:border-rose-500/30"
             }`}
           title="Click to filter by Dropped / Cancelled batches"
         >
@@ -731,8 +734,8 @@ export default function BatchesPage() {
                 transition={{ delay: i * 0.06 }}
                 onClick={() => setAnalyticsBatchId(batch._id)}
                 className={`bg-neutral-900 border rounded-2xl p-5 flex flex-col gap-4 cursor-pointer transition-colors relative overflow-hidden ${isCompleted
-                    ? "border-emerald-500/40 hover:border-emerald-400 shadow-lg shadow-emerald-950/20"
-                    : "border-neutral-800 hover:border-amber-500/50"
+                  ? "border-emerald-500/40 hover:border-emerald-400 shadow-lg shadow-emerald-950/20"
+                  : "border-neutral-800 hover:border-amber-500/50"
                   }`}
               >
                 {/* Top Accent bar for completed batches */}
@@ -873,8 +876,8 @@ export default function BatchesPage() {
                       <span
                         key={d}
                         className={`text-[10px] px-2 py-0.5 rounded-md font-medium border ${batch.days.includes(d)
-                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                            : "bg-transparent text-neutral-700 border-neutral-800"
+                          ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                          : "bg-transparent text-neutral-700 border-neutral-800"
                           }`}
                       >
                         {d.slice(0, 3)}
@@ -980,8 +983,8 @@ export default function BatchesPage() {
                             else if (!current.includes(tag)) setForm({ ...form, subject: `${current} - ${tag}` });
                           }}
                           className={`text-[10px] px-2 py-0.5 rounded-md border font-medium transition-all ${form.subject.includes(tag)
-                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold"
-                              : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-600"
+                            ? "bg-amber-500/20 text-amber-300 border-amber-500/40 font-bold"
+                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-600"
                             }`}
                         >
                           + {tag}
@@ -1152,8 +1155,8 @@ export default function BatchesPage() {
                         type="button"
                         onClick={() => setForm({ ...form, status: s.value })}
                         className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all text-center ${form.status === s.value || (s.value === "Active" && form.status === "Ongoing") || (s.value === "Dropped" && form.status === "Cancelled")
-                            ? STATUS_COLORS[s.value] || STATUS_COLORS.Upcoming
-                            : "bg-neutral-800 text-neutral-600 border-neutral-700 hover:border-neutral-500"
+                          ? STATUS_COLORS[s.value] || STATUS_COLORS.Upcoming
+                          : "bg-neutral-800 text-neutral-600 border-neutral-700 hover:border-neutral-500"
                           }`}
                       >
                         {s.label}
@@ -1183,8 +1186,8 @@ export default function BatchesPage() {
                           type="button"
                           onClick={() => toggleDay(day)}
                           className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all flex items-center gap-1.5 ${isSelected
-                              ? "brand-gradient text-black border-transparent shadow-sm shadow-amber-500/20"
-                              : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
+                            ? "brand-gradient text-black border-transparent shadow-sm shadow-amber-500/20"
+                            : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:border-neutral-500"
                             }`}
                         >
                           {isSelected && <Check className="w-3 h-3 stroke-[2.5]" />}
@@ -1217,8 +1220,8 @@ export default function BatchesPage() {
                             }));
                           }}
                           className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${form.timeMode === "same"
-                              ? "brand-gradient text-black shadow-sm"
-                              : "text-neutral-400 hover:text-white"
+                            ? "brand-gradient text-black shadow-sm"
+                            : "text-neutral-400 hover:text-white"
                             }`}
                         >
                           <Clock className="w-3.5 h-3.5" />
@@ -1245,8 +1248,8 @@ export default function BatchesPage() {
                             });
                           }}
                           className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${form.timeMode === "different"
-                              ? "brand-gradient text-black shadow-sm"
-                              : "text-neutral-400 hover:text-white"
+                            ? "brand-gradient text-black shadow-sm"
+                            : "text-neutral-400 hover:text-white"
                             }`}
                         >
                           <Sliders className="w-3.5 h-3.5" />
@@ -1357,6 +1360,11 @@ export default function BatchesPage() {
                         </div>
                       </div>
                     )}
+
+                    <p className="text-[11px] text-amber-400/90 flex items-center gap-1.5 pt-1.5 border-t border-neutral-800">
+                      <span>⏱️</span>
+                      <span>Adjusting class start time automatically synchronizes all upcoming classes on the schedule calendar.</span>
+                    </p>
                   </div>
                 )}
 
@@ -1388,17 +1396,17 @@ export default function BatchesPage() {
                           <div
                             key={item.classNumber}
                             className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs border transition-all ${item.status === "Completed"
-                                ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
-                                : item.isToday
-                                  ? "bg-amber-500/10 border-amber-500/30 text-white"
-                                  : "bg-neutral-800/60 border-neutral-700/60 text-neutral-300"
+                              ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
+                              : item.isToday
+                                ? "bg-amber-500/10 border-amber-500/30 text-white"
+                                : "bg-neutral-800/60 border-neutral-700/60 text-neutral-300"
                               }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
                               <span
                                 className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${item.status === "Completed"
-                                    ? "bg-emerald-500/20 text-emerald-300"
-                                    : "bg-neutral-700 text-neutral-300"
+                                  ? "bg-emerald-500/20 text-emerald-300"
+                                  : "bg-neutral-700 text-neutral-300"
                                   }`}
                               >
                                 Class {item.classNumber}
@@ -1417,8 +1425,8 @@ export default function BatchesPage() {
                               </span>
                               <span
                                 className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${item.status === "Completed"
-                                    ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
-                                    : "bg-blue-500/10 text-blue-400 border-blue-500/30"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                                  : "bg-blue-500/10 text-blue-400 border-blue-500/30"
                                   }`}
                               >
                                 {item.status === "Completed" ? "Completed" : "Upcoming"}

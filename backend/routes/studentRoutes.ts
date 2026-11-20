@@ -11,6 +11,7 @@ import {
   deleteStudent,
   submitProjectSubmission,
   deleteProjectSubmission,
+  correctStudentProgress,
 } from '../controllers/studentController';
 import { protect, permissionCheck } from '../middleware/authMiddleware';
 
@@ -24,6 +25,7 @@ router.post('/', protect, permissionCheck('students', 'write'), createStudent);
 router.get('/:id', protect, getStudentById);
 router.put('/:id', protect, permissionCheck('students', 'write'), updateStudent);
 router.post('/:id/advance-level', protect, permissionCheck('students', 'write'), advanceStudentLevel);
+router.post('/:id/correct-progress', protect, permissionCheck('students', 'write'), correctStudentProgress);
 router.delete('/:id', protect, permissionCheck('students', 'write'), deleteStudent);
 
 // Project Link Submission by Teacher or Admin

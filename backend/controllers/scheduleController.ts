@@ -6,7 +6,7 @@ import Student from '../models/Student';
 import RecycleBin from '../models/RecycleBin';
 import { checkIntervalConflict, checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
-import { normalizeDateOnlyToUtc } from './batchController';
+import { normalizeDateOnlyToUtc, computeEndTime, getSlotTimingForDay } from './batchController';
 import { resolveScheduleAttendance } from '../utils/attendanceHelper';
 
 // @desc    Get all schedules
@@ -63,7 +63,7 @@ export const getSchedules = async (req: any, res: Response) => {
         .populate('replacementTeacher', 'name email');
     }
 
-// Filter out dropped students from regular schedules according to requirements:
+    // Filter out dropped students from regular schedules according to requirements:
     // - Do not display dropped students in daily or weekly schedules
     // - Remove them from upcoming class lists
     // - Preserve their previous attendance and class history for admin reference
@@ -304,7 +304,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
     if (schedule) {
       const isAdmin = req.user.role === 'Admin' || req.user.role === 'Super Admin' || req.user.role === 'Sub Admin';
       let isAssignedTeacher = false;
-      
+
       const teacherProfile = await Teacher.findOne({ user: req.user._id });
       if (teacherProfile) {
         const schedTeacherId = (schedule.teacher?._id || schedule.teacher)?.toString();
@@ -355,6 +355,9 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         }
       }
 
+      const prevStartTime = schedule.startTime;
+      const prevEndTime = schedule.endTime;
+
       if (isAdmin) {
         schedule.teacher = req.body.teacher || schedule.teacher;
         schedule.batch = req.body.batch || schedule.batch;
@@ -377,6 +380,53 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
         if (req.body.nextExtraClassStartTime !== undefined) (schedule as any).nextExtraClassStartTime = req.body.nextExtraClassStartTime;
         if (req.body.nextExtraClassEndTime !== undefined) (schedule as any).nextExtraClassEndTime = req.body.nextExtraClassEndTime;
         if (req.body.nextExtraClassDate !== undefined) (schedule as any).nextExtraClassDate = req.body.nextExtraClassDate;
+
+        // Synchronize batch timing & upcoming sessions when class timing is adjusted
+        const timeChanged = (req.body.startTime && req.body.startTime !== prevStartTime) || (req.body.endTime && req.body.endTime !== prevEndTime);
+        const shouldSyncBatchTiming = Boolean(schedule.batch) && (
+          req.body.syncBatchTiming === true ||
+          (req.body.syncBatchTiming !== false && timeChanged)
+        );
+
+        if (shouldSyncBatchTiming) {
+          try {
+            const batchId = schedule.batch?._id ? schedule.batch._id : schedule.batch;
+            const batch = await Batch.findById(batchId.toString());
+            if (batch) {
+              const newStart = schedule.startTime;
+              const newEnd = schedule.endTime || computeEndTime(newStart, 60);
+
+              // Maintain single source of truth for batch timings
+              const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+              const schedDate = new Date(schedule.date);
+              const dayName = dayNames[schedDate.getUTCDay()];
+
+              if (batch.timeMode === 'different' && batch.dayTimings && typeof batch.dayTimings === 'object') {
+                batch.dayTimings[dayName] = { startTime: newStart, endTime: newEnd };
+              }
+              batch.timing = { startTime: newStart, endTime: newEnd };
+              await batch.save();
+
+              // Synchronize all upcoming scheduled sessions for this batch
+              const allBatchScheds = await Schedule.find({ batch: batch._id, status: 'Scheduled' });
+              for (const bs of allBatchScheds) {
+                if (bs._id.toString() === schedule._id.toString()) continue;
+                const bsDateStr = normalizeDateOnlyToUtc(bs.date)?.toISOString().split('T')[0];
+                // Requirement 6: Do not change past attendance records or completed class history
+                if (!bsDateStr || bsDateStr < kolkata.todayStr) continue;
+                if (Array.isArray(bs.attendance) && bs.attendance.some((a: { isPresent: undefined; }) => a.isPresent !== undefined)) continue;
+
+                const slotTiming = getSlotTimingForDay(batch, bs.date);
+                bs.startTime = slotTiming.startTime;
+                bs.endTime = slotTiming.endTime;
+                await bs.save();
+              }
+              console.log(`⏱️ Synced schedule time change (${newStart}) to batch "${batch.name}" and upcoming sessions.`);
+            }
+          } catch (bSyncErr) {
+            console.warn('[updateSchedule] Error syncing batch timing:', bSyncErr);
+          }
+        }
       } else {
         // Teacher edits: allowed to change status, subject, completed class note (notes), meetingLink, attendance, cancellationReason, isExtraClass, timings
         if (req.body.startTime !== undefined) schedule.startTime = req.body.startTime;
@@ -423,7 +473,7 @@ export const updateSchedule = async (req: any, res: Response): Promise<void> => 
             const cTeacherId = schedule.completedBy._id ? schedule.completedBy._id : schedule.completedBy;
             const cTeacher = await Teacher.findById(cTeacherId).populate('user', 'name');
             schedule.completedByName = cTeacher?.name || cTeacher?.user?.name || 'Teacher';
-          } catch {}
+          } catch { }
         }
         (schedule as any).completedAt = (schedule as any).completedAt || new Date().toISOString();
       }

@@ -11,7 +11,7 @@ import { checkIntervalConflict, getKolkataNow } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // Day name → JS getUTCDay() index
-const DAY_INDEX: Record<string, number> = {
+export const DAY_INDEX: Record<string, number> = {
   sunday: 0, monday: 1, tuesday: 2, wednesday: 3,
   thursday: 4, friday: 5, saturday: 6,
   Sunday: 0, Monday: 1, Tuesday: 2, Wednesday: 3,
@@ -152,6 +152,20 @@ export async function generateSchedulesForBatch(
   const schedulesToCreate: any[] = [];
   const neededCompleted = Math.max(0, preCompletedClasses - existingCompletedCount);
 
+  // Remove any stale unconducted Scheduled classes from the past that have no attendance
+  // so they do not block upcoming target sessions from being scheduled!
+  const stalePastScheduled = existingSchedules.filter((s: any) => {
+    if (s.status !== 'Scheduled') return false;
+    const dStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
+    if (!dStr || dStr >= kolkata.todayStr) return false;
+    const hasAttendance = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent);
+    return !hasAttendance;
+  });
+  if (stalePastScheduled.length > 0) {
+    const staleIds = stalePastScheduled.map((s: any) => s._id);
+    await Schedule.deleteMany({ _id: { $in: staleIds } });
+  }
+
   // Generate calendar schedules starting strictly from Start Date forward (Requirements 3 & 4)
   // 1. Never schedule classes before the batch Start Date.
   // 2. Classes on or after Start Date whose scheduled date/time have passed become Completed up to neededCompleted.
@@ -159,7 +173,11 @@ export async function generateSchedulesForBatch(
   const forwardCursor = new Date(cursor.getTime());
   let forwardDaysScanned = 0;
   let completedCreated = 0;
-  let scheduledCount = existingSchedules.filter((s: any) => s.status === 'Scheduled').length;
+  let scheduledCount = existingSchedules.filter((s: any) => {
+    if (s.status !== 'Scheduled') return false;
+    const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
+    return Boolean(sDateStr && sDateStr >= kolkata.todayStr);
+  }).length;
   const maxScanDays = 400;
 
   while (forwardDaysScanned < maxScanDays) {
@@ -170,11 +188,25 @@ export async function generateSchedulesForBatch(
       break;
     }
 
+    // Once needed completed sessions are satisfied, jump forward to today if cursor was in the past
+    // so upcoming classes are scheduled strictly from today forward, never in the past!
+    if (completedCreated >= neededCompleted && forwardCursor.getTime() < todayUtc.getTime()) {
+      forwardCursor.setTime(todayUtc.getTime());
+    }
+
+    const dateKey = forwardCursor.toISOString().split('T')[0];
+
+    // If date is in the past and needed completed classes are already satisfied, skip to next day
+    if (dateKey < kolkata.todayStr && completedCreated >= neededCompleted) {
+      forwardCursor.setUTCDate(forwardCursor.getUTCDate() + 1);
+      forwardDaysScanned++;
+      continue;
+    }
+
     if (selectedDayIndexes.has(forwardCursor.getUTCDay())) {
       const forwardTime = forwardCursor.getTime();
 
       if (!existingTimes.has(forwardTime)) {
-        const dateKey = forwardCursor.toISOString().split('T')[0];
         const daySlots = teacherSlotsByDate.get(dateKey) || [];
         const slotTiming = getSlotTimingForDay(batch, forwardTime);
         const isConflict = checkIntervalConflict(daySlots, {
@@ -200,6 +232,7 @@ export async function generateSchedulesForBatch(
             startTime: slotTiming.startTime,
             endTime: slotTiming.endTime,
             status: 'Completed',
+            sessionNumber: existingCompletedCount + completedCreated + 1,
             conflict: isConflict,
             meetingLink: meetingLink || '',
             notes: 'Auto-generated as Completed (Classes Already Completed)',
@@ -216,6 +249,7 @@ export async function generateSchedulesForBatch(
           teacherSlotsByDate.set(dateKey, daySlots);
           completedCreated++;
         } else {
+          const sessionNum = existingCompletedCount + completedCreated + scheduledCount + 1;
           const newSlot = {
             _id: `sched_${_id}_${dateKey}_${(slotTiming.startTime || '09:00').replace(':', '')}`,
             teacher: teacherId || undefined,
@@ -224,9 +258,10 @@ export async function generateSchedulesForBatch(
             startTime: slotTiming.startTime,
             endTime: slotTiming.endTime,
             status: 'Scheduled',
+            sessionNumber: sessionNum,
             conflict: isConflict,
             meetingLink: meetingLink || '',
-            notes: 'Auto-generated for batch',
+            notes: targetSessions > 0 ? `Class ${sessionNum} of ${targetSessions}` : 'Auto-generated for batch',
             attendance: batchStudentIds.map((sId) => ({
               studentId: sId,
               isPresent: false,
@@ -645,16 +680,89 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     }
 
     const canGenerateSchedules = Boolean(updated.startDate && updated.days?.length && hasTiming);
-    const shouldRegenerate = datesChanged || (canGenerateSchedules && existingFutureCount === 0);
+    const onlyTimingChanged = timingChanged && !daysChanged && !startDateChanged && !sessionsChanged;
 
-    if (shouldRegenerate && canGenerateSchedules) {
-      // Delete ONLY scheduled classes (preserving all historical attendance and completed records!)
-      await Schedule.deleteMany({
-        batch: updated._id,
-        status: 'Scheduled',
-      });
+    if (onlyTimingChanged && canGenerateSchedules) {
+      // 1. In-place update of all upcoming Scheduled sessions for this batch
+      // Fetch teacher's other events to calculate conflicts in O(1)
+      const activeTeacherId = targetTeacherStr || '';
+      const teacherSlotsByDate = new Map<string, any[]>();
+      if (activeTeacherId) {
+        const [tScheds, tDemos] = await Promise.all([
+          Schedule.find({ teacher: activeTeacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch _id'),
+          DemoSession.find({ teacher: activeTeacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
+        ]);
+        for (const item of [...tScheds, ...tDemos]) {
+          if (!item.date || !item.startTime || !item.endTime) continue;
+          const dStr = normalizeDateOnlyToUtc(item.date)?.toISOString().split('T')[0];
+          if (!dStr) continue;
+          let list = teacherSlotsByDate.get(dStr);
+          if (!list) {
+            list = [];
+            teacherSlotsByDate.set(dStr, list);
+          }
+          list.push(item);
+        }
+      }
+
+      const allBatchSchedules = await Schedule.find({ batch: updated._id });
+      let syncedCount = 0;
+      for (const s of allBatchSchedules) {
+        const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
+        // Requirement 6: Do not change past attendance records or completed class history
+        if (!sDateStr || sDateStr < kolkata.todayStr) continue;
+        if (s.status !== 'Scheduled') continue;
+        // If today's class has already been marked with attendance, leave it untouched
+        if (sDateStr === kolkata.todayStr && Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined)) {
+          continue;
+        }
+
+        const slotTiming = getSlotTimingForDay(updated, s.date);
+        s.startTime = slotTiming.startTime;
+        s.endTime = slotTiming.endTime;
+        if (teacherChanged) {
+          s.teacher = targetTeacher;
+        }
+
+        // Recalculate conflict for this schedule against teacher's other slots
+        const daySlots = (teacherSlotsByDate.get(sDateStr) || []).filter(
+          (item: any) => item._id?.toString() !== s._id?.toString()
+        );
+        s.conflict = checkIntervalConflict(daySlots, {
+          startTime: s.startTime,
+          endTime: s.endTime,
+        });
+
+        await s.save();
+        syncedCount++;
+      }
+      console.log(`⏱️ Automatically synced new timing to ${syncedCount} upcoming session(s) for batch "${updated.name}"`);
+
+      // If there were no upcoming schedules at all, auto-generate remaining needed
+      if (existingFutureCount === 0) {
+        const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+        console.log(`🔄 Auto-scheduled ${generated} class(es) for batch "${updated.name}"`);
+      }
+    } else if (datesChanged && canGenerateSchedules) {
+      // Days or start date changed: remove ONLY upcoming uncompleted sessions and regenerate
+      const existingAll = await Schedule.find({ batch: updated._id });
+      const upcomingIdsToDelete: string[] = [];
+      for (const s of existingAll) {
+        const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
+        const isUpcoming = sDateStr && sDateStr >= kolkata.todayStr;
+        const hasAttendance = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined);
+        if (s.status === 'Scheduled' && isUpcoming && !hasAttendance) {
+          upcomingIdsToDelete.push(s._id.toString());
+        }
+      }
+      if (upcomingIdsToDelete.length > 0) {
+        await Schedule.deleteMany({ _id: { $in: upcomingIdsToDelete } });
+      }
       const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
       console.log(`🔄 Auto-scheduled/regenerated ${generated} class(es) for batch "${updated.name}"`);
+    } else if (canGenerateSchedules && existingFutureCount === 0) {
+      const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+      console.log(`🔄 Auto-scheduled ${generated} class(es) for batch "${updated.name}"`);
     } else if (teacherChanged) {
       // If dates/timings didn't change, surgically update teacher on all upcoming scheduled slots
       const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });

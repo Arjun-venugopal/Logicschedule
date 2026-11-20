@@ -5,11 +5,12 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { X, User, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles, Sliders } from "lucide-react";
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 import { ProjectSubmissionsSection } from "./ProjectSubmissionsSection";
+import { SuccessToast } from "@/components/common/SuccessToast";
 import { extractLevel } from "@/lib/utils";
 
 function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback = "Session"): string {
@@ -71,6 +72,17 @@ export function StudentDetailsModal({
   const [reassignReason, setReassignReason] = useState("");
   const [reassignError, setReassignError] = useState("");
   const [expandedScheduleRowId, setExpandedScheduleRowId] = useState<string | null>(null);
+
+  // Class Progress Correction State
+  const [showEditProgressModal, setShowEditProgressModal] = useState(false);
+  const [progressTotalSessions, setProgressTotalSessions] = useState<number>(25);
+  const [progressCompletedSessions, setProgressCompletedSessions] = useState<number>(0);
+  const [progressNextSessionNumber, setProgressNextSessionNumber] = useState<number>(1);
+  const [progressNextClassDate, setProgressNextClassDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
+  const [progressNextClassStartTime, setProgressNextClassStartTime] = useState<string>("09:00");
+  const [progressNextClassEndTime, setProgressNextClassEndTime] = useState<string>("10:00");
+  const [progressError, setProgressError] = useState<string>("");
+  const [successToastMessage, setSuccessToastMessage] = useState<string | null>(null);
 
   const { data: student, isLoading } = useQuery({
     queryKey: ["student", studentId],
@@ -433,6 +445,93 @@ const updateStatusMutation = useMutation({
   const ringOffset = ringCircumference - (attendancePercentage / 100) * ringCircumference;
   const ringColor = attendancePercentage >= 75 ? "text-emerald-500" : attendancePercentage >= 50 ? "text-amber-500" : "text-red-500";
 
+  const handleOpenEditProgressModal = () => {
+    setProgressError("");
+    const total = currentClassesNeeded || 25;
+    const completed = currentCompletedCount || 0;
+    const nextNum = completed + 1;
+    setProgressTotalSessions(total);
+    setProgressCompletedSessions(completed);
+    setProgressNextSessionNumber(nextNum);
+
+    // Find next upcoming scheduled class on or after today
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    const upcomingSched = currentBatchSchedules.find((s: any) => {
+      if (s.status !== "Scheduled" || !s.date) return false;
+      const dStr = format(new Date(s.date), "yyyy-MM-dd");
+      return dStr >= todayStr;
+    });
+
+    if (upcomingSched && upcomingSched.date) {
+      setProgressNextClassDate(format(new Date(upcomingSched.date), "yyyy-MM-dd"));
+      setProgressNextClassStartTime(upcomingSched.startTime || student?.batch?.timing?.startTime || "09:00");
+      setProgressNextClassEndTime(upcomingSched.endTime || student?.batch?.timing?.endTime || "10:00");
+    } else {
+      setProgressNextClassDate(todayStr);
+      setProgressNextClassStartTime(student?.batch?.timing?.startTime || "09:00");
+      setProgressNextClassEndTime(student?.batch?.timing?.endTime || "10:00");
+    }
+
+    setShowEditProgressModal(true);
+  };
+
+  const handleCompletedSessionsChange = (val: number) => {
+    const clamped = Math.max(0, val);
+    setProgressCompletedSessions(clamped);
+    setProgressNextSessionNumber(clamped + 1);
+  };
+
+  const correctProgressMutation = useMutation({
+    mutationFn: async (payload: {
+      totalSessions: number;
+      completedSessions: number;
+      nextSessionNumber: number;
+      nextClassDate: string;
+      nextClassStartTime: string;
+      nextClassEndTime: string;
+    }) => {
+      return (await api.post(`/students/${studentId}/correct-progress`, payload)).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      setShowEditProgressModal(false);
+      setSuccessToastMessage("Class progress and schedule updated successfully!");
+    },
+    onError: (err: any) => {
+      setProgressError(err.response?.data?.message || err.message || "Failed to update class progress");
+    },
+  });
+
+  const handleSubmitProgressCorrection = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setProgressError("");
+    if (!progressTotalSessions || progressTotalSessions < 1) {
+      setProgressError("Total course sessions must be at least 1.");
+      return;
+    }
+    if (!progressNextClassDate) {
+      setProgressError("Please select the next class date.");
+      return;
+    }
+    if (!progressNextClassStartTime) {
+      setProgressError("Please select the next class start time.");
+      return;
+    }
+
+    correctProgressMutation.mutate({
+      totalSessions: Number(progressTotalSessions),
+      completedSessions: Number(progressCompletedSessions),
+      nextSessionNumber: Number(progressNextSessionNumber),
+      nextClassDate: progressNextClassDate,
+      nextClassStartTime: progressNextClassStartTime,
+      nextClassEndTime: progressNextClassEndTime || "10:00",
+    });
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6 md:p-8">
       {/* Backdrop */}
@@ -523,13 +622,24 @@ const updateStatusMutation = useMutation({
                 </>
               )}
               {student.batch && (
-                <button
-                  onClick={handleOpenNextCourseModal}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
-                >
-                  <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
-                  Move to Next Level
-                </button>
+                <>
+                  <button
+                    type="button"
+                    onClick={handleOpenEditProgressModal}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold transition-all shadow-sm shadow-amber-500/10 cursor-pointer"
+                    title="Edit total sessions, completed sessions, and next class schedule"
+                  >
+                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
+                    Edit Class Progress
+                  </button>
+                  <button
+                    onClick={handleOpenNextCourseModal}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
+                  >
+                    <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
+                    Move to Next Level
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -816,14 +926,27 @@ const updateStatusMutation = useMutation({
                             )}
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={handleOpenScheduleExtraClass}
-                            className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm shadow-purple-600/30 transition-all hover:scale-105"
-                          >
-                            <Sparkles className="w-3 h-3" />
-                            <span>+ Schedule Extra Class</span>
-                          </button>
+                          <div className="flex items-center gap-2">
+                            {student.batch && (
+                              <button
+                                type="button"
+                                onClick={handleOpenEditProgressModal}
+                                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 cursor-pointer"
+                                title="Edit class progress and regenerate timetable"
+                              >
+                                <Sliders className="w-3 h-3 text-amber-400" />
+                                <span>Edit Class Progress</span>
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={handleOpenScheduleExtraClass}
+                              className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm shadow-purple-600/30 transition-all hover:scale-105"
+                            >
+                              <Sparkles className="w-3 h-3" />
+                              <span>+ Schedule Extra Class</span>
+                            </button>
+                          </div>
                         </div>
 
                         {expandedLevels.current && (
@@ -885,7 +1008,7 @@ const updateStatusMutation = useMutation({
                                       <tbody className="divide-y divide-neutral-800/60">
                                         {currentBatchSchedules.map((cls: any, cIdx: number) => {
                                           if (!cls.isExtraClass) regIndex++;
-                                          const classLabel = cls.isExtraClass ? "Extra Class" : `Class ${regIndex}`;
+                                          const classLabel = cls.isExtraClass ? "Extra Class" : (cls.sessionNumber ? `Class ${cls.sessionNumber}` : `Class ${regIndex}`);
                                           const isCompleted = cls.status === "Completed";
                                           const isCancelled = cls.status === "Cancelled";
                                           const isExpandedRow = expandedScheduleRowId === (cls._id || String(cIdx));
@@ -2308,6 +2431,230 @@ const updateStatusMutation = useMutation({
             </motion.div>
           </div>
         )}
+
+        {/* Admin Class Progress Correction Modal */}
+        {showEditProgressModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-neutral-900 border border-amber-500/30 rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative space-y-4 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            >
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center">
+                    <Sliders className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">Edit Class Progress</h3>
+                    <p className="text-xs text-neutral-400">Admin timetable & session correction for {student.name}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowEditProgressModal(false)}
+                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {progressError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-xs text-red-400">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{progressError}</span>
+                </div>
+              )}
+
+              {/* Informational Callout */}
+              <div className="bg-amber-500/10 border border-amber-500/25 rounded-xl p-3 flex items-start gap-2.5">
+                <AlertCircle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-200/90 leading-relaxed">
+                  <strong>Admin Source of Truth:</strong> Setting completed sessions and next class date automatically recalculates and regenerates all remaining sessions along the assigned weekly class days (<strong className="text-white">{student.batch?.days?.join(", ") || "Assigned Days"}</strong>). All historical completed classes and attendance records are strictly preserved.
+                </div>
+              </div>
+
+              {/* Course Progress Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Total Course Sessions */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Total Course Sessions
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={progressTotalSessions}
+                    onChange={(e) => setProgressTotalSessions(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                    placeholder="e.g. 25"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Full course session target</span>
+                </div>
+
+                {/* Completed Sessions */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Completed Sessions
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={progressTotalSessions}
+                    value={progressCompletedSessions}
+                    onChange={(e) => handleCompletedSessionsChange(Number(e.target.value))}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                    placeholder="e.g. 17"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Sessions completed to date</span>
+                </div>
+              </div>
+
+              {/* Next Session Details */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Next Session Number */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Next Session Number
+                  </label>
+                  <input
+                    type="number"
+                    min={1}
+                    value={progressNextSessionNumber}
+                    onChange={(e) => setProgressNextSessionNumber(Math.max(1, Number(e.target.value) || 1))}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                    placeholder="e.g. 18"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Number for upcoming class</span>
+                </div>
+
+                {/* Next Class Date */}
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Next Class Date
+                  </label>
+                  <input
+                    type="date"
+                    value={progressNextClassDate}
+                    onChange={(e) => setProgressNextClassDate(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3.5 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                  />
+                  <span className="text-[10px] text-neutral-500 mt-1 block">Date for next session</span>
+                </div>
+              </div>
+
+              {/* Timings */}
+              <div>
+                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
+                  <span className="flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Next Class Timings</span>
+                  </span>
+                  <span className="text-[10px] text-amber-400 font-medium">Start & End</span>
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">Start Time</span>
+                    <input
+                      type="time"
+                      value={progressNextClassStartTime}
+                      onChange={(e) => {
+                        setProgressNextClassStartTime(e.target.value);
+                        const [h, m] = e.target.value.split(":").map(Number);
+                        if (!isNaN(h)) {
+                          const endH = (h + 1) % 24;
+                          setProgressNextClassEndTime(`${String(endH).padStart(2, "0")}:${String(m || 0).padStart(2, "0")}`);
+                        }
+                      }}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-neutral-400 block mb-1">End Time</span>
+                    <input
+                      type="time"
+                      value={progressNextClassEndTime}
+                      onChange={(e) => setProgressNextClassEndTime(e.target.value)}
+                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-amber-500 transition-all font-mono"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Dynamic Live Preview Box */}
+              <div className="bg-neutral-950/70 border border-neutral-800 rounded-xl p-3.5 space-y-2">
+                <div className="flex items-center justify-between text-[11px] font-bold text-neutral-300 border-b border-neutral-800/80 pb-1.5">
+                  <span className="flex items-center gap-1 text-amber-400">
+                    <Calendar className="w-3.5 h-3.5" />
+                    Dynamic Timetable Regeneration Preview
+                  </span>
+                  <span className="text-neutral-400 font-normal">
+                    Batch: <strong className="text-white">{student.batch?.name || "Active Batch"}</strong>
+                  </span>
+                </div>
+                <div className="space-y-1.5 text-xs text-neutral-300 pt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-400">Course Progress:</span>
+                    <span className="font-semibold text-emerald-400">
+                      {progressCompletedSessions} of {progressTotalSessions} completed ({progressTotalSessions > 0 ? Math.min(100, Math.round((progressCompletedSessions / progressTotalSessions) * 100)) : 0}%)
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-400">Next Scheduled Class:</span>
+                    <span className="font-semibold text-white">
+                      Class #{progressNextSessionNumber} on {safeFormatDate(progressNextClassDate, "dd MMM yyyy (EEE)", progressNextClassDate)} at {progressNextClassStartTime}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-neutral-400">Remaining Classes to Generate:</span>
+                    <span className="font-semibold text-amber-300">
+                      {progressNextSessionNumber < progressTotalSessions ? (
+                        <>Classes #{progressNextSessionNumber + 1}–#{progressTotalSessions} ({progressTotalSessions - progressNextSessionNumber} sessions) on {student.batch?.days?.join(", ") || "assigned days"}</>
+                      ) : progressNextSessionNumber === progressTotalSessions ? (
+                        <>Final session (Class #{progressTotalSessions})</>
+                      ) : (
+                        <>None (course marked completed)</>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Confirmation Action Buttons */}
+              <div className="flex items-center gap-2 pt-2 border-t border-neutral-800">
+                <button
+                  type="button"
+                  onClick={() => setShowEditProgressModal(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 hover:text-white text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleSubmitProgressCorrection()}
+                  disabled={correctProgressMutation.isPending}
+                  className="flex-1 py-2.5 rounded-xl brand-gradient text-black text-xs font-bold transition-opacity disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg shadow-amber-500/20 cursor-pointer"
+                >
+                  {correctProgressMutation.isPending ? (
+                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                  ) : (
+                    <>
+                      <CheckCircle2 className="w-4 h-4" />
+                      Apply Progress Correction
+                    </>
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Success Toast */}
+        <SuccessToast
+          message={successToastMessage}
+          onClose={() => setSuccessToastMessage(null)}
+        />
       </motion.div>
     </div>
   );

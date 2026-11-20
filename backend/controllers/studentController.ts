@@ -10,8 +10,8 @@ import Schedule from '../models/Schedule';
 import { calculateDueAfterClasses, calculatePaymentStatus } from '../utils/paymentRules';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
-import { generateSchedulesForBatch, normalizeDateOnlyToUtc } from './batchController';
-import { getKolkataNow } from '../utils/scheduleHelper';
+import { generateSchedulesForBatch, normalizeDateOnlyToUtc, computeEndTime, getSlotTimingForDay, DAY_INDEX } from './batchController';
+import { getKolkataNow, checkTeacherConflict } from '../utils/scheduleHelper';
 import RecycleBin from '../models/RecycleBin';
 
 export function extractLevel(text?: string, fallback = 'Level 1'): string {
@@ -1306,4 +1306,345 @@ export const deleteProjectSubmission = async (req: AuthRequest, res: Response): 
     res.status(500).json({ message: 'Failed to delete project submission', detail: error.message });
   }
 };
+
+// @desc    Admin Class Progress Correction & Dynamic Calendar Rescheduling
+// @route   POST /students/:id/correct-progress
+// @access  Private (Admin / Sub-admin)
+export const correctStudentProgress = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const {
+      totalSessions,
+      completedSessions,
+      nextSessionNumber,
+      nextClassDate,
+      nextClassStartTime,
+      nextClassEndTime,
+    } = req.body;
+
+    const total = Number(totalSessions);
+    if (!total || isNaN(total) || total < 1) {
+      res.status(400).json({ message: 'Total course sessions must be a positive number (minimum 1).' });
+      return;
+    }
+
+    const completed = Math.max(0, Number(completedSessions) || 0);
+    const nextNum = Number(nextSessionNumber) || (completed + 1);
+
+    if (!nextClassDate) {
+      res.status(400).json({ message: 'Next class date is required.' });
+      return;
+    }
+
+    const nextDateUtc = normalizeDateOnlyToUtc(nextClassDate);
+    if (!nextDateUtc) {
+      res.status(400).json({ message: 'Valid next class date is required (YYYY-MM-DD).' });
+      return;
+    }
+
+    const startTime = (nextClassStartTime && typeof nextClassStartTime === 'string' && nextClassStartTime.trim())
+      ? nextClassStartTime.trim()
+      : '09:00';
+    const endTime = (nextClassEndTime && typeof nextClassEndTime === 'string' && nextClassEndTime.trim())
+      ? nextClassEndTime.trim()
+      : computeEndTime(startTime, 60);
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found.' });
+      return;
+    }
+
+    const batchId = student.batch?._id ? student.batch._id : student.batch;
+    if (!batchId) {
+      res.status(400).json({ message: 'Student has no assigned batch. Please assign a batch before editing class progress.' });
+      return;
+    }
+
+    const batch = await Batch.findById(batchId.toString());
+    if (!batch) {
+      res.status(404).json({ message: 'Assigned batch not found.' });
+      return;
+    }
+
+    // 1. Update student & batch metadata as single source of truth
+    student.classesNeeded = total;
+    batch.numberOfSessions = total;
+    batch.preCompletedClasses = completed;
+    batch.progressCorrected = true;
+    (batch as any).lastProgressCorrection = {
+      correctedAt: new Date().toISOString(),
+      correctedBy: req.user?._id,
+      totalSessions: total,
+      completedSessions: completed,
+      nextSessionNumber: nextNum,
+      nextClassDate,
+      nextClassStartTime: startTime,
+      nextClassEndTime: endTime,
+    };
+
+    await student.save();
+    await batch.save();
+
+    // 2. Fetch all batch students
+    let batchStudentIds: string[] = [];
+    try {
+      const studentsInBatch = await Student.find({ batch: batch._id }).select('_id');
+      batchStudentIds = studentsInBatch.map((s: any) => s._id.toString());
+    } catch {
+      // ignore
+    }
+    if (!batchStudentIds.includes(student._id.toString())) {
+      batchStudentIds.push(student._id.toString());
+    }
+
+    const teacherId = batch.assignedTeacher?._id
+      ? batch.assignedTeacher._id.toString()
+      : (batch.assignedTeacher ? batch.assignedTeacher.toString() : undefined);
+
+    let batchTeacherName = '';
+    if (teacherId) {
+      try {
+        const tDoc = await Teacher.findById(teacherId).populate('user', 'name');
+        batchTeacherName = tDoc?.name || (tDoc as any)?.user?.name || '';
+      } catch {
+        // ignore
+      }
+    }
+
+    // 3. Fetch existing schedules for this batch and sort chronologically
+    const existingSchedules = await Schedule.find({ batch: batch._id });
+    existingSchedules.sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+    // 4. Preserve existing completed classes and attendance records strictly
+    let existingCompletedCount = existingSchedules.filter((s: any) => s.status === 'Completed').length;
+
+    // If existing completed classes are fewer than the corrected count, mark past uncompleted scheduled classes as Completed
+    if (existingCompletedCount < completed) {
+      const pastScheduled = existingSchedules.filter(
+        (s: any) => s.status === 'Scheduled' && new Date(s.date).getTime() < nextDateUtc.getTime()
+      );
+      for (const s of pastScheduled) {
+        if (existingCompletedCount >= completed) break;
+        s.status = 'Completed';
+        s.completedBy = teacherId;
+        s.completedByName = batchTeacherName;
+        s.notes = s.notes || 'Class completed (admin verified progress)';
+        s.sessionNumber = existingCompletedCount + 1;
+        if (!s.attendance || s.attendance.length === 0) {
+          s.attendance = batchStudentIds.map((stId: string) => ({ studentId: stId, isPresent: true, date: s.date }));
+        } else {
+          batchStudentIds.forEach((stId: string) => {
+            const rec = s.attendance.find((a: any) => (a.studentId?._id || a.studentId || '').toString() === stId);
+            if (!rec) s.attendance.push({ studentId: stId, isPresent: true, date: s.date });
+            else rec.isPresent = true;
+          });
+        }
+        await s.save();
+        existingCompletedCount++;
+      }
+
+      // If still fewer, backfill past completed sessions stepping backward on batch days
+      if (existingCompletedCount < completed) {
+        const assignedDays = Array.isArray(batch.days) && batch.days.length > 0 ? batch.days : ['Monday', 'Wednesday', 'Friday'];
+        const dayIndexes = new Set(assignedDays.map((d: string) => DAY_INDEX[d]).filter((idx: any) => idx !== undefined));
+        const existingDates = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
+        const backCursor = new Date(nextDateUtc.getTime());
+        backCursor.setUTCDate(backCursor.getUTCDate() - 1);
+        let backDaysScanned = 0;
+
+        while (existingCompletedCount < completed && backDaysScanned < 300) {
+          if (dayIndexes.has(backCursor.getUTCDay())) {
+            const bTime = backCursor.getTime();
+            if (!existingDates.has(bTime)) {
+              const slotTiming = getSlotTimingForDay(batch, bTime);
+              const sTime = slotTiming.startTime || startTime || '09:00';
+              const eTime = slotTiming.endTime || computeEndTime(sTime, 60);
+              const dateKey = backCursor.toISOString().split('T')[0];
+
+              await Schedule.create({
+                _id: `sched_${batch._id}_${dateKey}_${sTime.replace(':', '')}`,
+                batch: batch._id,
+                teacher: teacherId,
+                completedBy: teacherId,
+                completedByName: batchTeacherName,
+                date: new Date(bTime),
+                startTime: sTime,
+                endTime: eTime,
+                status: 'Completed',
+                sessionNumber: existingCompletedCount + 1,
+                subject: batch.subject || 'Class',
+                notes: 'Class completed (admin verified progress)',
+                attendance: batchStudentIds.map((stId: string) => ({ studentId: stId, isPresent: true, date: new Date(bTime) })),
+              });
+              existingDates.add(bTime);
+              existingCompletedCount++;
+            }
+          }
+          backCursor.setUTCDate(backCursor.getUTCDate() - 1);
+          backDaysScanned++;
+        }
+      }
+    }
+
+    // 5. Schedule remaining sessions starting from nextClassDate forward
+    const keptScheduleIds = new Set<string>();
+    const assignedDays = Array.isArray(batch.days) && batch.days.length > 0 ? batch.days : ['Monday', 'Wednesday', 'Friday'];
+    const dayIndexes = new Set(assignedDays.map((d: string) => DAY_INDEX[d]).filter((idx: any) => idx !== undefined));
+
+    if (nextNum <= total) {
+      // Next session (e.g. Session 18) on nextDateUtc
+      const nextTime = nextDateUtc.getTime();
+      let existingOnNextDate = existingSchedules.find(
+        (s: any) => s.status === 'Scheduled' && new Date(s.date).getTime() === nextTime
+      );
+
+      const conflictRes = teacherId ? await checkTeacherConflict({
+        teacherId,
+        date: nextDateUtc,
+        startTime,
+        endTime,
+        excludeScheduleId: existingOnNextDate?._id?.toString(),
+      }) : { hasConflict: false };
+
+      if (existingOnNextDate) {
+        existingOnNextDate.startTime = startTime;
+        existingOnNextDate.endTime = endTime;
+        existingOnNextDate.sessionNumber = nextNum;
+        existingOnNextDate.subject = batch.subject || 'Class';
+        existingOnNextDate.notes = `Class ${nextNum} of ${total}`;
+        existingOnNextDate.status = 'Scheduled';
+        existingOnNextDate.conflict = conflictRes.hasConflict;
+        await existingOnNextDate.save();
+        keptScheduleIds.add(existingOnNextDate._id.toString());
+      } else {
+        const dateKey = nextDateUtc.toISOString().split('T')[0];
+        const newNextSched = await Schedule.create({
+          _id: `sched_${batch._id}_${dateKey}_${startTime.replace(':', '')}`,
+          batch: batch._id,
+          teacher: teacherId,
+          date: nextDateUtc,
+          startTime,
+          endTime,
+          status: 'Scheduled',
+          sessionNumber: nextNum,
+          subject: batch.subject || 'Class',
+          notes: `Class ${nextNum} of ${total}`,
+          conflict: conflictRes.hasConflict,
+          meetingLink: batch.meetingLink || '',
+          attendance: batchStudentIds.map((stId: string) => ({ studentId: stId, isPresent: false, date: nextDateUtc })),
+        });
+        keptScheduleIds.add(newNextSched._id.toString());
+      }
+
+      // Subsequent sessions: (nextNum + 1) up to total on assigned weekdays
+      const fwdCursor = new Date(nextTime);
+      fwdCursor.setUTCDate(fwdCursor.getUTCDate() + 1);
+      let curSession = nextNum + 1;
+      let fwdDaysScanned = 0;
+
+      while (curSession <= total && fwdDaysScanned < 400) {
+        if (dayIndexes.has(fwdCursor.getUTCDay())) {
+          const fTime = fwdCursor.getTime();
+          const slotTiming = getSlotTimingForDay(batch, fTime);
+          const sTime = slotTiming.startTime || startTime || '09:00';
+          const eTime = slotTiming.endTime || computeEndTime(sTime, 60);
+          const dateKey = fwdCursor.toISOString().split('T')[0];
+
+          let existingOnDate = existingSchedules.find(
+            (s: any) => s.status === 'Scheduled' && new Date(s.date).getTime() === fTime
+          );
+
+          const fwdConflict = teacherId ? await checkTeacherConflict({
+            teacherId,
+            date: new Date(fTime),
+            startTime: sTime,
+            endTime: eTime,
+            excludeScheduleId: existingOnDate?._id?.toString(),
+          }) : { hasConflict: false };
+
+          if (existingOnDate) {
+            existingOnDate.startTime = sTime;
+            existingOnDate.endTime = eTime;
+            existingOnDate.sessionNumber = curSession;
+            existingOnDate.subject = batch.subject || 'Class';
+            existingOnDate.notes = `Class ${curSession} of ${total}`;
+            existingOnDate.status = 'Scheduled';
+            existingOnDate.conflict = fwdConflict.hasConflict;
+            await existingOnDate.save();
+            keptScheduleIds.add(existingOnDate._id.toString());
+          } else {
+            const newSched = await Schedule.create({
+              _id: `sched_${batch._id}_${dateKey}_${sTime.replace(':', '')}`,
+              batch: batch._id,
+              teacher: teacherId,
+              date: new Date(fTime),
+              startTime: sTime,
+              endTime: eTime,
+              status: 'Scheduled',
+              sessionNumber: curSession,
+              subject: batch.subject || 'Class',
+              notes: `Class ${curSession} of ${total}`,
+              conflict: fwdConflict.hasConflict,
+              meetingLink: batch.meetingLink || '',
+              attendance: batchStudentIds.map((stId: string) => ({ studentId: stId, isPresent: false, date: new Date(fTime) })),
+            });
+            keptScheduleIds.add(newSched._id.toString());
+          }
+          curSession++;
+        }
+        fwdCursor.setUTCDate(fwdCursor.getUTCDate() + 1);
+        fwdDaysScanned++;
+      }
+    }
+
+    // 6. Remove obsolete/orphaned Scheduled classes that are NOT in keptScheduleIds
+    const orphanedSchedules = existingSchedules.filter((s: any) => {
+      if (s.status !== 'Scheduled') return false;
+      if (keptScheduleIds.has(s._id.toString())) return false;
+      const hasAttendance = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent);
+      return !hasAttendance;
+    });
+
+    if (orphanedSchedules.length > 0) {
+      const orphanIds = orphanedSchedules.map((s: any) => s._id);
+      await Schedule.deleteMany({ _id: { $in: orphanIds } });
+    }
+
+    // 7. Update batch status if completed
+    if (completed >= total) {
+      batch.status = 'Completed';
+      await batch.save();
+    } else if (batch.status === 'Completed' && completed < total) {
+      batch.status = 'Active';
+      await batch.save();
+    }
+
+    // 8. Invalidate all caches
+    serverCache.clearPattern('schedules_');
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('timings_');
+    serverCache.clearPattern('stats_');
+    deleteDiskCache('schedules_all');
+    deleteDiskCache('students_all');
+    deleteDiskCache('batches_all');
+
+    res.status(200).json({
+      message: 'Class progress and schedule updated successfully',
+      student,
+      batch,
+      totalSessions: total,
+      completedSessions: completed,
+      nextSessionNumber: nextNum,
+      nextClassDate,
+      nextClassStartTime: startTime,
+      upcomingSessionsCount: Math.max(0, total - nextNum + 1),
+    });
+  } catch (error: any) {
+    console.error('Error correcting student progress:', error);
+    res.status(500).json({ message: 'Failed to correct class progress', detail: error.message });
+  }
+};
+
 

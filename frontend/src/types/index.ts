@@ -117,6 +117,7 @@ export interface Schedule {
   completedBy?: string | Teacher | null;
   completedByName?: string;
   conflict: boolean;
+  sessionNumber?: number;
   meetingLink?: string;
   subject?: string;
   notes?: string;

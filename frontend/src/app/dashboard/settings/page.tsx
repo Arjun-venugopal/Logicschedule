@@ -211,25 +211,6 @@ export default function SettingsPage() {
 
     try {
       setPasswordLoading(true);
-      // Wait! Check what endpoint changes password. 
-      // Schedulix backend authController usually has updatePassword or changePassword.
-      // Let's call PUT /auth/update-password or similar. 
-      // Let's verify password update endpoint in authRoutes. Wait, did we see a change password route in authRoutes?
-      // In authRoutes:
-      // router.post('/login', loginUser);
-      // router.post('/register', registerUser);
-      // router.post('/create-teacher', protect, admin, createTeacherAccount);
-      // Wait, there is no custom password route in authRoutes. 
-      // Let's search if there is a password change endpoint in backend.
-      // Let's look for "password" in authController.ts or backend/routes.
-      // Wait, let's execute the password update anyway. 
-      // If there is no custom endpoint, we can check how backend handles password changes, or implement one!
-      // Actually, let's keep it simple: we can make a PUT request to /auth/password
-      // Let's check authRoutes to see if there are other routes we missed. No, we read it: it only has login, register, create-teacher.
-      // Wait! Let's check if authController.ts has a changePassword or updatePassword function. Let's look.
-      // But we can check that in background. Let's send the API call to /auth/password and see if it's there, or we can add it to authRoutes!
-      // Let's look at authRoutes.ts and authController.ts in the backend later to add it if needed, or we can mock/write it. 
-      // For now, let's make it hit `/auth/change-password` and implement that endpoint.
       await api.put("/auth/change-password", {
         currentPassword: passwordForm.currentPassword,
         newPassword: passwordForm.newPassword
