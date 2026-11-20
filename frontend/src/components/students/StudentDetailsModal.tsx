@@ -5,7 +5,7 @@ import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { X, User, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
@@ -222,6 +222,19 @@ export function StudentDetailsModal({
     onError: (err: any) => {
       setTogglingScheduleId(null);
       alert(err.response?.data?.message || "Failed to update extra class status");
+    },
+  });
+
+const updateStatusMutation = useMutation({
+    mutationFn: (newStatus: "Active" | "Dropped") =>
+      api.put(`/students/${studentId}`, { status: newStatus }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
     },
   });
 
@@ -475,20 +488,50 @@ export function StudentDetailsModal({
               </p>
             </div>
 
-            {student.batch && (
-              <div className="pb-2 flex flex-wrap items-center gap-2">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-sm font-bold shadow-lg shadow-emerald-500/5">
-                  <CheckCircle2 className="w-4 h-4" /> Enrolled
-                </div>
+            <div className="pb-2 flex flex-wrap items-center gap-2">
+              {student.status === "Dropped" ? (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold shadow-lg shadow-rose-500/5">
+                    <UserX className="w-3.5 h-3.5" /> Dropped Student
+                  </div>
+                  <button
+                    onClick={() => updateStatusMutation.mutate("Active")}
+                    disabled={updateStatusMutation.isPending}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    {updateStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                    Activate Student
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold shadow-lg shadow-emerald-500/5">
+                    <CheckCircle2 className="w-3.5 h-3.5" /> Active Student
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (confirm("Change student status to Dropped? This will automatically remove them from daily/weekly schedules and upcoming class lists while preserving their previous attendance and class history.")) {
+                        updateStatusMutation.mutate("Dropped");
+                      }
+                    }}
+                    disabled={updateStatusMutation.isPending}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold transition-all cursor-pointer"
+                  >
+                    {updateStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserX className="w-3.5 h-3.5" />}
+                    Mark as Dropped
+                  </button>
+                </>
+              )}
+              {student.batch && (
                 <button
                   onClick={handleOpenNextCourseModal}
-                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
                 >
-                  <GraduationCap className="w-4 h-4 text-emerald-400" />
+                  <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
                   Move to Next Level
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* Next Course Banner for Completed Batches */}
@@ -734,6 +777,29 @@ export function StudentDetailsModal({
 
                       {/* Live Level Classes list & Extra Class Action */}
                       <div className="pt-2">
+                        {student.status === "Dropped" && (
+                          <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 text-xs text-rose-200">
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
+                                <UserX className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <h4 className="font-bold text-white text-sm">Student Status: Dropped</h4>
+                                <p className="text-neutral-300">
+                                  This student is currently dropped and hidden from daily/weekly schedules and upcoming class lists. Previous attendance and completed class logs are preserved below for reference.
+                                </p>
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => updateStatusMutation.mutate("Active")}
+                              disabled={updateStatusMutation.isPending}
+                              className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition-colors shrink-0 shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer"
+                            >
+                              {updateStatusMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                              Reactivate to Schedule
+                            </button>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between gap-2 flex-wrap mb-1">
                           <button
                             type="button"

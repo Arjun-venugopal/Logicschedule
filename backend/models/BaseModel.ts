@@ -1013,7 +1013,16 @@ export class BaseModel {
       if (validCols.has(k)) row[k] = cleanData[k];
     }
     const { error } = await getSupabase().from(this.collectionName).insert(row);
-    if (error) throw error;
+    if (error) {
+      if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint') || (error as any).details?.includes('already exists')) {
+        const dupErr: any = new Error(`Duplicate entry detected in ${this.collectionName}. A record with this unique identifier already exists.`);
+        dupErr.code = '23505';
+        dupErr.isDuplicate = true;
+        dupErr.statusCode = 409;
+        throw dupErr;
+      }
+      throw error;
+    }
     const newDoc = { ...cleanData, _id: newId };
     return this._attachMethods(newDoc);
   }
@@ -1098,7 +1107,16 @@ export class BaseModel {
       return row;
     });
     if (rows.length > 0) {
-      await getSupabase().from(this.collectionName).insert(rows);
+      const { error } = await getSupabase().from(this.collectionName).insert(rows);
+      if (error) {
+        if (error.code === '23505' || error.message?.includes('duplicate key') || error.message?.includes('unique constraint')) {
+          for (const r of rows) {
+            await getSupabase().from(this.collectionName).insert(r);
+          }
+        } else {
+          throw error;
+        }
+      }
     }
     return inserted;
   }

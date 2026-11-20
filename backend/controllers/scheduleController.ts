@@ -34,12 +34,12 @@ export const getSchedules = async (req: any, res: Response) => {
           Schedule.find({ teacher: teacher._id })
             .sort({ date: -1 })
             .populate('teacher', 'name email')
-            .populate('batch', 'name subject')
+            .populate('batch', 'name subject status')
             .populate('replacementTeacher', 'name email'),
           Schedule.find({ replacementTeacher: teacher._id })
             .sort({ date: -1 })
             .populate('teacher', 'name email')
-            .populate('batch', 'name subject')
+            .populate('batch', 'name subject status')
             .populate('replacementTeacher', 'name email')
         ]);
 
@@ -59,9 +59,72 @@ export const getSchedules = async (req: any, res: Response) => {
       schedules = await Schedule.find({})
         .sort({ date: -1 })
         .populate('teacher', 'name email')
-        .populate('batch', 'name subject')
+        .populate('batch', 'name subject status')
         .populate('replacementTeacher', 'name email');
     }
+
+// Filter out dropped students from regular schedules according to requirements:
+    // - Do not display dropped students in daily or weekly schedules
+    // - Remove them from upcoming class lists
+    // - Preserve their previous attendance and class history for admin reference
+    // - Only Active students should be visible in the regular class schedule
+    const [allStudents, allBatches] = await Promise.all([
+      Student.find({}).select('_id batch status'),
+      Batch.find({}).select('_id status')
+    ]);
+
+    const droppedStudentIdSet = new Set<string>();
+    const batchActiveStudentsMap = new Map<string, number>();
+    const batchTotalStudentsMap = new Map<string, number>();
+    const explicitlyDroppedBatchSet = new Set<string>();
+
+    for (const b of allBatches) {
+      if (b && (b.status === 'Dropped' || b.status === 'Cancelled')) {
+        explicitlyDroppedBatchSet.add(b._id.toString());
+      }
+    }
+
+    for (const st of allStudents) {
+      const sId = st._id.toString();
+      const isDropped = st.status === 'Dropped';
+      if (isDropped) {
+        droppedStudentIdSet.add(sId);
+      }
+      const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
+      if (bId) {
+        batchTotalStudentsMap.set(bId, (batchTotalStudentsMap.get(bId) || 0) + 1);
+        if (!isDropped) {
+          batchActiveStudentsMap.set(bId, (batchActiveStudentsMap.get(bId) || 0) + 1);
+        }
+      }
+    }
+
+    const visibleSchedules: any[] = [];
+    for (const s of schedules) {
+      const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+      const isDroppedBatch = explicitlyDroppedBatchSet.has(bId);
+      const totalInBatch = batchTotalStudentsMap.get(bId) || 0;
+      const activeInBatch = batchActiveStudentsMap.get(bId) || 0;
+
+      // If the batch had enrolled students and NONE are active, or the batch is dropped:
+      const hasNoActiveStudents = isDroppedBatch || (totalInBatch > 0 && activeInBatch === 0);
+
+      if (hasNoActiveStudents) {
+        // Exclude dropped students from regular daily/weekly schedule
+        continue;
+      }
+
+      // If schedule is upcoming / scheduled, filter out dropped students from attendance list
+      if (s.status === 'Scheduled' && Array.isArray(s.attendance)) {
+        s.attendance = s.attendance.filter((a: any) => {
+          const aStudentId = (a.studentId?._id || a.studentId || '').toString();
+          return !droppedStudentIdSet.has(aStudentId);
+        });
+      }
+
+      visibleSchedules.push(s);
+    }
+    schedules = visibleSchedules;
 
     // Cache schedules in memory and persistent disk
     serverCache.set(cacheKey, schedules, 60_000);

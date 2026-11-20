@@ -36,6 +36,7 @@ import { ConfigRulesModal } from "@/components/payments/ConfigRulesModal";
 import { CreatePaymentModal } from "@/components/payments/CreatePaymentModal";
 import { EditPaymentModal } from "@/components/payments/EditPaymentModal";
 import { DeletePaymentConfirmModal } from "@/components/payments/DeletePaymentConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 import { PaymentAnalyticsOverview } from "@/components/payments/PaymentAnalyticsOverview";
 import { SalespersonLeaderboard } from "@/components/payments/SalespersonLeaderboard";
 import { SalespersonPendingReport } from "@/components/payments/SalespersonPendingReport";
@@ -156,6 +157,7 @@ export default function PaymentsPage() {
   const [selectedPaymentForHistory, setSelectedPaymentForHistory] = useState<any>(null);
   const [selectedPaymentForEdit, setSelectedPaymentForEdit] = useState<any>(null);
   const [selectedPaymentForDelete, setSelectedPaymentForDelete] = useState<any>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
@@ -1358,7 +1360,15 @@ export default function PaymentsPage() {
           setSelectedPaymentForDelete(null);
           refetch();
         }}
+        onSuccess={() => {
+          setSelectedPaymentForDelete(null);
+          setSuccessMessage("Payment record deleted successfully");
+          setTimeout(() => setSuccessMessage(null), 4000);
+          refetch();
+        }}
       />
+
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
 
       {/* Transaction History Drawer / Modal */}
       <AnimatePresence>

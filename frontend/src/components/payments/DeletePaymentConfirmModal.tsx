@@ -86,9 +86,11 @@ export function DeletePaymentConfirmModal({
               </div>
             )}
 
-            <p className="text-sm text-neutral-300 leading-relaxed">
-              Are you sure you want to delete the fee and payment records for{" "}
-              <strong className="text-white font-semibold">{studentName}</strong> ({courseName})?
+            <p className="text-sm text-neutral-300 leading-relaxed font-medium">
+              Are you sure you want to delete this item? This action cannot be undone.
+            </p>
+            <p className="text-xs text-neutral-400">
+              Target: <strong className="text-white font-semibold">{studentName}</strong> ({courseName})
             </p>
 
             <div className="p-3.5 bg-neutral-950/60 border border-neutral-800 rounded-xl space-y-1.5 text-xs">
@@ -139,7 +141,7 @@ export function DeletePaymentConfirmModal({
                 </>
               ) : (
                 <>
-                  <Trash2 className="w-4 h-4" /> Yes, Delete Record
+                  <Trash2 className="w-4 h-4" /> Delete
                 </>
               )}
             </button>

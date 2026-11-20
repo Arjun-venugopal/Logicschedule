@@ -7,6 +7,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Plus, Trash2, Copy, Check, X, UserPlus, RefreshCw, Users, Eye, EyeOff, KeyRound, TrendingUp, Edit2, Timer, List, Calendar } from "lucide-react";
 import dynamic from "next/dynamic";
 import { TeacherTimingTable } from "@/components/teachers/TeacherTimingTable";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 const TeacherPerformanceModal = dynamic(
   () => import("@/components/teachers/TeacherPerformanceModal").then((mod) => mod.TeacherPerformanceModal),
@@ -53,6 +55,8 @@ export default function TeachersPage() {
   const [revealedIds, setRevealedIds] = useState<Set<string>>(new Set());
   const [performanceTeacherId, setPerformanceTeacherId] = useState<string | null>(null);
   const [weeklyAvailTeacher, setWeeklyAvailTeacher] = useState<any>(null);
+  const [deleteTeacherConfirm, setDeleteTeacherConfirm] = useState<any | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [editTeacher, setEditTeacher] = useState<any>(null); // For editing
   const [formData, setFormData] = useState({
     name: "",
@@ -135,7 +139,12 @@ export default function TeachersPage() {
 
   const deleteTeacherMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/teachers/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["teachers"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["teachers"] });
+      setDeleteTeacherConfirm(null);
+      setSuccessMessage("Teacher deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
+    },
   });
 
   const handleCopy = async (text: string, id: string) => {
@@ -467,7 +476,7 @@ export default function TeachersPage() {
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => deleteTeacherMutation.mutate(teacher._id)}
+                              onClick={() => setDeleteTeacherConfirm(teacher)}
                               className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
                               title="Delete Teacher"
                             >
@@ -776,6 +785,20 @@ export default function TeachersPage() {
         teacher={weeklyAvailTeacher}
         canEdit={hasWriteAccess}
       />
+
+      {/* Delete Teacher Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteTeacherConfirm}
+        onClose={() => setDeleteTeacherConfirm(null)}
+        onConfirm={() => deleteTeacherConfirm && deleteTeacherMutation.mutate(deleteTeacherConfirm._id || deleteTeacherConfirm)}
+        title="Delete Teacher"
+        itemName={deleteTeacherConfirm?.name}
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteTeacherMutation.isPending}
+      />
+
+      {/* Success Feedback Toast */}
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
     </div>
   );
 }

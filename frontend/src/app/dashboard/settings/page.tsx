@@ -6,6 +6,8 @@ import { api } from "@/lib/axios";
 import { useAuthStore } from "@/store/authStore";
 import SubAdminManager from "./SubAdminManager";
 import SystemOptimizationDashboard from "@/components/admin/SystemOptimizationDashboard";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Calendar,
@@ -61,6 +63,21 @@ export default function SettingsPage() {
 
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'duty' | 'slot'; idOrDay: string; index?: number; label: string } | null>(null);
+  const [deleteSuccessMessage, setDeleteSuccessMessage] = useState<string | null>(null);
+
+  const handleExecuteDelete = () => {
+    if (!deleteConfirm) return;
+    if (deleteConfirm.type === 'duty') {
+      handleRemoveDutySchedule(deleteConfirm.idOrDay);
+      setDeleteSuccessMessage("Duty status schedule removed successfully");
+    } else if (deleteConfirm.type === 'slot' && deleteConfirm.index !== undefined) {
+      removeSlot(deleteConfirm.idOrDay, deleteConfirm.index);
+      setDeleteSuccessMessage("Availability slot removed successfully");
+    }
+    setDeleteConfirm(null);
+    setTimeout(() => setDeleteSuccessMessage(null), 4000);
+  };
 
   // Change Password State
   const [passwordForm, setPasswordForm] = useState({
@@ -485,7 +502,7 @@ export default function SettingsPage() {
                             </div>
                             <button
                               type="button"
-                              onClick={() => handleRemoveDutySchedule(item.id)}
+                              onClick={() => setDeleteConfirm({ type: 'duty', idOrDay: item.id, label: `${item.status} schedule (${item.startDate} to ${item.endDate})` })}
                               className="p-1 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors cursor-pointer"
                               title="Remove schedule"
                             >
@@ -569,7 +586,7 @@ export default function SettingsPage() {
                                   </div>
                                   <button
                                     type="button"
-                                    onClick={() => removeSlot(dayAvail.day, sIdx)}
+                                    onClick={() => setDeleteConfirm({ type: 'slot', idOrDay: dayAvail.day, index: sIdx, label: `${dayAvail.day} slot (${slot.startTime} - ${slot.endTime})` })}
                                     className="p-1.5 hover:bg-red-500/10 text-neutral-400 hover:text-red-400 rounded-lg transition-colors shrink-0"
                                     title="Delete slot"
                                   >
@@ -713,6 +730,21 @@ export default function SettingsPage() {
         {isAdmin && <SystemOptimizationDashboard />}
 
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleExecuteDelete}
+        title="Delete Item"
+        itemName={deleteConfirm?.label}
+      />
+
+      {/* Success Notification Toast */}
+      <SuccessToast
+        message={deleteSuccessMessage}
+        onClose={() => setDeleteSuccessMessage(null)}
+      />
     </div>
   );
 }

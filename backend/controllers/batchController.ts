@@ -6,6 +6,7 @@ import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import DemoSession from '../models/DemoSession';
 import RecycleBin from '../models/RecycleBin';
+import { escapeRegex } from './studentController';
 import { checkIntervalConflict, getKolkataNow } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
@@ -190,6 +191,7 @@ export async function generateSchedulesForBatch(
 
         if (completedCreated < neededCompleted && isSlotPastOrNow) {
           const completedSlot = {
+            _id: `sched_${_id}_${dateKey}_${(slotTiming.startTime || '09:00').replace(':', '')}`,
             teacher: teacherId || undefined,
             completedBy: teacherId || undefined,
             completedByName: batchTeacherName || undefined,
@@ -215,6 +217,7 @@ export async function generateSchedulesForBatch(
           completedCreated++;
         } else {
           const newSlot = {
+            _id: `sched_${_id}_${dateKey}_${(slotTiming.startTime || '09:00').replace(':', '')}`,
             teacher: teacherId || undefined,
             batch: _id,
             date: new Date(forwardTime),
@@ -373,6 +376,21 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
+    const trimmedName = name.trim();
+    // Check if batch with this name already exists (case-insensitive)
+    const existingBatch = await Batch.findOne({
+      name: { $regex: `^\\s*${escapeRegex(trimmedName)}\\s*$`, $options: 'i' }
+    });
+    if (existingBatch) {
+      res.status(409).json({
+        message: `A batch with the name "${trimmedName}" already exists. Please choose a different name.`,
+        isDuplicate: true,
+      });
+      return;
+    }
+
+    const deterministicBatchId = `batch_${trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+
     const kolkata = getKolkataNow();
     const cleanStartDate = startDate ? (normalizeDateOnlyToUtc(startDate)?.toISOString().split('T')[0] || '') : '';
     let validatedPreCompleted = 0;
@@ -418,7 +436,8 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     }
 
     const batch = await Batch.create({
-      name,
+      _id: deterministicBatchId,
+      name: trimmedName,
       subject,
       assignedTeacher: assignedTeacher || undefined,
       studentsCount: studentsCount || 0,
@@ -467,6 +486,13 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
     res.status(201).json({ ...(populated.toObject ? populated.toObject() : populated), schedulesGenerated: generated });
   } catch (error: any) {
     console.error('Create batch error:', error.message);
+    if (error.code === '23505' || error.isDuplicate) {
+      res.status(409).json({
+        message: 'A batch with this name or identifier already exists.',
+        isDuplicate: true,
+      });
+      return;
+    }
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };

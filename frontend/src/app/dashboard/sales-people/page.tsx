@@ -9,6 +9,8 @@ import { useAuthStore } from "@/store/authStore";
 import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 function generatePassword(length = 10) {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
@@ -33,6 +35,8 @@ export default function SalesPeoplePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [createdCreds, setCreatedCreds] = useState<{ email: string; tempPassword: string } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [editSalesPerson, setEditSalesPerson] = useState<any>(null);
   const [formData, setFormData] = useState({
     name: "",
@@ -90,7 +94,15 @@ export default function SalesPeoplePage() {
 
   const deleteSalesPersonMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/sales-people/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["salesPeople"] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["salesPeople"] });
+      setDeleteConfirm(null);
+      setSuccessMessage("Sales person deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
+    },
+    onError: () => {
+      setDeleteConfirm(null);
+    }
   });
 
   const handleCopy = async (text: string, id: string) => {
@@ -263,7 +275,7 @@ export default function SalesPeoplePage() {
                               <Edit2 className="w-4 h-4" />
                             </button>
                             <button
-                              onClick={() => deleteSalesPersonMutation.mutate(sp._id)}
+                              onClick={() => setDeleteConfirm(sp)}
                               className="p-2 hover:bg-red-500/10 rounded-lg transition-colors text-neutral-500 hover:text-red-400"
                               title="Delete Sales Person"
                             >
@@ -404,6 +416,26 @@ export default function SalesPeoplePage() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            deleteSalesPersonMutation.mutate(deleteConfirm._id);
+          }
+        }}
+        title="Delete Sales Person"
+        itemName={deleteConfirm?.name}
+        isLoading={deleteSalesPersonMutation.isPending}
+      />
+
+      {/* Success Notification Toast */}
+      <SuccessToast
+        message={successMessage}
+        onClose={() => setSuccessMessage(null)}
+      />
     </div>
   );
 }

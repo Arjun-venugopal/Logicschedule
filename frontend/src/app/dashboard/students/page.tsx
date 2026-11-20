@@ -10,6 +10,8 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useDebounce } from "@/hooks/useDebounce";
 import { StudentDetailsModal } from "@/components/students/StudentDetailsModal";
 import { EditStudentModal } from "@/components/students/EditStudentModal";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 export default function StudentsPage() {
   const [file, setFile] = useState<File | null>(null);
@@ -19,6 +21,7 @@ export default function StudentsPage() {
   const [openAdvanceDirectly, setOpenAdvanceDirectly] = useState(false);
   const [editStudent, setEditStudent] = useState<any | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showRoster, setShowRoster] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { searchQuery } = useSearchStore();
@@ -40,6 +43,8 @@ export default function StudentsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       setDeleteConfirm(null);
+      setSuccessMessage("Student deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     }
   });
 
@@ -88,7 +93,8 @@ export default function StudentsPage() {
       (s.whatsappNumber || "").toLowerCase().includes(lowerSearch) ||
       (s.parentName || "").toLowerCase().includes(lowerSearch) ||
       (s.batch?.name || "").toLowerCase().includes(lowerSearch) ||
-      (s.batch?.subject || "").toLowerCase().includes(lowerSearch)
+      (s.batch?.subject || "").toLowerCase().includes(lowerSearch) ||
+      (s.status || "Active").toLowerCase().includes(lowerSearch)
     );
   }, [students, debouncedSearch]);
 
@@ -336,6 +342,15 @@ export default function StudentsPage() {
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                 {getStudentLevelTag(student)}
                               </span>
+                              {student.status === "Dropped" ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                  Dropped
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                  Active
+                                </span>
+                              )}
                             </div>
                             <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
                               <User className="w-3 h-3" /> Student
@@ -443,7 +458,7 @@ export default function StudentsPage() {
                                 <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
                                   {student.name.charAt(0)}
                                 </div>
-                                <div className="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-neutral-900 rounded-full"></div>
+                                <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 ${student.status === "Dropped" ? "bg-rose-500" : "bg-emerald-500"} border-2 border-neutral-900 rounded-full`} title={student.status === "Dropped" ? "Dropped" : "Active"}></div>
                               </div>
                               <div className="flex flex-col">
                                 <div className="flex items-center gap-2">
@@ -451,6 +466,15 @@ export default function StudentsPage() {
                                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
                                     {getStudentLevelTag(student)}
                                   </span>
+                                  {student.status === "Dropped" ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
+                                      Dropped
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                                      Active
+                                    </span>
+                                  )}
                                 </div>
                                 <span className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
                                   <User className="w-3 h-3" /> Student
@@ -562,37 +586,19 @@ export default function StudentsPage() {
           />
         )}
 
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-red-500/30 rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden flex flex-col p-6 text-center"
-            >
-              <div className="w-16 h-16 bg-red-500/10 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4 border border-red-500/20">
-                <Trash2 className="w-8 h-8" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2">Remove Student?</h3>
-              <p className="text-neutral-400 text-sm mb-6">
-                Are you sure you want to completely remove this student from the directory? This action cannot be undone.
-              </p>
-              <div className="flex gap-3">
-                <button onClick={() => setDeleteConfirm(null)} className="flex-1 px-4 py-2 bg-neutral-800 text-white rounded-lg text-sm font-medium hover:bg-neutral-700 transition-colors">
-                  Cancel
-                </button>
-                <button
-                  onClick={() => deleteMutation.mutate(deleteConfirm)}
-                  disabled={deleteMutation.isPending}
-                  className="flex-1 px-4 py-2 bg-red-500 text-white rounded-lg text-sm font-bold hover:bg-red-600 transition-colors flex items-center justify-center gap-2"
-                >
-                  {deleteMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
-                  Remove
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+        <DeleteConfirmModal
+          isOpen={!!deleteConfirm}
+          onClose={() => setDeleteConfirm(null)}
+          onConfirm={() => {
+            if (deleteConfirm) deleteMutation.mutate(deleteConfirm);
+          }}
+          title="Delete Student"
+          itemName={students.find((s: any) => s._id === deleteConfirm)?.name}
+          message="Are you sure you want to delete this item? This action cannot be undone."
+          isLoading={deleteMutation.isPending}
+        />
+
+        <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
       </AnimatePresence>
     </div>
   );

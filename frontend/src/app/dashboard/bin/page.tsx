@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { useSearchStore } from "@/store/searchStore";
 import { useDebounce } from "@/hooks/useDebounce";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 
 type BinItem = {
   _id: string;
@@ -980,103 +981,30 @@ export default function RecycleBinPage() {
       {/* ========================================================================= */}
       {/* MODAL 2: CONFIRM PERMANENT DELETE                                        */}
       {/* ========================================================================= */}
-      <AnimatePresence>
-        {permanentDeleteTarget && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-red-500/30 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl"
-            >
-              <div className="flex items-center gap-3 text-red-400">
-                <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
-                  <AlertTriangle className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-semibold text-white">Permanently Delete Item?</h3>
-              </div>
-
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                Are you sure you want to permanently delete{" "}
-                <span className="font-semibold text-white">
-                  "{permanentDeleteTarget.name}"
-                </span>{" "}
-                ({permanentDeleteTarget.entityType})? This action cannot be reversed.
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => setPermanentDeleteTarget(null)}
-                  className="px-4 py-2 text-xs font-medium rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => deletePermanentMutation.mutate(permanentDeleteTarget._id)}
-                  disabled={deletePermanentMutation.isPending}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center gap-2"
-                >
-                  {deletePermanentMutation.isPending && (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Delete Forever</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <DeleteConfirmModal
+        isOpen={!!permanentDeleteTarget}
+        onClose={() => setPermanentDeleteTarget(null)}
+        onConfirm={() => {
+          if (permanentDeleteTarget) {
+            deletePermanentMutation.mutate(permanentDeleteTarget._id);
+          }
+        }}
+        title="Permanently Delete Item"
+        itemName={permanentDeleteTarget ? `${permanentDeleteTarget.name} (${permanentDeleteTarget.entityType})` : undefined}
+        isLoading={deletePermanentMutation.isPending}
+      />
 
       {/* ========================================================================= */}
       {/* MODAL 3: CONFIRM EMPTY BIN                                               */}
       {/* ========================================================================= */}
-      <AnimatePresence>
-        {emptyBinConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-red-500/30 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl"
-            >
-              <div className="flex items-center gap-3 text-red-400">
-                <div className="p-2 rounded-xl bg-red-500/10 border border-red-500/20">
-                  <Trash2 className="w-5 h-5" />
-                </div>
-                <h3 className="text-base font-semibold text-white">Empty Entire Recycle Bin?</h3>
-              </div>
-
-              <p className="text-xs text-neutral-300 leading-relaxed">
-                This will permanently delete all <span className="font-bold text-white">{binItems.length}</span> items
-                currently in the bin. None of these items will be recoverable.
-              </p>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-neutral-800">
-                <button
-                  type="button"
-                  onClick={() => setEmptyBinConfirm(false)}
-                  className="px-4 py-2 text-xs font-medium rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => emptyBinMutation.mutate()}
-                  disabled={emptyBinMutation.isPending}
-                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-red-500 hover:bg-red-600 text-white transition-colors flex items-center gap-2"
-                >
-                  {emptyBinMutation.isPending && (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  )}
-                  <span>Empty Bin Forever</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      <DeleteConfirmModal
+        isOpen={emptyBinConfirm}
+        onClose={() => setEmptyBinConfirm(false)}
+        onConfirm={() => emptyBinMutation.mutate()}
+        title="Empty Entire Recycle Bin"
+        itemName={`All ${binItems.length} items`}
+        isLoading={emptyBinMutation.isPending}
+      />
     </div>
   );
 }

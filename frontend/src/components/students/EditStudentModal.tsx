@@ -64,6 +64,7 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     email: student?.email || "",
     assignedTutor: initialTeacherId,
     reassignReason: "",
+    status: student?.status || "Active",
   });
 
   // Batch Assignment Mode: "select" (filter/choose existing) vs "create" (create batch in form)
@@ -290,6 +291,8 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
+      queryClient.invalidateQueries({ queryKey: ["student"] });
       if (onSuccess) onSuccess();
       onClose();
     },
@@ -653,6 +656,50 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
                   placeholder="student@example.com"
                 />
                 <Mail className="w-4 h-4 text-neutral-500 absolute left-3 top-1/2 -translate-y-1/2" />
+              </div>
+            </div>
+
+            {/* Student Status */}
+            <div>
+              <label className="text-xs font-semibold text-neutral-300 mb-1.5 block">
+                Student Status
+              </label>
+              <div className="grid grid-cols-2 gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: "Active" })}
+                  className={`p-3 rounded-xl border flex items-center gap-2.5 transition-all text-left ${
+                    formData.status !== "Dropped"
+                      ? "bg-emerald-500/15 border-emerald-500/50 text-white shadow-sm shadow-emerald-500/10"
+                      : "bg-neutral-800/60 border-neutral-700/60 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    formData.status !== "Dropped" ? "border-emerald-400 bg-emerald-400" : "border-neutral-500"
+                  }`} />
+                  <div>
+                    <span className="text-xs font-bold block text-white">Active</span>
+                    <span className="text-[10px] text-neutral-400 block leading-tight">Shown in timetable & schedule</span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setFormData({ ...formData, status: "Dropped" })}
+                  className={`p-3 rounded-xl border flex items-center gap-2.5 transition-all text-left ${
+                    formData.status === "Dropped"
+                      ? "bg-rose-500/15 border-rose-500/50 text-white shadow-sm shadow-rose-500/10"
+                      : "bg-neutral-800/60 border-neutral-700/60 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800"
+                  }`}
+                >
+                  <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 ${
+                    formData.status === "Dropped" ? "border-rose-400 bg-rose-400" : "border-neutral-500"
+                  }`} />
+                  <div>
+                    <span className="text-xs font-bold block text-white">Dropped</span>
+                    <span className="text-[10px] text-neutral-400 block leading-tight">Auto-removed from schedule</span>
+                  </div>
+                </button>
               </div>
             </div>
           </div>

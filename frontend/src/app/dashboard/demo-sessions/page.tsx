@@ -41,6 +41,8 @@ import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { EditPaymentModal } from "@/components/payments/EditPaymentModal";
 import dynamic from "next/dynamic";
 const DemoReportModal = dynamic(() => import("@/components/demo/DemoReportModal"), { ssr: false });
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 interface Teacher {
   _id: string;
@@ -174,6 +176,8 @@ export default function DemoSessionsPage() {
 
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit" } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [deleteSlotConfirm, setDeleteSlotConfirm] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [form, setForm] = useState<DemoSessionForm>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterTeacher, setFilterTeacher] = useState<string>("");
@@ -248,6 +252,9 @@ export default function DemoSessionsPage() {
     mutationFn: (id: string) => api.delete(`/demo-slots/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["demo-slots"] });
+      setDeleteSlotConfirm(null);
+      setSuccessMessage("Demo slot deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -293,6 +300,8 @@ export default function DemoSessionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       setDeleteConfirm(null);
+      setSuccessMessage("Demo session deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -1900,7 +1909,7 @@ export default function DemoSessionsPage() {
                             )}
                             {canManageSlots && (
                               <button
-                                onClick={() => deleteSlotMutation.mutate(slot._id)}
+                                onClick={() => setDeleteSlotConfirm(slot._id)}
                                 className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-lg transition-colors flex items-center justify-center"
                                 title="Delete Slot"
                               >
@@ -2574,48 +2583,32 @@ export default function DemoSessionsPage() {
         )}
       </AnimatePresence>
 
-      {/* Delete Confirmation Modal */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center space-y-4"
-            >
-              <div className="w-12 h-12 bg-red-500/10 text-red-400 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
-                <Trash2 className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-white">Delete Demo Class?</h3>
-                <p className="text-neutral-400 text-xs mt-1">
-                  Are you sure you want to remove this demo session? This action cannot be undone.
-                </p>
-              </div>
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2 bg-neutral-850 hover:bg-neutral-800 border border-neutral-700 text-neutral-300 rounded-xl text-xs font-semibold transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => deleteDemoMutation.mutate(deleteConfirm)}
-                  disabled={deleteDemoMutation.isPending}
-                  className="flex-1 py-2 bg-red-500 hover:bg-red-655 text-white rounded-xl text-xs font-semibold transition-colors flex items-center justify-center gap-1"
-                >
-                  {deleteDemoMutation.isPending ? (
-                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    "Confirm Delete"
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Delete Confirmation Modal for Demo Session */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) deleteDemoMutation.mutate(deleteConfirm);
+        }}
+        title="Delete Demo Session"
+        itemName={demoSessions.find((s) => s._id === deleteConfirm)?.studentName}
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteDemoMutation.isPending}
+      />
+
+      {/* Delete Confirmation Modal for Demo Slot */}
+      <DeleteConfirmModal
+        isOpen={!!deleteSlotConfirm}
+        onClose={() => setDeleteSlotConfirm(null)}
+        onConfirm={() => {
+          if (deleteSlotConfirm) deleteSlotMutation.mutate(deleteSlotConfirm);
+        }}
+        title="Delete Demo Slot"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteSlotMutation.isPending}
+      />
+
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
 
       {/* View Details Modal */}
       <AnimatePresence>

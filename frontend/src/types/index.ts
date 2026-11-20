@@ -46,6 +46,7 @@ export interface Student {
   _id: string;
   name: string;
   batch: string | Batch;
+  status?: 'Active' | 'Dropped' | 'Completed' | 'Inactive' | string;
   currentLevel?: string;
   level?: string;
   classesNeeded?: number;

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sliders, CheckCircle2, Plus, Trash2, AlertCircle, Clock } from "lucide-react";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 
 interface ConfigRulesModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export function ConfigRulesModal({ isOpen, onClose }: ConfigRulesModalProps) {
     { assignedClasses: 25, dueAfterClasses: 12 },
   ]);
   const [reminderLead, setReminderLead] = useState<number>(2);
+  const [deleteRuleIndex, setDeleteRuleIndex] = useState<number | null>(null);
   const [errorMsg, setErrorMsg] = useState<string>("");
   const [successMsg, setSuccessMsg] = useState<string>("");
 
@@ -181,7 +183,7 @@ export function ConfigRulesModal({ isOpen, onClose }: ConfigRulesModalProps) {
 
                     <button
                       type="button"
-                      onClick={() => handleRemoveRule(idx)}
+                      onClick={() => setDeleteRuleIndex(idx)}
                       className="mt-4 p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
                       title="Remove Rule"
                     >
@@ -240,6 +242,20 @@ export function ConfigRulesModal({ isOpen, onClose }: ConfigRulesModalProps) {
           </form>
         </motion.div>
       </div>
+
+      {/* Delete Rule Confirmation */}
+      <DeleteConfirmModal
+        isOpen={deleteRuleIndex !== null}
+        onClose={() => setDeleteRuleIndex(null)}
+        onConfirm={() => {
+          if (deleteRuleIndex !== null) {
+            handleRemoveRule(deleteRuleIndex);
+            setDeleteRuleIndex(null);
+          }
+        }}
+        title="Delete Payment Rule"
+        itemName={deleteRuleIndex !== null ? `Assigned: ${rules[deleteRuleIndex]?.assignedClasses} classes, Due after: ${rules[deleteRuleIndex]?.dueAfterClasses} classes` : undefined}
+      />
     </AnimatePresence>
   );
 }

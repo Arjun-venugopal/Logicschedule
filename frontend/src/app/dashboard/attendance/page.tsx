@@ -4,10 +4,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import { format, parseISO } from "date-fns";
-import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Lock, Edit2 } from "lucide-react";
+import { CheckCircle2, XCircle, Users, CalendarIcon, Loader2, Lock, Edit2, Trash2 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { useAuthStore } from "@/store/authStore";
 import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 export default function AttendancePage() {
   const queryClient = useQueryClient();
@@ -19,6 +21,8 @@ export default function AttendancePage() {
   const [selectedStudentId, setSelectedStudentId] = useState<string>("");
   const [selectedDate, setSelectedDate] = useState<string>("");
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
+  const [deleteAttendanceConfirm, setDeleteAttendanceConfirm] = useState<{ schedule: any; studentId: string; studentName: string } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { data: teachers = [], isLoading: loadingTeachers } = useQuery({
     queryKey: ["all-teachers"],
@@ -81,6 +85,33 @@ export default function AttendancePage() {
       batch: schedule.batch?._id || schedule.batch,
       replacementTeacher: schedule.replacementTeacher?._id || schedule.replacementTeacher,
       attendance: currentAttendance
+    });
+  };
+
+  const handleDeleteAttendance = () => {
+    if (!deleteAttendanceConfirm) return;
+    const { schedule, studentId } = deleteAttendanceConfirm;
+    setSavingScheduleId(schedule._id);
+    const currentAttendance = [...(schedule.attendance || [])];
+    const filteredAttendance = currentAttendance.filter((a: any) => 
+      (a.studentId?._id || a.studentId) !== studentId
+    );
+
+    updateSchedule.mutate({
+      ...schedule,
+      teacher: schedule.teacher?._id || schedule.teacher,
+      batch: schedule.batch?._id || schedule.batch,
+      replacementTeacher: schedule.replacementTeacher?._id || schedule.replacementTeacher,
+      attendance: filteredAttendance,
+    }, {
+      onSuccess: () => {
+        setDeleteAttendanceConfirm(null);
+        setSuccessMessage("Attendance record deleted successfully");
+        setTimeout(() => setSuccessMessage(null), 4000);
+      },
+      onError: () => {
+        setDeleteAttendanceConfirm(null);
+      }
     });
   };
 
@@ -419,6 +450,17 @@ export default function AttendancePage() {
                               >
                                 {isMarked && !isPresent ? "Absent" : "Mark Absent"}
                               </button>
+                              {isMarked && (
+                                <button
+                                  type="button"
+                                  disabled={isSaving}
+                                  onClick={() => setDeleteAttendanceConfirm({ schedule, studentId: student._id, studentName: student.name })}
+                                  className="p-2 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl border border-neutral-700/50 hover:border-red-500/30 transition-all disabled:opacity-50"
+                                  title="Delete attendance record"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
                             </>
                           ) : (
                             <div className={`flex-1 py-2 text-center text-xs font-bold rounded-xl border ${
@@ -441,6 +483,22 @@ export default function AttendancePage() {
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteAttendanceConfirm}
+        onClose={() => setDeleteAttendanceConfirm(null)}
+        onConfirm={handleDeleteAttendance}
+        title="Delete Attendance Record"
+        itemName={deleteAttendanceConfirm ? `${deleteAttendanceConfirm.studentName} - ${format(parseISO(deleteAttendanceConfirm.schedule.date), "MMM d, yyyy")}` : undefined}
+        isLoading={updateSchedule.isPending}
+      />
+
+      {/* Success Notification Toast */}
+      <SuccessToast
+        message={successMessage}
+        onClose={() => setSuccessMessage(null)}
+      />
     </div>
   );
 }

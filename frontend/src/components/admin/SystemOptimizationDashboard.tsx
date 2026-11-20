@@ -436,7 +436,12 @@ export default function SystemOptimizationDashboard() {
                       {count}
                     </span>
                     <button
-                      onClick={() => clearMutation.mutate({ target: "l1", pattern: `${prefix}_` })}
+                      onClick={() => setConfirmModal({
+                        isOpen: true,
+                        title: `Purge '${prefix}_' Cache?`,
+                        description: "Are you sure you want to delete this item? This action cannot be undone.",
+                        action: () => clearMutation.mutate({ target: "l1", pattern: `${prefix}_` })
+                      })}
                       disabled={clearMutation.isPending}
                       className="ml-1 text-neutral-500 hover:text-red-400 transition-colors"
                       title={`Purge all '${prefix}_' entries`}

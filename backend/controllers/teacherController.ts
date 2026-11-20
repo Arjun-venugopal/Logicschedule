@@ -47,17 +47,22 @@ export const getTeachers = async (_req: Request, res: Response) => {
     const currentTotalMinutes = kolkata.currentTotalMinutes;
 
     // Run independent database queries concurrently
-    const [teachers, todaySchedules, todayDemos] = await Promise.all([
+    const [teachers, todaySchedulesRaw, todayDemos] = await Promise.all([
       Teacher.find({}).populate('user', 'name email role mustChangePassword').lean(),
       Schedule.find({
         date: { $gte: todayStart, $lte: todayEnd },
         status: { $ne: 'Cancelled' }
-      }),
+      }).populate('batch', 'status'),
       DemoSession.find({
         date: { $gte: todayStart, $lte: todayEnd },
         status: { $ne: 'Cancelled' }
       })
     ]);
+
+    const todaySchedules = todaySchedulesRaw.filter((s: any) => {
+      const bStatus = s.batch?.status || (typeof s.batch === 'object' ? s.batch.status : '');
+      return bStatus !== 'Dropped';
+    });
 
     // Hash Maps for O(1) per-teacher schedules and demos lookups
     const schedulesByTeacher = new Map<string, any[]>();
@@ -184,11 +189,33 @@ export const createTeacher = async (req: Request, res: Response): Promise<void> 
     // Check for duplicate Teacher profile
     const teacherExists = await Teacher.findOne({ email: normalizedEmail });
     if (teacherExists) {
-      res.status(400).json({ message: 'Teacher profile with this email already exists' });
+      res.status(409).json({ message: 'Teacher profile with this email already exists', isDuplicate: true });
       return;
     }
 
+    if (phone) {
+      const cleanPhone = String(phone).replace(/\D/g, '');
+      if (cleanPhone.length >= 8) {
+        const last10 = cleanPhone.slice(-10);
+        const allTeachers = await Teacher.find({}).select('_id name phone');
+        const phoneExists = allTeachers.find((t: any) => {
+          const p = String(t.phone || '').replace(/\D/g, '');
+          return p.length >= 8 && p.slice(-10) === last10;
+        });
+        if (phoneExists) {
+          res.status(409).json({
+            message: `A teacher with phone number "${phone}" already exists (${phoneExists.name}).`,
+            isDuplicate: true,
+          });
+          return;
+        }
+      }
+    }
+
+    const deterministicTeacherId = `teacher_${normalizedEmail.replace(/[^a-z0-9]/g, '_')}`;
+
     const teacher = await Teacher.create({
+      _id: deterministicTeacherId,
       user: user._id,
       name,
       email: normalizedEmail,

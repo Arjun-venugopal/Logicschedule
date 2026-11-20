@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { X, Calendar, Clock, CheckCircle2, AlertCircle, Edit3, Save, Plus, Trash2 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 
 interface Slot {
   startTime: string;
@@ -54,6 +55,17 @@ export function TeacherWeeklyAvailabilityModal({
   });
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ type: 'duty' | 'slot'; idOrDay: string; index?: number; label: string } | null>(null);
+
+  const handleExecuteDelete = () => {
+    if (!deleteConfirm) return;
+    if (deleteConfirm.type === 'duty') {
+      handleRemoveDutyItem(deleteConfirm.idOrDay);
+    } else if (deleteConfirm.type === 'slot' && deleteConfirm.index !== undefined) {
+      handleRemoveSlot(deleteConfirm.idOrDay, deleteConfirm.index);
+    }
+    setDeleteConfirm(null);
+  };
 
   // Normalize availability for 7 days
   useEffect(() => {
@@ -428,7 +440,7 @@ export function TeacherWeeklyAvailabilityModal({
                         </div>
                         <button
                           type="button"
-                          onClick={() => handleRemoveDutyItem(item.id)}
+                          onClick={() => setDeleteConfirm({ type: 'duty', idOrDay: item.id, label: `${item.status} schedule (${item.startDate} to ${item.endDate})` })}
                           className="text-neutral-500 hover:text-red-400 p-1 transition-colors"
                           title="Delete status item"
                         >
@@ -502,7 +514,7 @@ export function TeacherWeeklyAvailabilityModal({
                               />
                               <button
                                 type="button"
-                                onClick={() => handleRemoveSlot(dayAvail.day, idx)}
+                                onClick={() => setDeleteConfirm({ type: 'slot', idOrDay: dayAvail.day, index: idx, label: `${dayAvail.day} slot (${slot.startTime} - ${slot.endTime})` })}
                                 className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors"
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -577,6 +589,15 @@ export function TeacherWeeklyAvailabilityModal({
           </div>
         </motion.div>
       </div>
+
+      {/* Delete Item Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={handleExecuteDelete}
+        title="Delete Item"
+        itemName={deleteConfirm?.label}
+      />
     </AnimatePresence>
   );
 }

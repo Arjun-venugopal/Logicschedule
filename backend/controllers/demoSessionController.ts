@@ -1,4 +1,4 @@
-import { Response } from 'express';
+﻿import { Response } from 'express';
 import DemoSession from '../models/DemoSession';
 import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
@@ -6,8 +6,8 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Payment from '../models/Payment';
 import RecycleBin from '../models/RecycleBin';
-import { findExistingStudent, syncStudentBatchSchedules } from './studentController';
-import { checkTeacherConflict, getKolkataNow } from '../utils/scheduleHelper';
+import { findExistingStudent, syncStudentBatchSchedules, escapeRegex } from './studentController';
+import { checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
 // @desc    Get all demo sessions
@@ -305,11 +305,45 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
 
     const dateObj = new Date(date);
 
+    // Prevent duplicate demo booking for the same student on the same date and startTime
+    const existingStudentDemo = await DemoSession.findOne({
+      $or: [
+        ...(phoneNumber ? [{ phoneNumber: phoneNumber.trim() }] : []),
+        ...(studentEmail ? [{ studentEmail: studentEmail.trim().toLowerCase() }] : []),
+        { studentName: { $regex: `^\\s*${escapeRegex(effectiveStudentName.trim())}\\s*$`, $options: 'i' } }
+      ],
+      date: dateObj,
+      startTime,
+      status: { $ne: 'Cancelled' }
+    });
+    if (existingStudentDemo) {
+      res.status(409).json({
+        message: `A demo session for "${effectiveStudentName}" is already scheduled on ${formatDateToYYYYMMDD(dateObj)} at ${startTime}.`,
+        isDuplicate: true,
+      });
+      return;
+    }
+
     let isConflict = false;
 
-    // Only check conflicts if a teacher is assigned
+    // Only check conflicts and duplicate teacher bookings if a teacher is assigned
     if (teacher) {
       const teacherId = (typeof teacher === 'object' && teacher !== null && teacher._id) ? teacher._id.toString() : teacher.toString();
+      
+      const existingTeacherDemo = await DemoSession.findOne({
+        teacher: teacherId,
+        date: dateObj,
+        startTime,
+        status: { $ne: 'Cancelled' }
+      });
+      if (existingTeacherDemo) {
+        res.status(409).json({
+          message: `This teacher is already booked for a demo session on ${formatDateToYYYYMMDD(dateObj)} at ${startTime}.`,
+          isDuplicate: true,
+        });
+        return;
+      }
+
       const conflictRes = await checkTeacherConflict({
         teacherId,
         date: dateObj,
@@ -388,7 +422,9 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     // SINGLE STUDENT BOOKING (Standard / Existing Flow)
+    const deterministicDemoId = `demo_${(teacher ? (typeof teacher === 'object' ? teacher._id : teacher) : 'unassigned')}_${effectiveStudentName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${formatDateToYYYYMMDD(dateObj)}_${startTime.replace(':', '')}`;
     const demoSession = await DemoSession.create({
+      _id: deterministicDemoId,
       teacher: teacher || null,
       studentName: effectiveStudentName,
       studentEmail: (validStudents[0]?.studentEmail) || studentEmail || '',
@@ -434,6 +470,13 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     res.status(201).json(responseObj);
   } catch (error: any) {
     console.error('Create demo session error:', error.message);
+    if (error.code === '23505' || error.isDuplicate) {
+      res.status(409).json({
+        message: 'A demo booking already exists for this student or slot at this date and time.',
+        isDuplicate: true,
+      });
+      return;
+    }
     res.status(500).json({ message: 'Server error', detail: error.message });
   }
 };

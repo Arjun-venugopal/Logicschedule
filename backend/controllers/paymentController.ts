@@ -177,7 +177,9 @@ export const createAdmissionPayment = async (req: Request, res: Response): Promi
       createdAt: new Date().toISOString(),
     };
 
+    const deterministicPayId = `pay_${(targetStudent ? targetStudent._id : studentId) || 'unknown'}_${targetBatchId || 'admission'}`;
     const paymentPayload: any = {
+      _id: deterministicPayId,
       student: targetStudent ? targetStudent._id : (studentId || null),
       batch: targetBatchId || (targetStudent?.batch ? (targetStudent.batch._id || targetStudent.batch) : null),
       demoSession: demoSessionId || null,
@@ -249,6 +251,13 @@ export const createAdmissionPayment = async (req: Request, res: Response): Promi
     });
   } catch (error: any) {
     console.error('Create admission payment error:', error);
+    if (error.code === '23505' || error.isDuplicate) {
+      res.status(409).json({
+        message: 'A payment record already exists for this student and batch.',
+        isDuplicate: true,
+      });
+      return;
+    }
     res.status(500).json({ message: error.message || 'Error recording admission fee' });
   }
 };
@@ -312,6 +321,31 @@ export const recordPayment = async (req: Request, res: Response): Promise<void> 
     const txDateStr = paymentDate || new Date().toISOString();
     const paymentMonth = toKolkataMonthKey(txDateStr);
     const salesExec = (payment.salesExecutive || payment.closedBy || 'Unassigned').trim();
+
+    // Prevent duplicate payment entry in paymentHistory
+    const txTime = new Date(txDateStr).getTime();
+    if (Array.isArray(payment.paymentHistory)) {
+      const isDuplicateTx = payment.paymentHistory.some((item: any) => {
+        if (transactionId && item.transactionId && item.transactionId.trim() === transactionId.trim()) {
+          return true;
+        }
+        if (Number(item.amount) === amount && item.paymentMethod === (paymentMethod || 'Bank Transfer')) {
+          const itemTime = new Date(item.paymentDate || item.createdAt).getTime();
+          if (Math.abs(itemTime - txTime) < 5 * 60 * 1000) {
+            return true;
+          }
+        }
+        return false;
+      });
+
+      if (isDuplicateTx) {
+        res.status(409).json({
+          message: 'This payment transaction has already been recorded (duplicate entry prevented).',
+          isDuplicate: true,
+        });
+        return;
+      }
+    }
 
     const tx = {
       id: crypto.randomUUID(),

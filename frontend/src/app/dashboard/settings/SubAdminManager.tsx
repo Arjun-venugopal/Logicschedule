@@ -5,6 +5,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { Plus, Trash2, Edit2, AlertCircle, ShieldAlert, CheckCheck, X, ShieldCheck, Check } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 
 export const MODULES = [
   { key: "dashboard", label: "Dashboard", description: "Overview stats & analytics" },
@@ -36,6 +37,7 @@ export default function SubAdminManager() {
   );
   const [bulkError, setBulkError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<any | null>(null);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -101,8 +103,12 @@ export default function SubAdminManager() {
     mutationFn: (id: string) => api.delete(`/users/sub-admins/${id}`),
     onSuccess: () => {
       refetch();
-      setSuccessMessage("Sub Admin removed successfully!");
+      setDeleteConfirm(null);
+      setSuccessMessage("Sub-admin deleted successfully!");
       setTimeout(() => setSuccessMessage(null), 4000);
+    },
+    onError: () => {
+      setDeleteConfirm(null);
     }
   });
 
@@ -360,11 +366,7 @@ export default function SubAdminManager() {
                         <Edit2 className="w-4 h-4" />
                       </button>
                       <button
-                        onClick={() => {
-                          if (confirm(`Are you sure you want to delete ${admin.name}?`)) {
-                            deleteMutation.mutate(admin._id);
-                          }
-                        }}
+                        onClick={() => setDeleteConfirm(admin)}
                         className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded transition-colors"
                         title="Delete sub admin"
                       >
@@ -767,6 +769,20 @@ export default function SubAdminManager() {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) {
+            deleteMutation.mutate(deleteConfirm._id);
+          }
+        }}
+        title="Delete Sub-Admin"
+        itemName={deleteConfirm?.name}
+        isLoading={deleteMutation.isPending}
+      />
     </div>
   );
 }

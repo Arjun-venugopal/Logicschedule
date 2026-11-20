@@ -7,10 +7,12 @@ export const notFound = (req: Request, res: Response, next: NextFunction) => {
 };
 
 export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
-  const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
+  const isDup = Boolean(err.isDuplicate || err.code === '23505');
+  const statusCode = err.statusCode || (isDup ? 409 : (res.statusCode === 200 ? 500 : res.statusCode));
   res.status(statusCode);
   res.json({
-    message: err.message,
+    message: err.message || 'An unexpected error occurred',
+    isDuplicate: isDup,
     stack: process.env.NODE_ENV === 'production' ? null : err.stack,
   });
 };

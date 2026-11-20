@@ -212,7 +212,7 @@ export const getStudentsByBatch = async (req: Request, res: Response): Promise<v
   try {
     const { batchId } = req.params;
     const bId = (Array.isArray(batchId) ? batchId[0] : batchId) as string;
-    const students = await Student.find({ batch: bId });
+    let students = await Student.find({ batch: bId });
     
     // Also include any students referenced in batch.students
     const batch = await Batch.findById(bId);
@@ -232,10 +232,13 @@ export const getStudentsByBatch = async (req: Request, res: Response): Promise<v
           if (s?._id) studentMap.set(s._id.toString(), s);
         });
       }
-      res.status(200).json(Array.from(studentMap.values()));
-      return;
+      students = Array.from(studentMap.values());
     }
 
+    const includeDropped = req.query.includeDropped === 'true';
+    if (!includeDropped) {
+      students = students.filter((s: any) => s.status !== 'Dropped');
+    }
     res.status(200).json(students);
   } catch (error) {
     res.status(500).json({ message: 'Failed to fetch students' });
@@ -325,9 +328,10 @@ const studentSchema = z.object({
   level: z.string().optional(),
   classesNeeded: z.union([z.number(), z.string()]).optional(),
   assignedTutor: z.string().optional(),
+  status: z.enum(['Active', 'Dropped', 'Completed', 'Inactive']).optional().or(z.string().optional()),
 });
 
-const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+export const escapeRegex = (str: string) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 export async function syncStudentBatchSchedules(
   studentId: string,
@@ -489,7 +493,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor, status } = parsed.data;
     const trimmedName = name.trim();
     
     // 1. Check if already enrolled in this exact batch
@@ -623,6 +627,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       level: initialLevel,
       classesNeeded: classesNeeded !== undefined ? Number(classesNeeded) : undefined,
       assignedTutor: finalTutor,
+      status: req.body.status || 'Active',
     });
 
     if (batch) {
@@ -714,6 +719,12 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       student.level = level;
     }
     if (classesNeeded !== undefined) student.classesNeeded = Number(classesNeeded);
+const oldStatus = student.status || 'Active';
+    const newStatus = status !== undefined ? status : oldStatus;
+    const statusChanged = status !== undefined && newStatus !== oldStatus;
+    if (status !== undefined) {
+      student.status = newStatus;
+    }
     const oldTutorId = student.assignedTutor?._id
       ? student.assignedTutor._id.toString()
       : (student.assignedTutor ? student.assignedTutor.toString() : '');
@@ -797,6 +808,55 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
     }
 
     await student.save();
+if (statusChanged) {
+      const targetBatchId = newBatchId || oldBatchId || (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
+
+      if (newStatus === 'Dropped') {
+        if (targetBatchId) {
+          const upcomingSchedules = await Schedule.find({ batch: targetBatchId, status: 'Scheduled' });
+          for (const sched of upcomingSchedules) {
+            if (Array.isArray(sched.attendance)) {
+              const filtered = sched.attendance.filter(
+                (a: any) => (a.studentId?._id || a.studentId || '').toString() !== student._id.toString()
+              );
+              if (filtered.length !== sched.attendance.length) {
+                sched.attendance = filtered;
+                await sched.save();
+              }
+            }
+          }
+
+          const otherActiveStudents = await Student.find({
+            batch: targetBatchId,
+            _id: { $ne: student._id },
+            status: { $ne: 'Dropped' }
+          });
+          if (otherActiveStudents.length === 0) {
+            const batchDoc = await Batch.findById(targetBatchId);
+            if (batchDoc && batchDoc.status !== 'Dropped') {
+              batchDoc.status = 'Dropped';
+              await batchDoc.save();
+            }
+          }
+        }
+      } else if (newStatus === 'Active') {
+        if (targetBatchId) {
+          const batchDoc = await Batch.findById(targetBatchId);
+          if (batchDoc && batchDoc.status === 'Dropped') {
+            batchDoc.status = 'Active';
+            await batchDoc.save();
+          }
+          await syncStudentBatchSchedules(student._id.toString(), targetBatchId);
+        }
+      }
+
+      serverCache.clearPattern('schedules_');
+      serverCache.clearPattern('students_');
+      serverCache.clearPattern('batches_');
+      serverCache.clearPattern('stats_');
+      serverCache.clearPattern('timings_');
+      deleteDiskCache('schedules_all');
+    }
 
     // If batch changed or assigned, update counts and sync schedules
     if (oldBatchId && newBatchId && oldBatchId !== newBatchId) {

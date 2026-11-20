@@ -9,6 +9,8 @@ import { ChevronLeft, ChevronRight, Plus, X, Trash2, Edit2, Clock, AlertTriangle
 import { useAuthStore } from "@/store/authStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getSafeDateOnly } from "@/lib/utils";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 const SLOT_COLORS = [
   { bg: "bg-amber-500/20", border: "border-amber-500/50", text: "text-amber-300", dot: "bg-amber-400" },
@@ -143,6 +145,7 @@ export default function SchedulePage() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [modal, setModal] = useState<{ open: boolean; mode: "create" | "edit"; prefillDate?: string } | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [form, setForm] = useState<ScheduleEntry>(emptyForm());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -204,6 +207,10 @@ export default function SchedulePage() {
     refetchOnWindowFocus: false,
   });
 
+  const activeStudents = useMemo(() => {
+    return students.filter((st: any) => st && st.status !== "Dropped");
+  }, [students]);
+
   // Mutations
   const createSchedule = useMutation({
     mutationFn: (data: ScheduleEntry) => api.post("/schedules", data),
@@ -232,6 +239,8 @@ export default function SchedulePage() {
       queryClient.invalidateQueries({ queryKey: ["my-performance"] });
       queryClient.invalidateQueries({ queryKey: ["teacher-performance"] });
       setDeleteConfirm(null);
+      setSuccessMessage("Class schedule deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -336,8 +345,8 @@ export default function SchedulePage() {
       if (effectiveForm.status === "Cancelled") {
         const reasonText = effectiveForm.cancellationReason?.trim() || "";
         const notesSuffix = reasonText ? `Cancelled. Reason: ${reasonText}` : "Cancelled";
-        const cancelledAttendance = students.length > 0
-          ? students.map((st: any) => ({ studentId: st._id, isPresent: false }))
+        const cancelledAttendance = activeStudents.length > 0
+          ? activeStudents.map((st: any) => ({ studentId: st._id, isPresent: false }))
           : (effectiveForm.attendance?.map((a: any) => ({ ...a, isPresent: false })) || []);
         const updateData = { 
           ...effectiveForm, 
@@ -372,8 +381,8 @@ export default function SchedulePage() {
         };
         createSchedule.mutate(newClass);
       } else if (effectiveForm.status === "Completed") {
-        const resolvedAttendance = students.length > 0
-          ? students.map((st: any) => {
+        const resolvedAttendance = activeStudents.length > 0
+          ? activeStudents.map((st: any) => {
               const existing = effectiveForm.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === st._id);
               return {
                 studentId: st._id,
@@ -388,7 +397,7 @@ export default function SchedulePage() {
     } else {
       const createData = { ...effectiveForm };
       if (effectiveForm.status === "Completed") {
-        createData.attendance = students.length > 0 ? students.map((st: any) => ({ studentId: st._id, isPresent: true })) : [];
+        createData.attendance = activeStudents.length > 0 ? activeStudents.map((st: any) => ({ studentId: st._id, isPresent: true })) : [];
       } else {
         createData.attendance = [];
       }
@@ -429,6 +438,7 @@ export default function SchedulePage() {
   // Memoized filtered schedules and O(1) lookup maps
   const filteredSchedules = useMemo(() => {
     return schedules.filter((s: any) => {
+      if (s.batch?.status === "Dropped" || s.batch?.status === "Cancelled") return false;
       if (!isTeacher) {
         if (filterTeacher && (s.teacher?._id || s.teacher) !== filterTeacher) return false;
         if (filterBatch && (s.batch?._id || s.batch) !== filterBatch) return false;
@@ -1468,7 +1478,7 @@ export default function SchedulePage() {
                 </div>
 
                 {/* Attendance: ONLY visible when class is marked Completed */}
-                {modal.mode === "edit" && students.length > 0 && form.status === "Completed" && (
+                {modal.mode === "edit" && activeStudents.length > 0 && form.status === "Completed" && (
                   <motion.div
                     initial={{ opacity: 0, y: 6 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -1487,7 +1497,7 @@ export default function SchedulePage() {
                     </div>
 
                     <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                      {students.map((student: any) => {
+                      {activeStudents.map((student: any) => {
                         const existingRecord = form.attendance?.find((a: any) => (a.studentId?._id || a.studentId) === student._id);
                         const isPresent = existingRecord !== undefined ? existingRecord.isPresent : true;
 
@@ -1533,7 +1543,7 @@ export default function SchedulePage() {
                 )}
 
                 {/* Helpful hint when class is Scheduled */}
-                {modal.mode === "edit" && students.length > 0 && form.status === "Scheduled" && (
+                {modal.mode === "edit" && activeStudents.length > 0 && form.status === "Scheduled" && (
                   <div className="text-[11px] text-neutral-400 flex items-center gap-2 pt-2 border-t border-neutral-800/80 bg-neutral-900/40 p-2.5 rounded-xl border border-neutral-800">
                     <Info className="w-4 h-4 text-amber-400 shrink-0" />
                     <span>Student attendance will be visible and recorded when the class is marked as <strong className="text-emerald-400">Completed</strong>.</span>
@@ -1581,52 +1591,18 @@ export default function SchedulePage() {
       </AnimatePresence>
 
       {/* Delete Confirm Dialog */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white">Delete this class?</h3>
-                  <p className="text-sm text-neutral-400">This action cannot be undone.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => deleteSchedule.mutate(deleteConfirm)}
-                  disabled={deleteSchedule.isPending}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {deleteSchedule.isPending ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <><Trash2 className="w-4 h-4" /> Delete</>
-                  )}
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) deleteSchedule.mutate(deleteConfirm);
+        }}
+        title="Delete Class Schedule"
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteSchedule.isPending}
+      />
+
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
     </div>
   );
 }

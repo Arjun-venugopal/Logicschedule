@@ -11,6 +11,8 @@ import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getSafeDateOnly, formatTime12h, computeEndTime } from "@/lib/utils";
 import { calculateBatchProgressAndSchedule } from "@/lib/scheduleCalculation";
+import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { SuccessToast } from "@/components/common/SuccessToast";
 
 const BatchAnalyticsModal = dynamic(
   () => import("@/components/batches/BatchAnalyticsModal").then((mod) => mod.BatchAnalyticsModal || mod.default),
@@ -129,6 +131,7 @@ export default function BatchesPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<BatchForm>(emptyForm());
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState<string | null>(null);
   const [analyticsBatchId, setAnalyticsBatchId] = useState<string | null>(null);
   const [showActiveAnalyticsModal, setShowActiveAnalyticsModal] = useState<boolean>(false);
@@ -261,6 +264,8 @@ export default function BatchesPage() {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       setDeleteConfirm(null);
+      setSuccessMessage("Batch deleted successfully");
+      setTimeout(() => setSuccessMessage(null), 4000);
     },
   });
 
@@ -1504,51 +1509,19 @@ export default function BatchesPage() {
       </AnimatePresence>
 
       {/* Delete Confirm */}
-      <AnimatePresence>
-        {deleteConfirm && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
-          >
-            <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-sm p-6 shadow-2xl"
-            >
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center">
-                  <AlertTriangle className="w-5 h-5 text-red-400" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-white">Delete this batch?</h3>
-                  <p className="text-sm text-neutral-400">All associated schedules may be affected.</p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setDeleteConfirm(null)}
-                  className="flex-1 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 transition-colors text-sm font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={() => deleteBatch.mutate(deleteConfirm)}
-                  disabled={deleteBatch.isPending}
-                  className="flex-1 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-white font-semibold transition-colors text-sm disabled:opacity-50 flex items-center justify-center gap-2"
-                >
-                  {deleteBatch.isPending
-                    ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    : <><Trash2 className="w-4 h-4" /> Delete</>
-                  }
-                </button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) deleteBatch.mutate(deleteConfirm);
+        }}
+        title="Delete Batch"
+        itemName={batches.find((b: any) => b._id === deleteConfirm)?.name}
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteBatch.isPending}
+      />
+
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
 
       {/* Analytics Modals */}
       {analyticsBatchId && (
