@@ -7,6 +7,7 @@ import { X, BookOpen, Users, CalendarCheck, BarChart3, TrendingUp, Search, Exter
 import { useState, useMemo } from "react";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
 import { BatchAnalyticsModal } from "./BatchAnalyticsModal";
+import { useTheme } from "@/context/ThemeContext";
 
 const SUBJECT_COLORS: Record<string, string> = {
   Scratch: "#f59e0b",
@@ -19,6 +20,7 @@ const SUBJECT_COLORS: Record<string, string> = {
 const CHART_COLORS = ["#f59e0b", "#3b82f6", "#10b981", "#8b5cf6", "#ec4899", "#06b6d4"];
 
 export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }) {
+  const { isDark } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
 
@@ -271,8 +273,8 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                             ))}
                           </Pie>
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626", borderRadius: "10px", fontSize: "12px" }}
-                            itemStyle={{ color: "#ffffff" }}
+                            contentStyle={{ backgroundColor: isDark ? "#171717" : "#FFFFFF", border: isDark ? "1px solid #262626" : "1px solid #E5E7EB", borderRadius: "10px", fontSize: "12px", color: isDark ? "#ffffff" : "#171717" }}
+                            itemStyle={{ color: isDark ? "#ffffff" : "#171717" }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -298,11 +300,11 @@ export function ActiveBatchesAnalyticsModal({ onClose }: { onClose: () => void }
                     {analytics.batchProgressData.length > 0 ? (
                       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                         <BarChart data={analytics.batchProgressData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
-                          <XAxis dataKey="name" stroke="#525252" fontSize={10} tickLine={false} />
-                          <YAxis stroke="#525252" fontSize={10} tickLine={false} domain={[0, 100]} />
+                          <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#262626" : "#E5E7EB"} vertical={false} />
+                          <XAxis dataKey="name" stroke={isDark ? "#525252" : "#9CA3AF"} fontSize={10} tickLine={false} />
+                          <YAxis stroke={isDark ? "#525252" : "#9CA3AF"} fontSize={10} tickLine={false} domain={[0, 100]} />
                           <Tooltip
-                            contentStyle={{ backgroundColor: "#171717", border: "1px solid #262626", borderRadius: "10px", fontSize: "12px" }}
+                            contentStyle={{ backgroundColor: isDark ? "#171717" : "#FFFFFF", border: isDark ? "1px solid #262626" : "1px solid #E5E7EB", borderRadius: "10px", fontSize: "12px", color: isDark ? "#ffffff" : "#171717" }}
                             itemStyle={{ color: "#f59e0b" }}
                           />
                           <Bar dataKey="progress" fill="#f59e0b" radius={[6, 6, 0, 0]} name="Progress %" />

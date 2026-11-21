@@ -8,6 +8,7 @@ import { useEffect } from "react";
 import { Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, AlertTriangle, Sparkles, Calendar } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { format, parseISO } from "date-fns";
+import { useTheme } from "@/context/ThemeContext";
 
 export default function TeacherPerformancePage() {
   const { user } = useAuthStore();
@@ -51,12 +52,13 @@ export default function TeacherPerformancePage() {
   }
 
   const { teacher, stats, extraClassRecords = [] } = performance;
+  const { isDark } = useTheme();
 
   const pieChartData = [
     { name: "Completed", value: stats.completedClasses },
     { name: "Remaining/Cancelled", value: Math.max(0, stats.totalSchedules - stats.completedClasses) },
   ];
-  const PIE_COLORS = ["#f59e0b", "#262626"];
+  const PIE_COLORS = ["#f59e0b", isDark ? "#262626" : "#E5E7EB"];
 
   return (
     <div className="space-y-6">

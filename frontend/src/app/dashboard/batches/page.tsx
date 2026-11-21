@@ -254,6 +254,9 @@ export default function BatchesPage() {
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-today-schedules"] });
       closeModal();
       setSuccessMessage("Batch timing and schedule calendar synchronized successfully");
       setTimeout(() => setSuccessMessage(null), 4000);

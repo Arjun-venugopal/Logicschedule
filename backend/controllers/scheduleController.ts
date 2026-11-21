@@ -29,23 +29,45 @@ export const getSchedules = async (req: any, res: Response) => {
     if (isTeacher) {
       const teacher = await Teacher.findOne({ user: req.user._id });
       if (teacher) {
-        // Query teacher and replacementTeacher using indexed database queries instead of scanning all documents
-        const [primarySchedules, replacementSchedules] = await Promise.all([
+        const teacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
+        const teacherBatchIds = teacherBatches.map((b: any) => b._id.toString());
+
+        // Query teacher, replacementTeacher, and active batch schedules
+        const [primarySchedules, replacementSchedules, batchSchedules] = await Promise.all([
           Schedule.find({ teacher: teacher._id })
             .sort({ date: -1 })
             .populate('teacher', 'name email')
-            .populate('batch', 'name subject status')
+            .populate('batch', 'name subject status assignedTeacher')
             .populate('replacementTeacher', 'name email'),
           Schedule.find({ replacementTeacher: teacher._id })
             .sort({ date: -1 })
             .populate('teacher', 'name email')
-            .populate('batch', 'name subject status')
-            .populate('replacementTeacher', 'name email')
+            .populate('batch', 'name subject status assignedTeacher')
+            .populate('replacementTeacher', 'name email'),
+          teacherBatchIds.length > 0
+            ? Schedule.find({ batch: { $in: teacherBatchIds }, status: 'Scheduled' })
+                .sort({ date: -1 })
+                .populate('teacher', 'name email')
+                .populate('batch', 'name subject status assignedTeacher')
+                .populate('replacementTeacher', 'name email')
+            : Promise.resolve([])
         ]);
 
         const map = new Map<string, any>();
-        primarySchedules.forEach((s: any) => map.set(s._id.toString(), s));
+        primarySchedules.forEach((s: any) => {
+          // If this upcoming scheduled class belongs to a batch assigned to a different teacher,
+          // do NOT display it to the former teacher (unless they are assigned as replacement)
+          if (s.status === 'Scheduled' && s.batch && typeof s.batch === 'object') {
+            const bTeacherId = s.batch.assignedTeacher?._id ? s.batch.assignedTeacher._id.toString() : (s.batch.assignedTeacher ? s.batch.assignedTeacher.toString() : '');
+            const repTeacherId = s.replacementTeacher?._id ? s.replacementTeacher._id.toString() : (s.replacementTeacher ? s.replacementTeacher.toString() : '');
+            if (bTeacherId && bTeacherId !== teacher._id.toString() && repTeacherId !== teacher._id.toString()) {
+              return;
+            }
+          }
+          map.set(s._id.toString(), s);
+        });
         replacementSchedules.forEach((s: any) => map.set(s._id.toString(), s));
+        batchSchedules.forEach((s: any) => map.set(s._id.toString(), s));
         schedules = Array.from(map.values()).sort((a: any, b: any) => {
           const tA = a.date ? new Date(a.date).getTime() : 0;
           const tB = b.date ? new Date(b.date).getTime() : 0;

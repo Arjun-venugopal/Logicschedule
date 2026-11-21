@@ -725,29 +725,48 @@ const oldStatus = student.status || 'Active';
     if (status !== undefined) {
       student.status = newStatus;
     }
-    const oldTutorId = student.assignedTutor?._id
-      ? student.assignedTutor._id.toString()
-      : (student.assignedTutor ? student.assignedTutor.toString() : '');
-    const newTutorId = assignedTutor !== undefined ? (assignedTutor ? assignedTutor.toString() : '') : oldTutorId;
-    const tutorChanged = assignedTutor !== undefined && String(newTutorId) !== String(oldTutorId);
 
-    if (assignedTutor !== undefined) {
-      student.assignedTutor = assignedTutor;
-    } else if (newBatchId) {
+    const targetBatchId = newBatchId || oldBatchId || (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
+    let targetBatchDoc: any = null;
+    if (targetBatchId) {
       try {
-        const nb = await Batch.findById(newBatchId);
-        if (nb?.assignedTeacher && (!student.assignedTutor || newBatchId !== oldBatchId)) {
-          student.assignedTutor = nb.assignedTeacher?._id ? nb.assignedTeacher._id.toString() : nb.assignedTeacher.toString();
-        }
+        targetBatchDoc = await Batch.findById(targetBatchId);
       } catch {}
     }
 
-    // If assigned teacher changed, record history and transfer upcoming/pending classes to new teacher
-    if (tutorChanged && newTutorId) {
+    const currentTutorId = student.assignedTutor?._id
+      ? student.assignedTutor._id.toString()
+      : (student.assignedTutor ? student.assignedTutor.toString() : '');
+    const currentBatchTeacherId = targetBatchDoc?.assignedTeacher?._id
+      ? targetBatchDoc.assignedTeacher._id.toString()
+      : (targetBatchDoc?.assignedTeacher ? targetBatchDoc.assignedTeacher.toString() : '');
+    const effectiveOldTutorId = currentTutorId || currentBatchTeacherId;
+
+    let newTutorId = effectiveOldTutorId;
+    if (assignedTutor !== undefined) {
+      newTutorId = assignedTutor ? ((assignedTutor as any)._id ? (assignedTutor as any)._id.toString() : String(assignedTutor)) : '';
+      student.assignedTutor = newTutorId || undefined;
+    } else if (newBatchId && (!student.assignedTutor || newBatchId !== oldBatchId)) {
+      if (targetBatchDoc?.assignedTeacher) {
+        newTutorId = currentBatchTeacherId;
+        student.assignedTutor = newTutorId || undefined;
+      }
+    }
+
+    const isTeacherTransfer = Boolean(
+      newTutorId && (
+        newTutorId !== currentTutorId ||
+        (targetBatchDoc && newTutorId !== currentBatchTeacherId) ||
+        (assignedTutor !== undefined && assignedTutor !== currentTutorId)
+      )
+    );
+
+    // If assigned teacher changed or transferred, synchronize student profile, batch, and all upcoming schedules
+    if (isTeacherTransfer && newTutorId) {
       try {
         let oldTeacherName = '';
-        if (oldTutorId) {
-          const oldTDoc = await Teacher.findById(oldTutorId).populate('user', 'name');
+        if (effectiveOldTutorId) {
+          const oldTDoc = await Teacher.findById(effectiveOldTutorId).populate('user', 'name');
           oldTeacherName = oldTDoc?.name || (oldTDoc as any)?.user?.name || '';
         }
         let newTeacherName = '';
@@ -755,53 +774,74 @@ const oldStatus = student.status || 'Active';
         newTeacherName = newTDoc?.name || (newTDoc as any)?.user?.name || 'Teacher';
 
         // 1. Maintain accurate record of teacher changes in student.teacherHistory
-        if (!student.teacherHistory || !Array.isArray(student.teacherHistory)) {
-          student.teacherHistory = [];
+        if (effectiveOldTutorId !== newTutorId) {
+          if (!student.teacherHistory || !Array.isArray(student.teacherHistory)) {
+            student.teacherHistory = [];
+          }
+          student.teacherHistory.push({
+            teacher: newTutorId,
+            teacherName: newTeacherName,
+            previousTeacher: effectiveOldTutorId || undefined,
+            previousTeacherName: oldTeacherName || undefined,
+            changedAt: new Date(),
+            changedBy: (req as any).user?._id || undefined,
+            reason: req.body.reassignReason || 'Teacher reassigned by admin',
+          });
         }
-        student.teacherHistory.push({
-          teacher: newTutorId,
-          teacherName: newTeacherName,
-          previousTeacher: oldTutorId || undefined,
-          previousTeacherName: oldTeacherName || undefined,
-          changedAt: new Date(),
-          changedBy: (req as any).user?._id || undefined,
-          reason: req.body.reassignReason || 'Teacher reassigned by admin',
-        });
 
         // 2. Transfer all upcoming and pending classes to the new teacher while preserving completed classes
-        const targetBatchId = newBatchId || oldBatchId || (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
-        const allStudentSchedules = targetBatchId ? await Schedule.find({ batch: targetBatchId }) : [];
-        for (const s of allStudentSchedules) {
-          if (s.status === 'Completed') {
-            // Strictly preserve historical teacher assignments on completed classes
-            let mod = false;
-            if (!s.completedBy) {
-              s.completedBy = s.replacementTeacher || s.teacher || oldTutorId;
-              mod = true;
+        if (targetBatchId) {
+          const allStudentSchedules = await Schedule.find({ batch: targetBatchId });
+          for (const s of allStudentSchedules) {
+            if (s.status === 'Completed') {
+              // Strictly preserve historical teacher assignments on completed classes
+              let mod = false;
+              if (!s.completedBy) {
+                s.completedBy = s.replacementTeacher || s.teacher || effectiveOldTutorId;
+                mod = true;
+              }
+              if (!s.completedByName) {
+                s.completedByName = oldTeacherName || s.teacher?.name || 'Teacher';
+                mod = true;
+              }
+              if (mod) await s.save();
+            } else if (s.status === 'Scheduled') {
+              // Assign upcoming/pending classes to new teacher
+              if (s.teacher?.toString() !== newTutorId) {
+                s.teacher = newTutorId;
+                if (s.replacementTeacher?.toString() === effectiveOldTutorId) {
+                  s.replacementTeacher = undefined;
+                }
+                await s.save();
+              }
             }
-            if (!s.completedByName) {
-              s.completedByName = oldTeacherName || s.teacher?.name || 'Teacher';
-              mod = true;
-            }
-            if (mod) await s.save();
-          } else if (s.status === 'Scheduled') {
-            // Assign upcoming/pending classes to new teacher
-            s.teacher = newTutorId;
-            await s.save();
           }
         }
 
-        // 3. If target batch is assigned to old teacher or unassigned, update batch assignedTeacher
-        if (targetBatchId) {
-          const batchDoc = await Batch.findById(targetBatchId);
-          if (batchDoc) {
-            const currentBTeacher = batchDoc.assignedTeacher?._id ? batchDoc.assignedTeacher._id.toString() : (batchDoc.assignedTeacher ? batchDoc.assignedTeacher.toString() : '');
-            if (!currentBTeacher || currentBTeacher === oldTutorId) {
-              batchDoc.assignedTeacher = newTutorId;
-              await batchDoc.save();
-            }
+        // 3. Update target batch assignedTeacher if it's a 1:1 batch or assigned to old teacher
+        if (targetBatchDoc) {
+          const isSingleStudentBatch =
+            (targetBatchDoc.name && targetBatchDoc.name.includes('1:1')) ||
+            (targetBatchDoc.studentsCount !== undefined && Number(targetBatchDoc.studentsCount) <= 1) ||
+            !currentBatchTeacherId ||
+            currentBatchTeacherId === effectiveOldTutorId;
+
+          if (isSingleStudentBatch && currentBatchTeacherId !== newTutorId) {
+            targetBatchDoc.assignedTeacher = newTutorId;
+            await targetBatchDoc.save();
           }
         }
+
+        // 4. Invalidate caches immediately across all layers
+        serverCache.clearPattern('schedules_');
+        serverCache.clearPattern('students_');
+        serverCache.clearPattern('batches_');
+        serverCache.clearPattern('stats_');
+        serverCache.clearPattern('timings_');
+        serverCache.delete('teachers_all');
+        deleteDiskCache('schedules_all');
+        if (effectiveOldTutorId) deleteDiskCache(`schedules_teacher_${effectiveOldTutorId}`);
+        if (newTutorId) deleteDiskCache(`schedules_teacher_${newTutorId}`);
       } catch (reassignErr: any) {
         console.warn('Error during teacher reassignment transfer:', reassignErr?.message);
       }
@@ -1515,6 +1555,7 @@ export const correctStudentProgress = async (req: AuthRequest, res: Response): P
         existingOnNextDate.notes = `Class ${nextNum} of ${total}`;
         existingOnNextDate.status = 'Scheduled';
         existingOnNextDate.conflict = conflictRes.hasConflict;
+        if (teacherId) existingOnNextDate.teacher = teacherId;
         await existingOnNextDate.save();
         keptScheduleIds.add(existingOnNextDate._id.toString());
       } else {
@@ -1571,6 +1612,7 @@ export const correctStudentProgress = async (req: AuthRequest, res: Response): P
             existingOnDate.notes = `Class ${curSession} of ${total}`;
             existingOnDate.status = 'Scheduled';
             existingOnDate.conflict = fwdConflict.hasConflict;
+            if (teacherId) existingOnDate.teacher = teacherId;
             await existingOnDate.save();
             keptScheduleIds.add(existingOnDate._id.toString());
           } else {

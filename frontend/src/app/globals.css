@@ -1,7 +1,7 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
   --font-sans: var(--font-roboto), ui-sans-serif, system-ui, sans-serif;
@@ -9,6 +9,103 @@
   --color-brand-light: #fbbf24;
   --color-brand-dark: #d97706;
   --color-accent: #f97316;
+  --color-surface: var(--color-surface);
+  --color-surface-2: var(--color-surface-2);
+  --color-surface-3: var(--color-surface-3);
+  --color-border: var(--color-border);
+}
+
+:root {
+  /* ScheduLix Centralized Design Tokens — Light Theme */
+  --bg-main: #F5F6F8;
+  --bg-sidebar: #FFFFFF;
+  --bg-nav: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-sub: #F9FAFB;
+  --bg-subtle: #F3F4F6;
+  --bg-subtle-hover: #E5E7EB;
+  --border-primary: #E5E7EB;
+  --border-secondary: #D1D5DB;
+  --text-primary: #171717;
+  --text-secondary: #4B5563;
+  --text-muted: #6B7280;
+  --primary-accent: #F59E0B;
+  --active-menu-bg: #FFF7E6;
+  --active-menu-text: #B45309;
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+  --scrollbar-thumb: #D1D5DB;
+
+  /* Chart tokens */
+  --chart-grid: #E5E7EB;
+  --chart-text: #6B7280;
+  --chart-tooltip-bg: #FFFFFF;
+  --chart-tooltip-border: #E5E7EB;
+
+  /* Tailwind Neutral Palette Overrides for Light Mode */
+  --color-neutral-950: #F5F6F8;
+  --color-neutral-900: #FFFFFF;
+  --color-neutral-850: #F9FAFB;
+  --color-neutral-800: #F3F4F6;
+  --color-neutral-750: #EEF0F2;
+  --color-neutral-700: #E5E7EB;
+  --color-neutral-600: #6B7280;
+  --color-neutral-500: #4B5563;
+  --color-neutral-400: #374151;
+  --color-neutral-300: #1F2937;
+  --color-neutral-200: #111827;
+  --color-neutral-100: #0A0A0A;
+  --color-neutral-50: #000000;
+  --color-white: #171717;
+  --color-surface: #FFFFFF;
+  --color-surface-2: #F9FAFB;
+  --color-surface-3: #F3F4F6;
+  --color-border: #E5E7EB;
+}
+
+html.dark,
+.dark {
+  /* ScheduLix Centralized Design Tokens — Dark Theme (Preserved) */
+  --bg-main: #0A0A0A;
+  --bg-sidebar: #171717;
+  --bg-nav: #171717;
+  --bg-card: #171717;
+  --bg-card-sub: #1F1F1F;
+  --bg-subtle: #262626;
+  --bg-subtle-hover: #2E2E2E;
+  --border-primary: #292929;
+  --border-secondary: #333333;
+  --text-primary: #FFFFFF;
+  --text-secondary: #9CA3AF;
+  --text-muted: #737373;
+  --primary-accent: #F59E0B;
+  --active-menu-bg: #332613;
+  --active-menu-text: #F59E0B;
+  --color-success: #10B981;
+  --color-danger: #EF4444;
+  --scrollbar-thumb: #333333;
+
+  /* Chart tokens */
+  --chart-grid: #262626;
+  --chart-text: #525252;
+  --chart-tooltip-bg: #171717;
+  --chart-tooltip-border: #262626;
+
+  /* Tailwind Neutral Palette Overrides for Dark Mode */
+  --color-neutral-950: #0A0A0A;
+  --color-neutral-900: #171717;
+  --color-neutral-850: #1F1F1F;
+  --color-neutral-800: #262626;
+  --color-neutral-750: #2F2F2F;
+  --color-neutral-700: #3F3F46;
+  --color-neutral-600: #525252;
+  --color-neutral-500: #737373;
+  --color-neutral-400: #9CA3AF;
+  --color-neutral-300: #D4D4D4;
+  --color-neutral-200: #E5E7EB;
+  --color-neutral-100: #F5F5F5;
+  --color-neutral-50: #FAFAFA;
+  --color-white: #FFFFFF;
   --color-surface: #111111;
   --color-surface-2: #1a1a1a;
   --color-surface-3: #222222;
@@ -17,12 +114,15 @@
 
 @layer base {
   * {
-    @apply border-neutral-800;
+    border-color: var(--border-primary);
     font-family: var(--font-roboto), sans-serif;
   }
   body {
-    @apply bg-neutral-950 text-neutral-50 overflow-x-hidden;
+    background-color: var(--bg-main);
+    color: var(--text-primary);
+    overflow-x: hidden;
     font-family: var(--font-roboto), sans-serif;
+    transition: background-color 0.15s ease, color 0.15s ease;
   }
   html {
     @apply font-sans overflow-x-hidden;
@@ -36,7 +136,7 @@
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: #333;
+    background: var(--scrollbar-thumb);
     border-radius: 99px;
   }
 }
@@ -48,8 +148,8 @@
     backdrop-filter: blur(12px);
   }
   .surface {
-    background: #111111;
-    border: 1px solid #222222;
+    background: var(--bg-card);
+    border: 1px solid var(--border-primary);
   }
   .brand-gradient {
     background: linear-gradient(135deg, #f59e0b 0%, #f97316 100%);
@@ -59,5 +159,395 @@
   }
   .border-brand {
     border-color: #f59e0b;
+  }
+}
+
+/* =========================================================================
+   LIGHT THEME ENHANCEMENTS & HIGH-CONTRAST VISIBILITY RULES
+   ========================================================================= */
+html.light,
+html:not(.dark) {
+  /* 1. Lighter Text Colors: map to rich, high-contrast shades (WCAG AA compliant) */
+  .text-amber-200,
+  .text-amber-300,
+  .text-amber-400 {
+    color: #B45309 !important; /* Rich amber-700 for clear legibility on white */
+  }
+  .text-amber-500 {
+    color: #D97706 !important;
+  }
+  .text-yellow-200,
+  .text-yellow-300,
+  .text-yellow-400 {
+    color: #A16207 !important; /* Deep gold-700 */
+  }
+  .text-orange-200,
+  .text-orange-300,
+  .text-orange-400 {
+    color: #C2410C !important; /* Deep burnt orange-700 */
+  }
+  .text-emerald-200,
+  .text-emerald-300,
+  .text-emerald-400 {
+    color: #047857 !important; /* Deep forest emerald-700 */
+  }
+  .text-green-200,
+  .text-green-300,
+  .text-green-400 {
+    color: #15803D !important; /* Forest green-700 */
+  }
+  .text-blue-200,
+  .text-blue-300,
+  .text-blue-400 {
+    color: #1D4ED8 !important; /* Sapphire blue-700 */
+  }
+  .text-sky-200,
+  .text-sky-300,
+  .text-sky-400 {
+    color: #0369A1 !important; /* Deep ocean sky-700 */
+  }
+  .text-purple-200,
+  .text-purple-300,
+  .text-purple-400 {
+    color: #7E22CE !important; /* Royal purple-700 */
+  }
+  .text-red-300,
+  .text-red-400 {
+    color: #B91C1C !important; /* Crimson red-700 */
+  }
+  .text-neutral-200,
+  .text-neutral-300 {
+    color: #1F2937 !important; /* Dark slate text */
+  }
+  .text-neutral-400 {
+    color: #4B5563 !important; /* Dark neutral text */
+  }
+  .text-neutral-500 {
+    color: #6B7280 !important;
+  }
+
+  /* Text white defaults to primary text #171717 in light mode */
+  .text-white {
+    color: #171717;
+  }
+
+  .hover\:text-white:hover {
+    color: #111827 !important;
+  }
+
+  .group:hover .group-hover\:text-white {
+    color: #111827 !important;
+  }
+
+  /* 2. Button & Icon Rules (No artificial background/border layers added to buttons; strictly darken icon colors) */
+  button.bg-neutral-900,
+  button.bg-neutral-800,
+  button.bg-neutral-950,
+  button {
+    box-shadow: none !important;
+  }
+
+  /* Soft, clean hover on buttons/nav without dark fill */
+  .hover\:bg-neutral-800:hover,
+  .hover\:bg-neutral-800\/50:hover,
+  .hover\:bg-neutral-800\/70:hover,
+  .hover\:bg-neutral-800\/80:hover {
+    background-color: #F3F4F6 !important;
+  }
+
+  /* Darken all SVG icons in buttons, interactive controls, and navigation */
+  button svg,
+  a svg,
+  nav svg,
+  .lucide,
+  svg.lucide {
+    color: #1F2937;
+    stroke: currentColor;
+  }
+
+  /* Specific lighter icon colors darkened for high contrast on light backgrounds */
+  svg[class*="text-amber-"],
+  button svg[class*="text-amber-"],
+  button .text-amber-400,
+  button .text-amber-300,
+  button .text-amber-500,
+  .text-amber-400 svg,
+  .text-amber-500 svg,
+  svg.text-amber-400,
+  svg.text-amber-300 {
+    color: #B45309 !important;
+  }
+
+  svg[class*="text-yellow-"],
+  button svg[class*="text-yellow-"],
+  button .text-yellow-400,
+  button .text-yellow-300,
+  .text-yellow-400 svg,
+  svg.text-yellow-400 {
+    color: #A16207 !important;
+  }
+
+  svg[class*="text-emerald-"],
+  button svg[class*="text-emerald-"],
+  button .text-emerald-400,
+  button .text-emerald-300,
+  button .text-emerald-500,
+  .text-emerald-400 svg,
+  .text-emerald-500 svg,
+  svg.text-emerald-400,
+  svg.text-emerald-300 {
+    color: #047857 !important;
+  }
+
+  svg[class*="text-green-"],
+  button svg[class*="text-green-"],
+  button .text-green-400,
+  svg.text-green-400 {
+    color: #15803D !important;
+  }
+
+  svg[class*="text-blue-"],
+  button svg[class*="text-blue-"],
+  button .text-blue-400,
+  button .text-blue-300,
+  button .text-blue-500,
+  .text-blue-400 svg,
+  svg.text-blue-400 {
+    color: #1D4ED8 !important;
+  }
+
+  svg[class*="text-sky-"],
+  button svg[class*="text-sky-"],
+  button .text-sky-400,
+  button .text-sky-300,
+  button .text-sky-500,
+  .text-sky-400 svg,
+  svg.text-sky-400 {
+    color: #0284C7 !important;
+  }
+
+  svg[class*="text-purple-"],
+  button svg[class*="text-purple-"],
+  button .text-purple-400,
+  button .text-purple-300,
+  button .text-purple-500,
+  .text-purple-400 svg,
+  svg.text-purple-400 {
+    color: #6B21A8 !important;
+  }
+
+  svg[class*="text-orange-"],
+  button svg[class*="text-orange-"],
+  button .text-orange-400,
+  button .text-orange-300,
+  button .text-orange-500,
+  .text-orange-400 svg,
+  svg.text-orange-400 {
+    color: #C2410C !important;
+  }
+
+  svg[class*="text-red-"],
+  button svg[class*="text-red-"],
+  button .text-red-400,
+  button .text-red-300,
+  button .text-red-500,
+  .text-red-400 svg,
+  svg.text-red-400 {
+    color: #B91C1C !important;
+  }
+
+  svg[class*="text-neutral-400"],
+  svg[class*="text-neutral-500"],
+  svg[class*="text-neutral-600"],
+  button svg[class*="text-neutral-400"],
+  button svg[class*="text-neutral-500"],
+  button svg[class*="text-neutral-600"],
+  button .text-neutral-400,
+  button .text-neutral-500,
+  button .text-neutral-600,
+  svg.text-neutral-400,
+  svg.text-neutral-500,
+  svg.text-neutral-600 {
+    color: #1F2937 !important;
+  }
+
+  /* On hover, icons darken further */
+  button:hover svg,
+  a:hover svg {
+    color: #111827;
+  }
+
+  /* Active sidebar item maintains brand orange */
+  [class*="text-amber-500"] svg,
+  .text-amber-500 svg,
+  svg.text-amber-500 {
+    color: #D97706 !important;
+  }
+
+  /* Solid colored buttons: ensure text & icons remain white */
+  [class*="bg-red-600"],
+  [class*="bg-red-500"]:not([class*="/"]),
+  [class*="bg-emerald-600"],
+  [class*="bg-emerald-500"]:not([class*="/"]),
+  [class*="bg-purple-600"],
+  [class*="bg-blue-600"],
+  button[class*="bg-red-600"] svg,
+  button[class*="bg-emerald-600"] svg,
+  button[class*="bg-purple-600"] svg,
+  button[class*="bg-blue-600"] svg,
+  .keep-white,
+  .keep-white * {
+    --color-white: #FFFFFF;
+    color: #FFFFFF !important;
+  }
+
+  /* Brand gradient primary buttons (e.g. New Batch, New Class) - text & icons stay dark/black */
+  .brand-gradient {
+    background: linear-gradient(135deg, #F59E0B 0%, #EA580C 100%) !important;
+    color: #000000 !important;
+    box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.25), 0 2px 4px -2px rgba(245, 158, 11, 0.2) !important;
+  }
+  .brand-gradient svg,
+  button.brand-gradient svg {
+    color: #000000 !important;
+  }
+
+  /* 3. Status Badges, Pills & Indicators (applied to non-button elements so buttons do not receive layers) */
+  :not(button):not(a)[class*="bg-amber-500/10"],
+  :not(button):not(a)[class*="bg-amber-500/15"],
+  :not(button):not(a)[class*="bg-amber-500/20"] {
+    background-color: #FEF3C7 !important;
+    border: 1px solid #FCD34D !important;
+    color: #B45309 !important;
+  }
+
+  :not(button):not(a)[class*="bg-emerald-500/10"],
+  :not(button):not(a)[class*="bg-emerald-500/15"],
+  :not(button):not(a)[class*="bg-emerald-500/20"] {
+    background-color: #ECFDF5 !important;
+    border: 1px solid #A7F3D0 !important;
+    color: #047857 !important;
+  }
+
+  :not(button):not(a)[class*="bg-red-500/10"],
+  :not(button):not(a)[class*="bg-red-500/15"],
+  :not(button):not(a)[class*="bg-red-500/20"] {
+    background-color: #FEE2E2 !important;
+    border: 1px solid #FECACA !important;
+    color: #B91C1C !important;
+  }
+
+  :not(button):not(a)[class*="bg-blue-500/10"],
+  :not(button):not(a)[class*="bg-blue-500/15"],
+  :not(button):not(a)[class*="bg-blue-500/20"] {
+    background-color: #EFF6FF !important;
+    border: 1px solid #BFDBFE !important;
+    color: #1D4ED8 !important;
+  }
+
+  :not(button):not(a)[class*="bg-purple-500/10"],
+  :not(button):not(a)[class*="bg-purple-500/15"],
+  :not(button):not(a)[class*="bg-purple-500/20"],
+  :not(button):not(a)[class*="bg-purple-900/30"] {
+    background-color: #FAF5FF !important;
+    border: 1px solid #E9D5FF !important;
+    color: #7E22CE !important;
+  }
+
+  :not(button):not(a)[class*="bg-orange-500/10"],
+  :not(button):not(a)[class*="bg-orange-500/15"],
+  :not(button):not(a)[class*="bg-orange-500/20"] {
+    background-color: #FFF7ED !important;
+    border: 1px solid #FED7AA !important;
+    color: #C2410C !important;
+  }
+
+  /* 4. Schedule Slot Cards */
+  [class*="bg-amber-500/20"] {
+    background-color: #FEF3C7 !important;
+    border-color: #FCD34D !important;
+  }
+  [class*="bg-orange-500/20"] {
+    background-color: #FFF7ED !important;
+    border-color: #FED7AA !important;
+  }
+  [class*="bg-yellow-500/20"] {
+    background-color: #FEF9C3 !important;
+    border-color: #FDE047 !important;
+  }
+  [class*="bg-red-500/20"] {
+    background-color: #FEE2E2 !important;
+    border-color: #FCA5A5 !important;
+  }
+  [class*="bg-emerald-500/20"] {
+    background-color: #ECFDF5 !important;
+    border-color: #A7F3D0 !important;
+  }
+  [class*="bg-blue-500/20"] {
+    background-color: #EFF6FF !important;
+    border-color: #BFDBFE !important;
+  }
+
+  /* 5. Form Inputs, Selects, and Textareas */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    background-color: #FFFFFF !important;
+    border: 1px solid #D1D5DB !important;
+    color: #111827 !important;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: #9CA3AF !important;
+  }
+  select option {
+    background-color: #FFFFFF !important;
+    color: #111827 !important;
+  }
+  input:focus,
+  select:focus,
+  textarea:focus {
+    border-color: #F59E0B !important;
+    outline: none !important;
+    box-shadow: 0 0 0 2px rgba(245, 158, 11, 0.25) !important;
+  }
+
+  /* 6. Crisp Borders & Card Elevation */
+  [class*="border-neutral-800"],
+  [class*="border-neutral-700"],
+  [class*="border-neutral-750"],
+  [class*="border-neutral-850"],
+  [class*="border-neutral-900"] {
+    border-color: #E5E7EB;
+  }
+
+  .bg-neutral-900 {
+    background-color: #FFFFFF !important;
+    border-color: #E5E7EB !important;
+  }
+
+  div.bg-neutral-900,
+  section.bg-neutral-900,
+  article.bg-neutral-900,
+  aside.bg-neutral-900,
+  header.bg-neutral-900,
+  .surface {
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  }
+
+  .glass {
+    background: rgba(255, 255, 255, 0.9) !important;
+    border: 1px solid #E5E7EB !important;
+  }
+}
+
+/* Dark Mode explicit overrides */
+html.dark {
+  [class*="border-neutral-800"],
+  [class*="border-neutral-900"] {
+    border-color: #292929;
+  }
+  [class*="border-neutral-700"] {
+    border-color: #333333;
   }
 }

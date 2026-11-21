@@ -307,6 +307,9 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-today-schedules"] });
       if (onSuccess) onSuccess();
       onClose();
     },

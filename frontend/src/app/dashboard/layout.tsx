@@ -10,6 +10,7 @@ import { useSearchStore } from "@/store/searchStore";
 import { usePwa } from "@/components/pwa/PwaProvider";
 import { NotificationDropdown } from "@/components/notifications/NotificationPanel";
 import { SessionMenuDropdown } from "@/components/dashboard/SessionMenuDropdown";
+import { ThemeToggle } from "@/components/theme/ThemeToggle";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -234,7 +235,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         onClick={() => setSessionsExpanded(!sessionsExpanded)}
                         className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl transition-all group relative min-h-[44px] cursor-pointer ${
                           isGroupActive
-                            ? "bg-amber-500/10 text-amber-400 font-semibold"
+                            ? "bg-[var(--active-menu-bg)] text-amber-500 font-semibold"
                             : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                         }`}
                       >
@@ -284,7 +285,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                   }}
                                   className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs transition-all relative ${
                                     isChildActive
-                                      ? "bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30"
+                                      ? "bg-[var(--active-menu-bg)] text-amber-500 font-semibold border border-amber-500/30"
                                       : "text-neutral-400 hover:text-white hover:bg-neutral-800/70"
                                   }`}
                                 >
@@ -309,7 +310,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                         onMouseEnter={() => setCollapsedPopoverOpen(true)}
                         className={`w-full flex items-center justify-center p-2.5 rounded-xl transition-all relative min-h-[44px] cursor-pointer ${
                           isGroupActive
-                            ? "bg-amber-500/10 text-amber-400"
+                            ? "bg-[var(--active-menu-bg)] text-amber-500"
                             : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                         }`}
                         title="Sessions: Completed Classes, Class Notes, Attendance"
@@ -356,7 +357,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                                   onClick={() => setCollapsedPopoverOpen(false)}
                                   className={`flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-xs transition-all ${
                                     isChildActive
-                                      ? "bg-amber-500/15 text-amber-300 font-semibold border border-amber-500/30"
+                                      ? "bg-[var(--active-menu-bg)] text-amber-500 font-semibold border border-amber-500/30"
                                       : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                                   }`}
                                 >
@@ -382,7 +383,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 onClick={() => { if (isMobile) setSidebarOpen(false); }}
                 className={`flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all group relative min-h-[44px] ${
                   isActive
-                    ? "bg-amber-500/10 text-amber-400"
+                    ? "bg-[var(--active-menu-bg)] text-amber-500 font-semibold"
                     : "text-neutral-400 hover:text-white hover:bg-neutral-800"
                 }`}
               >
@@ -526,6 +527,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             >
               <Search className="w-5 h-5" />
             </button>
+
+            {/* Dual Theme Switcher (Dark Mode + Light Mode) */}
+            <ThemeToggle />
 
             <NotificationDropdown />
           </div>

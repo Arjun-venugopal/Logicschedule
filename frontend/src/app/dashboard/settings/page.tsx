@@ -21,8 +21,10 @@ import {
   Plus,
   Trash2,
   KeyRound,
-  Shield
+  Shield,
+  Palette
 } from "lucide-react";
+import { ThemeSegmentedControl } from "@/components/theme/ThemeToggle";
 
 interface Slot {
   startTime: string;
@@ -643,6 +645,18 @@ export default function SettingsPage() {
             </div>
           </div>
         )}
+
+        {/* Appearance & Interface Theme (All Roles) */}
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">
+          <h3 className="font-semibold text-white mb-1 flex items-center gap-2 text-base sm:text-lg">
+            <Palette className="w-5 h-5 text-amber-500 shrink-0" />
+            Appearance & Interface Theme
+          </h3>
+          <p className="text-xs text-neutral-400 mb-4">
+            Choose your preferred color theme. Switches instantly and saves to your device.
+          </p>
+          <ThemeSegmentedControl />
+        </div>
 
         {/* Change Password Form (All Roles) */}
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-4 sm:p-6">

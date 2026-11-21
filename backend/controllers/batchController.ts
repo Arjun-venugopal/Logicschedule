@@ -763,12 +763,16 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     } else if (canGenerateSchedules && existingFutureCount === 0) {
       const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
       console.log(`🔄 Auto-scheduled ${generated} class(es) for batch "${updated.name}"`);
-    } else if (teacherChanged) {
-      // If dates/timings didn't change, surgically update teacher on all upcoming scheduled slots
+    }
+
+    if (teacherChanged) {
+      // Surgically ensure all upcoming scheduled slots reflect the new assigned teacher
       const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });
       for (const fs of futureScheds) {
-        fs.teacher = targetTeacher;
-        await fs.save();
+        if (fs.teacher?.toString() !== targetTeacherStr) {
+          fs.teacher = targetTeacher;
+          await fs.save();
+        }
       }
     }
 
@@ -806,6 +810,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     serverCache.clearPattern('timings_');
     serverCache.delete('teachers_all');
     deleteDiskCache('schedules_all');
+    if (oldTeacherId) deleteDiskCache(`schedules_teacher_${oldTeacherId}`);
+    if (newTeacherId) deleteDiskCache(`schedules_teacher_${newTeacherId}`);
 
     await updated.populate('assignedTeacher', 'name email');
     res.json(updated);

@@ -7,6 +7,7 @@ import { motion } from "framer-motion";
 import { X, Users, BookOpen, Clock, CalendarCheck, TrendingUp, Award, Calendar, Phone, Filter, Video, Sparkles } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
+import { useTheme } from "@/context/ThemeContext";
 
 interface TeacherPerformanceModalProps {
   teacherId: string;
@@ -14,6 +15,7 @@ interface TeacherPerformanceModalProps {
 }
 
 export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerformanceModalProps) {
+  const { isDark } = useTheme();
   const [timeRange, setTimeRange] = useState("all");
   const [demoStatus, setDemoStatus] = useState("all");
   const [batchStatus, setBatchStatus] = useState("all");
@@ -85,7 +87,7 @@ export function TeacherPerformanceModal({ teacherId, onClose }: TeacherPerforman
     { name: "Completed", value: stats.completedClasses },
     { name: "Remaining/Cancelled", value: Math.max(0, stats.totalSchedules - stats.completedClasses) },
   ];
-  const PIE_COLORS = ["#f59e0b", "#262626"];
+  const PIE_COLORS = ["#f59e0b", isDark ? "#262626" : "#E5E7EB"];
 
   const statusColor = (status: string) => {
     if (status === "Available") return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";

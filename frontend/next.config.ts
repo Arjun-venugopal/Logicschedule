@@ -4,7 +4,7 @@ import type { NextConfig } from "next";
 const isProd = process.env.NODE_ENV === "production";
 
 const nextConfig = {
-
+  outputFileTracingRoot: path.join(__dirname),
   // Enable static HTML export only for production builds to avoid breaking next dev manifests
   ...(isProd ? { output: "export" as const } : {}),
   images: {

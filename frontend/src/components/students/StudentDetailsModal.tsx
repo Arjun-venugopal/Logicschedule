@@ -24,12 +24,12 @@ function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback =
   }
 }
 
-export function StudentDetailsModal({ 
-  studentId, 
+export function StudentDetailsModal({
+  studentId,
   onClose,
   initialOpenAdvance = false,
-}: { 
-  studentId: string; 
+}: {
+  studentId: string;
   onClose: () => void;
   initialOpenAdvance?: boolean;
 }) {
@@ -101,8 +101,8 @@ export function StudentDetailsModal({
   });
 
   // Helper to determine current level tag
-  const currentLevelTag = student?.currentLevel || 
-    student?.level || 
+  const currentLevelTag = student?.currentLevel ||
+    student?.level ||
     (() => {
       const str = `${student?.batch?.name || ''} ${student?.batch?.subject || ''}`.toLowerCase();
       const match = str.match(/level\s*[-]?\s*(\d+)/i) || str.match(/lvl\s*[-]?\s*(\d+)/i);
@@ -134,8 +134,8 @@ export function StudentDetailsModal({
     setSelectedLevel(nextLvl);
     const defaultClasses = student?.classesNeeded || student?.batch?.numberOfSessions || 15;
     setNumberOfClasses(String(defaultClasses));
-    const currentTeacherId = student?.batch?.assignedTeacher?._id || 
-      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
+    const currentTeacherId = student?.batch?.assignedTeacher?._id ||
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') ||
       (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || '';
     setSelectedTeacher(currentTeacherId);
     setStartTime(student?.batch?.timing?.startTime || "09:00");
@@ -237,7 +237,7 @@ export function StudentDetailsModal({
     },
   });
 
-const updateStatusMutation = useMutation({
+  const updateStatusMutation = useMutation({
     mutationFn: (newStatus: "Active" | "Dropped") =>
       api.put(`/students/${studentId}`, { status: newStatus }),
     onSuccess: () => {
@@ -288,6 +288,10 @@ const updateStatusMutation = useMutation({
       queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-timings"] });
+      queryClient.invalidateQueries({ queryKey: ["teacher-today-schedules"] });
       setShowReassignTeacherModal(false);
       setReassignReason("");
       setReassignError("");
@@ -315,8 +319,8 @@ const updateStatusMutation = useMutation({
     setExtraClassSubject(`${student?.batch?.subject || student?.name || "Student"} - Extra Class`);
     setExtraClassReason("");
     setExtraClassMeetingLink(student?.batch?.meetingLink || "");
-    const currentTeacherId = student?.batch?.assignedTeacher?._id || 
-      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
+    const currentTeacherId = student?.batch?.assignedTeacher?._id ||
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') ||
       (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || '';
     setExtraClassTeacher(currentTeacherId);
     setExtraClassError("");
@@ -343,10 +347,10 @@ const updateStatusMutation = useMutation({
       return;
     }
 
-    const teacherToUse = extraClassTeacher || 
-      student?.batch?.assignedTeacher?._id || 
-      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') || 
-      (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || 
+    const teacherToUse = extraClassTeacher ||
+      student?.batch?.assignedTeacher?._id ||
+      (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') ||
+      (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) ||
       (allTeachers.length > 0 ? allTeachers[0]._id : "");
 
     if (!teacherToUse) {
@@ -582,9 +586,23 @@ const updateStatusMutation = useMutation({
                   {currentLevelTag}
                 </span>
               </div>
-              <p className="text-amber-500/80 mt-1 flex items-center justify-center sm:justify-start gap-2 font-medium text-xs sm:text-sm">
-                <BookOpen className="w-4 h-4" /> {student.batch?.name || "Unassigned Batch"}
-              </p>
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
+                <p className="text-amber-500/80 flex items-center gap-1.5 font-medium text-xs sm:text-sm">
+                  <BookOpen className="w-4 h-4" /> {student.batch?.name || "Unassigned Batch"}
+                </p>
+                {student.batch && (
+                  <div className="flex items-center gap-1.5 text-[11px]">
+                    <span className="px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 font-semibold border border-neutral-700">
+                      {((student.batch.name || "").includes("1:1") || (student.batch.studentsCount !== undefined && student.batch.studentsCount <= 1)) ? "1:1 Batch" : "Group Batch"}
+                    </span>
+                    {student.batch.name?.match(/\b(\d+)\b/)?.[1] && (
+                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">
+                        ID: {student.batch.name.match(/\b(\d+)\b/)?.[1]}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="pb-2 flex flex-wrap items-center gap-2">
@@ -792,9 +810,9 @@ const updateStatusMutation = useMutation({
             <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 overflow-hidden divide-y divide-neutral-800/50">
               {/* Current / Ongoing Level */}
               {student.batch ? (() => {
-                const currentTeacherName = 
-                  getTeacherName(student.assignedTutor) || 
-                  getTeacherName(student.batch?.assignedTeacher) || 
+                const currentTeacherName =
+                  getTeacherName(student.assignedTutor) ||
+                  getTeacherName(student.batch?.assignedTeacher) ||
                   "Assigned Tutor";
 
                 return (
@@ -830,9 +848,19 @@ const updateStatusMutation = useMutation({
                         </div>
                       </div>
 
-                      <h4 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
-                        {student.batch.name}
-                      </h4>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                          {student.batch.name}
+                        </h4>
+                        <span className="px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 font-semibold text-[11px] border border-neutral-700">
+                          {((student.batch.name || "").includes("1:1") || (student.batch.studentsCount !== undefined && student.batch.studentsCount <= 1)) ? "1:1" : "Group"}
+                        </span>
+                        {student.batch.name?.match(/\b(\d+)\b/)?.[1] && (
+                          <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-[11px] border border-amber-500/20">
+                            Batch #{student.batch.name.match(/\b(\d+)\b/)?.[1]}
+                          </span>
+                        )}
+                      </div>
 
                       <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-300">
                         <span className="flex items-center gap-1.5">
@@ -992,7 +1020,7 @@ const updateStatusMutation = useMutation({
                                     </div>
                                   )}
 
-                                  {/* Table of Class History */ }
+                                  {/* Table of Class History */}
                                   <div className="overflow-x-auto rounded-xl border border-neutral-800/80 bg-neutral-900/60">
                                     <table className="w-full text-left text-xs divide-y divide-neutral-800">
                                       <thead className="bg-neutral-950/80 text-neutral-400 text-[11px] font-bold uppercase tracking-wider">
@@ -1097,11 +1125,10 @@ const updateStatusMutation = useMutation({
                                                           extraClassReason: !cls.isExtraClass ? "Extra class for student" : "",
                                                         });
                                                       }}
-                                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${
-                                                        cls.isExtraClass
+                                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${cls.isExtraClass
                                                           ? "bg-purple-950/60 text-purple-300 border-purple-500/40 hover:bg-purple-900/60"
                                                           : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-purple-300 hover:border-purple-500/40"
-                                                      }`}
+                                                        }`}
                                                     >
                                                       {togglingScheduleId === cls._id ? (
                                                         <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
@@ -1290,11 +1317,10 @@ const updateStatusMutation = useMutation({
                                   >
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${
-                                          cls.isExtraClass
+                                        <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${cls.isExtraClass
                                             ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
                                             : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                        }`}>
+                                          }`}>
                                           {cls.isExtraClass ? "Extra Class" : `Class ${pbSchedules.length - cIdx}`}
                                         </span>
                                         {cls.isExtraClass && (
@@ -1410,16 +1436,14 @@ const updateStatusMutation = useMutation({
                   <div>
                     <span className="text-[10px] text-neutral-500 uppercase font-bold block">Payment Status</span>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold border inline-flex items-center gap-1.5 ${
-                        paymentData.payment.paymentStatus === "Paid"
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold border inline-flex items-center gap-1.5 ${paymentData.payment.paymentStatus === "Paid"
                           ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                           : paymentData.payment.paymentStatus === "Due" || paymentData.payment.paymentStatus === "Overdue"
-                          ? "bg-red-500/10 text-red-400 border-red-500/20"
-                          : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                      }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${
-                          paymentData.payment.paymentStatus === "Paid" ? "bg-emerald-400" : paymentData.payment.paymentStatus === "Due" ? "bg-red-400" : "bg-amber-400"
-                        }`} />
+                            ? "bg-red-500/10 text-red-400 border-red-500/20"
+                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                        }`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${paymentData.payment.paymentStatus === "Paid" ? "bg-emerald-400" : paymentData.payment.paymentStatus === "Due" ? "bg-red-400" : "bg-amber-400"
+                          }`} />
                         {paymentData.payment.paymentStatus === "Due" ? "🔴 Payment Due" : paymentData.payment.paymentStatus === "Paid" ? "🟢 Paid" : paymentData.payment.paymentStatus === "Upcoming" ? "🟡 Upcoming Reminder" : `🔵 ${paymentData.payment.paymentStatus}`}
                       </span>
                       <span className="text-xs text-neutral-400 font-medium">({paymentData.payment.paymentType})</span>
@@ -1642,11 +1666,10 @@ const updateStatusMutation = useMutation({
                       key={lvl}
                       type="button"
                       onClick={() => setSelectedLevel(lvl)}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                        (selectedLevel || getNextLevelSuggestion()) === lvl
+                      className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${(selectedLevel || getNextLevelSuggestion()) === lvl
                           ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-sm"
                           : "bg-neutral-800/80 text-neutral-400 border-neutral-700 hover:text-white"
-                      }`}
+                        }`}
                     >
                       {lvl}
                     </button>
@@ -1730,11 +1753,10 @@ const updateStatusMutation = useMutation({
                             setSelectedDays([...selectedDays, day]);
                           }
                         }}
-                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${
-                          isSelected
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${isSelected
                             ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-sm"
                             : "bg-neutral-800/80 text-neutral-400 border-neutral-700 hover:text-white"
-                        }`}
+                          }`}
                       >
                         {day.slice(0, 3)}
                       </button>
@@ -1782,11 +1804,10 @@ const updateStatusMutation = useMutation({
                         key={num}
                         type="button"
                         onClick={() => setNumberOfClasses(String(num))}
-                        className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
-                          Number(numberOfClasses) === num
+                        className={`text-[10px] px-2 py-0.5 rounded border transition-all ${Number(numberOfClasses) === num
                             ? "bg-emerald-500 text-black border-emerald-400 font-bold"
                             : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
-                        }`}
+                          }`}
                       >
                         {num}
                       </button>
@@ -1816,13 +1837,12 @@ const updateStatusMutation = useMutation({
                     <span className="text-xs font-bold text-white uppercase tracking-wider">Previous Payment History</span>
                   </div>
                   {paymentData?.hasPayment && (
-                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      paymentData.payment.paymentStatus === 'Paid'
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${paymentData.payment.paymentStatus === 'Paid'
                         ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
                         : paymentData.payment.paymentStatus === 'Due' || paymentData.payment.paymentStatus === 'Overdue'
-                        ? 'bg-red-500/20 text-red-400 border-red-500/30'
-                        : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                    }`}>
+                          ? 'bg-red-500/20 text-red-400 border-red-500/30'
+                          : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
+                      }`}>
                       Status: {paymentData.payment.paymentStatus}
                     </span>
                   )}
@@ -1943,11 +1963,10 @@ const updateStatusMutation = useMutation({
                               else if (nextLevelPaymentType === "Half Payment") setNextLevelAmountPaid(Math.round(fee / 2));
                               else if (nextLevelPaymentType === "Pending") setNextLevelAmountPaid(0);
                             }}
-                            className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
-                              nextLevelTotalFee === fee
+                            className={`text-[10px] px-2 py-0.5 rounded border transition-all ${nextLevelTotalFee === fee
                                 ? "bg-emerald-500 text-black border-emerald-400 font-bold"
                                 : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
-                            }`}
+                              }`}
                           >
                             ₹{fee.toLocaleString("en-IN")}
                           </button>
@@ -1976,11 +1995,10 @@ const updateStatusMutation = useMutation({
                               else if (opt.id === "Half Payment") setNextLevelAmountPaid(Math.round(nextLevelTotalFee / 2));
                               else if (opt.id === "Pending") setNextLevelAmountPaid(0);
                             }}
-                            className={`p-2 rounded-xl border text-left transition-all ${
-                              nextLevelPaymentType === opt.id
+                            className={`p-2 rounded-xl border text-left transition-all ${nextLevelPaymentType === opt.id
                                 ? "bg-emerald-500/20 border-emerald-500/60 text-white shadow-sm"
                                 : "bg-neutral-800/80 border-neutral-700 text-neutral-400 hover:text-white"
-                            }`}
+                              }`}
                           >
                             <span className="block text-[11px] font-bold">{opt.label}</span>
                             <span className="block text-[9px] text-neutral-400">{opt.sub}</span>
@@ -2201,7 +2219,7 @@ const updateStatusMutation = useMutation({
                   />
                 </div>
 
-                {/* Policy Guarantee Banner */ }
+                {/* Policy Guarantee Banner */}
                 <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 space-y-1 text-amber-300">
                   <p className="font-bold text-xs flex items-center gap-1.5 text-amber-400">
                     <CheckCircle2 className="w-3.5 h-3.5" /> Reassignment Policy:
@@ -2374,11 +2392,10 @@ const updateStatusMutation = useMutation({
                       key={r}
                       type="button"
                       onClick={() => setExtraClassReason(r)}
-                      className={`text-[10px] px-2 py-0.5 rounded border transition-all ${
-                        extraClassReason === r
+                      className={`text-[10px] px-2 py-0.5 rounded border transition-all ${extraClassReason === r
                           ? "bg-purple-600 text-white border-purple-400 font-bold"
                           : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-white"
-                      }`}
+                        }`}
                     >
                       {r}
                     </button>

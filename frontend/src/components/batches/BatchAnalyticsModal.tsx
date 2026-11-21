@@ -22,10 +22,12 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts";
+import { useTheme } from "@/context/ThemeContext";
 import { StudentDetailsModal } from "@/components/students/StudentDetailsModal";
 import { ProjectSubmissionsSection } from "@/components/students/ProjectSubmissionsSection";
 
 export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onClose: () => void }) {
+  const { isDark } = useTheme();
   const [selectedStudentId, setSelectedStudentId] = useState<string | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
@@ -357,8 +359,8 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                       ))}
                     </Pie>
                     <Tooltip 
-                      contentStyle={{ backgroundColor: '#171717', borderColor: '#262626', borderRadius: '8px', color: '#fff' }}
-                      itemStyle={{ color: '#fff' }}
+                      contentStyle={{ backgroundColor: isDark ? '#171717' : '#FFFFFF', borderColor: isDark ? '#262626' : '#E5E7EB', borderRadius: '8px', color: isDark ? '#fff' : '#171717' }}
+                      itemStyle={{ color: isDark ? '#fff' : '#171717' }}
                     />
                   </PieChart>
                 </ResponsiveContainer>
@@ -373,12 +375,12 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                 {barChartData.length > 0 ? (
                   <ResponsiveContainer width="100%" height="100%" minWidth={0}>
                     <BarChart data={barChartData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#262626" vertical={false} />
-                      <XAxis dataKey="name" stroke="#737373" fontSize={10} tickLine={false} axisLine={false} />
-                      <YAxis stroke="#737373" fontSize={10} tickLine={false} axisLine={false} />
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#262626" : "#E5E7EB"} vertical={false} />
+                      <XAxis dataKey="name" stroke={isDark ? "#737373" : "#9CA3AF"} fontSize={10} tickLine={false} axisLine={false} />
+                      <YAxis stroke={isDark ? "#737373" : "#9CA3AF"} fontSize={10} tickLine={false} axisLine={false} />
                       <Tooltip 
-                        cursor={{ fill: '#262626' }}
-                        contentStyle={{ backgroundColor: '#171717', borderColor: '#262626', borderRadius: '8px', color: '#fff' }}
+                        cursor={{ fill: isDark ? '#262626' : '#F3F4F6' }}
+                        contentStyle={{ backgroundColor: isDark ? '#171717' : '#FFFFFF', borderColor: isDark ? '#262626' : '#E5E7EB', borderRadius: '8px', color: isDark ? '#fff' : '#171717' }}
                       />
                       <Bar dataKey="attendance" fill="#3b82f6" radius={[4, 4, 0, 0]} maxBarSize={40} />
                     </BarChart>
