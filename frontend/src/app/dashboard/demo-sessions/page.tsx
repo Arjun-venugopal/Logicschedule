@@ -918,7 +918,7 @@ export default function DemoSessionsPage() {
   const groupedSlots = filteredSlots.reduce((acc: any, slot: any) => {
     const tId = slot.teacher?._id || slot.teacher;
     const key = tId;
-    
+
     if (!acc[key]) {
       acc[key] = {
         teacher: slot.teacher,
@@ -1005,28 +1005,26 @@ export default function DemoSessionsPage() {
               : "Schedule and manage prospective student demo classes based on teacher availability"}
           </p>
         </div>
-        
+
         {hasWriteAccess && (
           <div className="flex items-center gap-2 flex-wrap">
             <div className="bg-neutral-900 border border-neutral-800 p-1 rounded-xl flex items-center">
               <button
                 onClick={() => setActiveTab("sessions")}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                  activeTab === "sessions" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-                }`}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${activeTab === "sessions" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
               >
                 Sessions
               </button>
               <button
                 onClick={() => setActiveTab("slots")}
-                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${
-                  activeTab === "slots" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
-                }`}
+                className={`px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-semibold rounded-lg transition-all ${activeTab === "slots" ? "bg-neutral-800 text-white shadow-sm" : "text-neutral-400 hover:text-white"
+                  }`}
               >
                 Available Slots
               </button>
             </div>
-            
+
             {!isTeacher && activeTab === "sessions" && canManageSlots && (
               <button
                 onClick={openCreate}
@@ -1056,7 +1054,7 @@ export default function DemoSessionsPage() {
                   </span>
                 )}
               </div>
-              
+
               {hasActiveFilters && (
                 <button
                   onClick={handleClearAllFilters}
@@ -1076,9 +1074,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="All">All Time</option>
                   <option value="Today">Today</option>
@@ -1095,9 +1092,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterDay}
                   onChange={(e) => setFilterDay(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="All">All Days</option>
                   <option value="Monday">Monday</option>
@@ -1113,9 +1109,8 @@ export default function DemoSessionsPage() {
               {/* Start Date */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-neutral-400 block">From Date</label>
-                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
-                  filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
-                }`}>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                  }`}>
                   <input
                     type="date"
                     value={filterStartDate}
@@ -1139,9 +1134,8 @@ export default function DemoSessionsPage() {
               {/* End Date */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-neutral-400 block">To Date</label>
-                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
-                  filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
-                }`}>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                  }`}>
                   <input
                     type="date"
                     value={filterEndDate}
@@ -1169,9 +1163,8 @@ export default function DemoSessionsPage() {
                   <select
                     value={filterTeacher}
                     onChange={(e) => setFilterTeacher(e.target.value)}
-                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                      filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                    }`}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                      }`}
                   >
                     <option value="">All Teachers</option>
                     {teachers.map((t) => (
@@ -1190,9 +1183,8 @@ export default function DemoSessionsPage() {
                   <select
                     value={filterSalesPerson}
                     onChange={(e) => setFilterSalesPerson(e.target.value)}
-                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                      filterSalesPerson ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                    }`}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterSalesPerson ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                      }`}
                   >
                     <option value="">All Sales Execs</option>
                     {salesExecOptions.map((execName: string) => (
@@ -1210,9 +1202,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="">All Session Statuses</option>
                   <option value="Scheduled">Scheduled</option>
@@ -1228,9 +1219,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterAdmissionStatus}
                   onChange={(e) => setFilterAdmissionStatus(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterAdmissionStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterAdmissionStatus ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="">All Admission Status</option>
                   <option value="Pending">Pending</option>
@@ -1241,7 +1231,7 @@ export default function DemoSessionsPage() {
               </div>
             </div>
           </div>
-          
+
           {/* Stats Summary & View Toggle */}
           <div className="bg-neutral-800/30 border border-neutral-800 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
@@ -1260,15 +1250,15 @@ export default function DemoSessionsPage() {
                   {filterStartDate && filterEndDate
                     ? `${formatDateSafe(filterStartDate, "dd MMM")} - ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
                     : filterStartDate
-                    ? `From ${formatDateSafe(filterStartDate, "dd MMM yyyy")}`
-                    : filterEndDate
-                    ? `Until ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
-                    : filterDate === "All"
-                    ? "All Time"
-                    : filterDate}
+                      ? `From ${formatDateSafe(filterStartDate, "dd MMM yyyy")}`
+                      : filterEndDate
+                        ? `Until ${formatDateSafe(filterEndDate, "dd MMM yyyy")}`
+                        : filterDate === "All"
+                          ? "All Time"
+                          : filterDate}
                 </p>
               </div>
-              
+
               {!isTeacher && (
                 <div className="flex bg-neutral-900 border border-neutral-800 p-1 rounded-xl shrink-0">
                   <button
@@ -1297,61 +1287,257 @@ export default function DemoSessionsPage() {
         <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden overflow-x-auto w-full">
           {isLoadingDemo ? (
             <div className="py-16 text-center text-neutral-500">
-            <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-            Loading demo sessions...
-          </div>
-        ) : filteredSessions.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="w-12 h-12 bg-neutral-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Video className="w-6 h-6 text-neutral-600" />
+              <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+              Loading demo sessions...
             </div>
-            <p className="text-neutral-400 font-medium">No demo sessions found</p>
-            <p className="text-neutral-600 text-sm mt-1">
-              {searchQuery ? "Try resetting your search query" : "No demo sessions have been scheduled yet"}
-            </p>
-            {!isTeacher && !searchQuery && hasWriteAccess && (
-              <button
-                onClick={openCreate}
-                className="mt-4 px-4 py-2 brand-gradient text-black font-semibold rounded-lg text-sm hover:opacity-90"
-              >
-                Schedule Demo Class
-              </button>
-            )}
-          </div>
-        ) : isTeacher || viewMode === "grid" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-5 bg-neutral-900/30">
-            {sortedSessions.map((session) => {
-              const statusColors: Record<string, string> = {
-                Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
-                Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
-                Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
-                Rescheduled: "bg-purple-500/10 text-purple-400 border-purple-500/20",
-              };
-
-              return (
-                <motion.div
-                  key={session._id}
-                  layoutId={session._id}
-                  className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hover:border-neutral-700 transition-all flex flex-col justify-between space-y-4 relative overflow-hidden group"
+          ) : filteredSessions.length === 0 ? (
+            <div className="py-16 text-center">
+              <div className="w-12 h-12 bg-neutral-800 rounded-2xl flex items-center justify-center mx-auto mb-4">
+                <Video className="w-6 h-6 text-neutral-600" />
+              </div>
+              <p className="text-neutral-400 font-medium">No demo sessions found</p>
+              <p className="text-neutral-600 text-sm mt-1">
+                {searchQuery ? "Try resetting your search query" : "No demo sessions have been scheduled yet"}
+              </p>
+              {!isTeacher && !searchQuery && hasWriteAccess && (
+                <button
+                  onClick={openCreate}
+                  className="mt-4 px-4 py-2 brand-gradient text-black font-semibold rounded-lg text-sm hover:opacity-90"
                 >
-                  {session.conflict && (
-                    <div className="absolute top-0 right-0 left-0 bg-red-500/15 border-b border-red-500/20 text-red-400 text-[10px] py-1 px-3 flex items-center gap-1 font-semibold">
-                      <AlertCircle className="w-3 h-3 shrink-0" />
-                      Conflict: Slot overlaps with other classes
-                    </div>
-                  )}
+                  Schedule Demo Class
+                </button>
+              )}
+            </div>
+          ) : isTeacher || viewMode === "grid" ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4 p-3 sm:p-5 bg-neutral-900/30">
+              {sortedSessions.map((session) => {
+                const statusColors: Record<string, string> = {
+                  Scheduled: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+                  Completed: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+                  Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
+                  Rescheduled: "bg-purple-500/10 text-purple-400 border-purple-500/20",
+                };
 
-                  <div className={`space-y-3 ${session.conflict ? "pt-4" : ""}`}>
-                    {/* Header */}
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">
-                            PROSPECT DEMO
+                return (
+                  <motion.div
+                    key={session._id}
+                    layoutId={session._id}
+                    className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 hover:border-neutral-700 transition-all flex flex-col justify-between space-y-4 relative overflow-hidden group"
+                  >
+                    {session.conflict && (
+                      <div className="absolute top-0 right-0 left-0 bg-red-500/15 border-b border-red-500/20 text-red-400 text-[10px] py-1 px-3 flex items-center gap-1 font-semibold">
+                        <AlertCircle className="w-3 h-3 shrink-0" />
+                        Conflict: Slot overlaps with other classes
+                      </div>
+                    )}
+
+                    <div className={`space-y-3 ${session.conflict ? "pt-4" : ""}`}>
+                      {/* Header */}
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-[10px] text-neutral-500 uppercase tracking-wider font-semibold">
+                              PROSPECT DEMO
+                            </span>
+                            {((session.siblingNames && session.siblingNames.length > 1) || (session.siblingCount && session.siblingCount > 1)) && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                                title={`Sibling Demo Booking: ${session.siblingNames?.join(", ") || `${session.siblingCount} students`}`}
+                              >
+                                <Users className="w-2.5 h-2.5" />
+                                Sibling ({session.siblingCount || session.siblingNames?.length})
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="font-bold text-white text-base mt-0.5 truncate max-w-[180px]" title={session.studentName}>
+                            {session.studentName}
+                          </h3>
+                        </div>
+                        {canEditSession(session) ? (
+                          <select
+                            value={session.status || "Scheduled"}
+                            onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
+                            disabled={updateDemoMutation.isPending}
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold border bg-neutral-900 cursor-pointer focus:outline-none transition-colors appearance-none ${statusColors[session.status || "Scheduled"] || statusColors.Scheduled
+                              }`}
+                          >
+                            <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
+                            <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
+                            <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
+                            <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
+                          </select>
+                        ) : (
+                          <span
+                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusColors[session.status || "Scheduled"] || statusColors.Scheduled}`}
+                          >
+                            {session.status || "Scheduled"}
                           </span>
+                        )}
+                      </div>
+
+                      {/* Details */}
+                      <div className="space-y-2 text-xs text-neutral-400">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>{formatDateSafe(session.date, "EEEE, MMMM d, yyyy")}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Clock className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>
+                            {formatTimeAMPM(session.startTime)} – {formatTimeAMPM(session.endTime)}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <User className="w-3.5 h-3.5 text-neutral-500" />
+                          <span className="text-neutral-300 font-medium">
+                            Teacher: {session.teacher?.name || "Unassigned"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <AlignLeft className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>Subject: <strong className="text-white">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</strong></span>
+                        </div>
+                        {session.salesExecutive && (
+                          <div className="flex items-center gap-2">
+                            <UserCheck className="w-3.5 h-3.5 text-neutral-500" />
+                            <span>Sales Exec: <strong className="text-neutral-200">{session.salesExecutive}</strong></span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2">
+                          <CheckCircle2 className="w-3.5 h-3.5 text-neutral-500" />
+                          <span>Admn Status: <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>{session.admissionConfirmed || "Pending"}</span></span>
+                        </div>
+                        {isAdmissionConfirmedYes(session.admissionConfirmed) && session.payment && (
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="w-3.5 h-3.5 text-neutral-500" />
+                            <span>
+                              Payment:{" "}
+                              <span
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getPaymentTier(session) === "full"
+                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                  : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                                  }`}
+                              >
+                                {getPaymentTier(session) === "full"
+                                  ? "Full Payment"
+                                  : `Half Paid (₹${Number(session.payment.remainingAmount || 0).toLocaleString("en-IN")} Due)`}
+                              </span>
+                            </span>
+                          </div>
+                        )}
+                        {session.studentEmail && (
+                          <div className="text-[11px] text-neutral-500 truncate" title={session.studentEmail}>
+                            Email: {session.studentEmail}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Footer Notes & Join */}
+                    <div className="space-y-3 pt-3 border-t border-neutral-800/60">
+                      {session.notes && (
+                        <p className="text-neutral-500 text-[11px] italic bg-neutral-950/40 p-2 rounded-lg truncate" title={session.notes}>
+                          Note: {session.notes}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between gap-2">
+                        {session.meetingLink ? (
+                          <a
+                            href={session.meetingLink}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 border border-blue-500/20 px-2.5 py-1.5 rounded-lg transition-all"
+                          >
+                            <LinkIcon className="w-3 h-3" />
+                            Join Meeting
+                          </a>
+                        ) : (
+                          <span className="text-[10px] text-neutral-600 italic">No link provided</span>
+                        )}
+
+                        <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                          {!isTeacher && (
+                            <button
+                              onClick={() => setViewingSession(session)}
+                              className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 rounded-lg transition-colors border border-blue-500/25"
+                              title="View Full Details"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {canEditSession(session) && (
+                            <button
+                              onClick={() => openEdit(session)}
+                              className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
+                              title={isTeacher ? "Add notes / feedback" : "Edit Session"}
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {session.status === "Completed" && (
+                            <button
+                              onClick={() => setReportSession(session)}
+                              className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 hover:text-purple-300 rounded-lg transition-colors border border-purple-500/25"
+                              title="Student Performance Report"
+                            >
+                              <FileText className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {isAdmissionConfirmedYes(session.admissionConfirmed) && (
+                            <button
+                              onClick={() => handlePaymentClick(session)}
+                              className={`p-1.5 rounded-lg border transition-all ${getPaymentButtonProps(session).colorClass}`}
+                              title={getPaymentButtonProps(session).tooltip}
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          {!isTeacher && canManageSlots && (
+                            <button
+                              onClick={() => setDeleteConfirm(session._id)}
+                              className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-colors border border-red-500/25"
+                              title="Delete Session"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm text-neutral-400 whitespace-nowrap">
+                <thead className="bg-neutral-800/50 text-xs uppercase font-semibold text-neutral-500 border-b border-neutral-800">
+                  <tr>
+                    <th className="px-4 py-3">Student Name</th>
+                    <th className="px-4 py-3">Customer Name</th>
+                    <th className="px-4 py-3">Phone</th>
+                    <th className="px-4 py-3">Place</th>
+                    <th className="px-4 py-3">Age</th>
+                    <th className="px-4 py-3">Date</th>
+                    <th className="px-4 py-3">Time</th>
+                    <th className="px-4 py-3">Demo Tutor</th>
+                    <th className="px-4 py-3">Subject</th>
+                    <th className="px-4 py-3">Status</th>
+                    <th className="px-4 py-3">Admn Confirmed</th>
+                    <th className="px-4 py-3">Sales Exec</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-800">
+                  {sortedSessions.map((session) => (
+                    <tr key={session._id} className="hover:bg-neutral-800/30 transition-colors">
+                      <td className="px-4 py-3 font-medium text-white">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>{session.studentName}</span>
                           {((session.siblingNames && session.siblingNames.length > 1) || (session.siblingCount && session.siblingCount > 1)) && (
                             <span
-                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
                               title={`Sibling Demo Booking: ${session.siblingNames?.join(", ") || `${session.siblingCount} students`}`}
                             >
                               <Users className="w-2.5 h-2.5" />
@@ -1359,276 +1545,77 @@ export default function DemoSessionsPage() {
                             </span>
                           )}
                         </div>
-                        <h3 className="font-bold text-white text-base mt-0.5 truncate max-w-[180px]" title={session.studentName}>
-                          {session.studentName}
-                        </h3>
-                      </div>
-                      {canEditSession(session) ? (
-                        <select
-                          value={session.status || "Scheduled"}
-                          onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
-                          disabled={updateDemoMutation.isPending}
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border bg-neutral-900 cursor-pointer focus:outline-none transition-colors appearance-none ${
-                            statusColors[session.status || "Scheduled"] || statusColors.Scheduled
-                          }`}
-                        >
-                          <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
-                          <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
-                          <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
-                          <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
-                        </select>
-                      ) : (
-                        <span
-                          className={`px-2 py-0.5 rounded-md text-[10px] font-bold border ${statusColors[session.status || "Scheduled"] || statusColors.Scheduled}`}
-                        >
-                          {session.status || "Scheduled"}
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Details */}
-                    <div className="space-y-2 text-xs text-neutral-400">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>{formatDateSafe(session.date, "EEEE, MMMM d, yyyy")}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>
-                          {formatTimeAMPM(session.startTime)} – {formatTimeAMPM(session.endTime)}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <User className="w-3.5 h-3.5 text-neutral-500" />
-                        <span className="text-neutral-300 font-medium">
-                          Teacher: {session.teacher?.name || "Unassigned"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <AlignLeft className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>Subject: <strong className="text-white">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</strong></span>
-                      </div>
-                      {session.salesExecutive && (
-                        <div className="flex items-center gap-2">
-                          <UserCheck className="w-3.5 h-3.5 text-neutral-500" />
-                          <span>Sales Exec: <strong className="text-neutral-200">{session.salesExecutive}</strong></span>
-                        </div>
-                      )}
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-neutral-500" />
-                        <span>Admn Status: <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>{session.admissionConfirmed || "Pending"}</span></span>
-                      </div>
-                      {isAdmissionConfirmedYes(session.admissionConfirmed) && session.payment && (
-                        <div className="flex items-center gap-2">
-                          <CreditCard className="w-3.5 h-3.5 text-neutral-500" />
-                          <span>
-                            Payment:{" "}
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${
-                                getPaymentTier(session) === "full"
-                                  ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                  : "bg-orange-500/10 text-orange-400 border-orange-500/20"
+                      </td>
+                      <td className="px-4 py-3">{session.customerName || "-"}</td>
+                      <td className="px-4 py-3">{session.phoneNumber || "-"}</td>
+                      <td className="px-4 py-3">{session.place || "-"}</td>
+                      <td className="px-4 py-3">{session.age || "-"}</td>
+                      <td className="px-4 py-3">{formatDateSafe(session.date, "dd MMM yyyy")}</td>
+                      <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
+                      <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
+                      <td className="px-4 py-3">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</td>
+                      <td className="px-4 py-3">
+                        {canEditSession(session) ? (
+                          <select
+                            value={session.status || "Scheduled"}
+                            onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
+                            disabled={updateDemoMutation.isPending}
+                            className={`px-2 py-1 rounded-md text-xs font-bold border bg-neutral-900 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 transition-colors appearance-none ${(session.status || "Scheduled") === "Scheduled"
+                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                              : session.status === "Completed"
+                                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                                : session.status === "Rescheduled"
+                                  ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
+                                  : "bg-red-500/10 text-red-400 border-red-500/20"
                               }`}
-                            >
-                              {getPaymentTier(session) === "full"
-                                ? "Full Payment"
-                                : `Half Paid (₹${Number(session.payment.remainingAmount || 0).toLocaleString("en-IN")} Due)`}
-                            </span>
+                          >
+                            <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
+                            <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
+                            <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
+                            <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
+                          </select>
+                        ) : (
+                          <span className={`px-2 py-1 rounded-md text-xs font-bold border ${(session.status || "Scheduled") === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : session.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                            {session.status || "Scheduled"}
                           </span>
-                        </div>
-                      )}
-                      {session.studentEmail && (
-                        <div className="text-[11px] text-neutral-500 truncate" title={session.studentEmail}>
-                          Email: {session.studentEmail}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Footer Notes & Join */}
-                  <div className="space-y-3 pt-3 border-t border-neutral-800/60">
-                    {session.notes && (
-                      <p className="text-neutral-500 text-[11px] italic bg-neutral-950/40 p-2 rounded-lg truncate" title={session.notes}>
-                        Note: {session.notes}
-                      </p>
-                    )}
-
-                    <div className="flex items-center justify-between gap-2">
-                      {session.meetingLink ? (
-                        <a
-                          href={session.meetingLink}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1 text-[11px] font-semibold text-blue-400 hover:text-blue-300 bg-blue-500/10 hover:bg-blue-500/15 border border-blue-500/20 px-2.5 py-1.5 rounded-lg transition-all"
-                        >
-                          <LinkIcon className="w-3 h-3" />
-                          Join Meeting
-                        </a>
-                      ) : (
-                        <span className="text-[10px] text-neutral-600 italic">No link provided</span>
-                      )}
-
-                      <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
-                        {!isTeacher && (
-                          <button
-                            onClick={() => setViewingSession(session)}
-                            className="p-1.5 bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 hover:text-blue-300 rounded-lg transition-colors border border-blue-500/25"
-                            title="View Full Details"
-                          >
-                            <Eye className="w-3.5 h-3.5" />
-                          </button>
                         )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>
+                          {session.admissionConfirmed || "Pending"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
+                      <td className="px-4 py-3 flex gap-2">
+                        <button onClick={() => setViewingSession(session)} className="text-blue-400 hover:text-blue-300" title="View Details"><Eye className="w-4 h-4" /></button>
                         {canEditSession(session) && (
-                          <button
-                            onClick={() => openEdit(session)}
-                            className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 hover:text-white rounded-lg transition-colors border border-neutral-700"
-                            title={isTeacher ? "Add notes / feedback" : "Edit Session"}
-                          >
-                            <Edit2 className="w-3.5 h-3.5" />
-                          </button>
+                          <>
+                            <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white" title="Edit Session"><Edit2 className="w-4 h-4" /></button>
+                            {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
+                              <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
+                            )}
+                          </>
                         )}
                         {session.status === "Completed" && (
-                          <button
-                            onClick={() => setReportSession(session)}
-                            className="p-1.5 bg-purple-500/10 hover:bg-purple-500/20 text-purple-400 hover:text-purple-300 rounded-lg transition-colors border border-purple-500/25"
-                            title="Student Performance Report"
-                          >
-                            <FileText className="w-3.5 h-3.5" />
-                          </button>
+                          <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
                         )}
                         {isAdmissionConfirmedYes(session.admissionConfirmed) && (
                           <button
                             onClick={() => handlePaymentClick(session)}
-                            className={`p-1.5 rounded-lg border transition-all ${getPaymentButtonProps(session).colorClass}`}
+                            className={`p-1 rounded-md border transition-all ${getPaymentButtonProps(session).colorClass}`}
                             title={getPaymentButtonProps(session).tooltip}
                           >
-                            <CreditCard className="w-3.5 h-3.5" />
+                            <CreditCard className="w-4 h-4" />
                           </button>
                         )}
-                        {!isTeacher && canManageSlots && (
-                          <button
-                            onClick={() => setDeleteConfirm(session._id)}
-                            className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-colors border border-red-500/25"
-                            title="Delete Session"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-sm text-neutral-400 whitespace-nowrap">
-              <thead className="bg-neutral-800/50 text-xs uppercase font-semibold text-neutral-500 border-b border-neutral-800">
-                <tr>
-                  <th className="px-4 py-3">Student Name</th>
-                  <th className="px-4 py-3">Customer Name</th>
-                  <th className="px-4 py-3">Phone</th>
-                  <th className="px-4 py-3">Place</th>
-                  <th className="px-4 py-3">Age</th>
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Time</th>
-                  <th className="px-4 py-3">Demo Tutor</th>
-                  <th className="px-4 py-3">Subject</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Admn Confirmed</th>
-                  <th className="px-4 py-3">Sales Exec</th>
-                  <th className="px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800">
-                {sortedSessions.map((session) => (
-                  <tr key={session._id} className="hover:bg-neutral-800/30 transition-colors">
-                    <td className="px-4 py-3 font-medium text-white">
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        <span>{session.studentName}</span>
-                        {((session.siblingNames && session.siblingNames.length > 1) || (session.siblingCount && session.siblingCount > 1)) && (
-                          <span
-                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-300 border border-indigo-500/30"
-                            title={`Sibling Demo Booking: ${session.siblingNames?.join(", ") || `${session.siblingCount} students`}`}
-                          >
-                            <Users className="w-2.5 h-2.5" />
-                            Sibling ({session.siblingCount || session.siblingNames?.length})
-                          </span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">{session.customerName || "-"}</td>
-                    <td className="px-4 py-3">{session.phoneNumber || "-"}</td>
-                    <td className="px-4 py-3">{session.place || "-"}</td>
-                    <td className="px-4 py-3">{session.age || "-"}</td>
-                    <td className="px-4 py-3">{formatDateSafe(session.date, "dd MMM yyyy")}</td>
-                    <td className="px-4 py-3">{formatTimeAMPM(session.startTime)} - {formatTimeAMPM(session.endTime)}</td>
-                    <td className="px-4 py-3">{session.teacher?.name || "-"}</td>
-                    <td className="px-4 py-3">{session.subject || (session.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</td>
-                    <td className="px-4 py-3">
-                      {canEditSession(session) ? (
-                        <select
-                          value={session.status || "Scheduled"}
-                          onChange={(e) => handleQuickStatusChange(session, e.target.value as any)}
-                          disabled={updateDemoMutation.isPending}
-                          className={`px-2 py-1 rounded-md text-xs font-bold border bg-neutral-900 cursor-pointer focus:outline-none focus:ring-1 focus:ring-amber-500 transition-colors appearance-none ${
-                            (session.status || "Scheduled") === "Scheduled"
-                              ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                              : session.status === "Completed"
-                              ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                              : session.status === "Rescheduled"
-                              ? "bg-purple-500/10 text-purple-400 border-purple-500/20"
-                              : "bg-red-500/10 text-red-400 border-red-500/20"
-                          }`}
-                        >
-                          <option value="Scheduled" className="bg-neutral-900 text-amber-400">Scheduled</option>
-                          <option value="Completed" className="bg-neutral-900 text-emerald-400">Completed</option>
-                          <option value="Rescheduled" className="bg-neutral-900 text-purple-400">Rescheduled</option>
-                          <option value="Cancelled" className="bg-neutral-900 text-red-400">Cancelled</option>
-                        </select>
-                      ) : (
-                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${(session.status || "Scheduled") === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : session.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : session.status === "Rescheduled" ? "bg-purple-500/10 text-purple-400 border-purple-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
-                          {session.status || "Scheduled"}
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(session.admissionConfirmed)}`}>
-                        {session.admissionConfirmed || "Pending"}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{session.salesExecutive || "-"}</td>
-                    <td className="px-4 py-3 flex gap-2">
-                      <button onClick={() => setViewingSession(session)} className="text-blue-400 hover:text-blue-300" title="View Details"><Eye className="w-4 h-4" /></button>
-                      {canEditSession(session) && (
-                        <>
-                          <button onClick={() => openEdit(session)} className="text-neutral-400 hover:text-white" title="Edit Session"><Edit2 className="w-4 h-4" /></button>
-                          {(canManageSlots || (isSalesPerson && (session.createdBy === user?._id || session.salesExecutive === user?.name))) && (
-                            <button onClick={() => setDeleteConfirm(session._id)} className="text-red-400 hover:text-red-300" title="Delete Session"><Trash2 className="w-4 h-4" /></button>
-                          )}
-                        </>
-                      )}
-                      {session.status === "Completed" && (
-                        <button onClick={() => setReportSession(session)} className="text-purple-400 hover:text-purple-300" title="Student Performance Report"><FileText className="w-4 h-4" /></button>
-                      )}
-                      {isAdmissionConfirmedYes(session.admissionConfirmed) && (
-                        <button
-                          onClick={() => handlePaymentClick(session)}
-                          className={`p-1 rounded-md border transition-all ${getPaymentButtonProps(session).colorClass}`}
-                          title={getPaymentButtonProps(session).tooltip}
-                        >
-                          <CreditCard className="w-4 h-4" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       )}
 
       {/* Slots Layout */}
@@ -1738,9 +1725,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterDate}
                   onChange={(e) => setFilterDate(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterDate !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="All">All Time</option>
                   <option value="Today">Today</option>
@@ -1757,9 +1743,8 @@ export default function DemoSessionsPage() {
                 <select
                   value={filterDay}
                   onChange={(e) => setFilterDay(e.target.value)}
-                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                    filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                  }`}
+                  className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterDay !== "All" ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                    }`}
                 >
                   <option value="All">All Days</option>
                   <option value="Monday">Monday</option>
@@ -1775,9 +1760,8 @@ export default function DemoSessionsPage() {
               {/* Start Date */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-neutral-400 block">From Date</label>
-                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
-                  filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
-                }`}>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${filterStartDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                  }`}>
                   <input
                     type="date"
                     value={filterStartDate}
@@ -1801,9 +1785,8 @@ export default function DemoSessionsPage() {
               {/* End Date */}
               <div className="space-y-1">
                 <label className="text-[11px] font-medium text-neutral-400 block">To Date</label>
-                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${
-                  filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
-                }`}>
+                <div className={`relative flex items-center h-10 bg-neutral-800 border rounded-xl px-3 transition-all ${filterEndDate ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus-within:border-amber-500"
+                  }`}>
                   <input
                     type="date"
                     value={filterEndDate}
@@ -1831,9 +1814,8 @@ export default function DemoSessionsPage() {
                   <select
                     value={filterTeacher}
                     onChange={(e) => setFilterTeacher(e.target.value)}
-                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${
-                      filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
-                    }`}
+                    className={`w-full h-10 bg-neutral-800 border rounded-xl px-3 py-2 text-xs sm:text-sm text-white outline-none transition-all cursor-pointer truncate ${filterTeacher ? "border-amber-500/50 bg-amber-500/5" : "border-neutral-700 focus:border-amber-500"
+                      }`}
                   >
                     <option value="">All Teachers</option>
                     {teachers.map((t) => (
@@ -1874,14 +1856,13 @@ export default function DemoSessionsPage() {
                         {group.slots.length} Slots
                       </span>
                     </div>
-                    
+
                     <div className="space-y-3 flex-1 overflow-y-auto custom-scrollbar pr-1">
                       {group.slots.map((slot: any) => (
-                        <div key={slot._id} className={`p-2.5 rounded-lg border ${
-                          slot.isBooked
-                            ? "bg-red-500/5 border-red-500/10"
-                            : "bg-emerald-500/5 border-emerald-500/10 hover:bg-emerald-500/10"
-                        } transition-colors`}>
+                        <div key={slot._id} className={`p-2.5 rounded-lg border ${slot.isBooked
+                          ? "bg-red-500/5 border-red-500/10"
+                          : "bg-emerald-500/5 border-emerald-500/10 hover:bg-emerald-500/10"
+                          } transition-colors`}>
                           <div className="flex justify-between items-start mb-2">
                             <div>
                               <p className="text-[10px] text-neutral-400 uppercase font-semibold">
@@ -1891,13 +1872,12 @@ export default function DemoSessionsPage() {
                                 {formatTimeAMPM(slot.startTime)} - {formatTimeAMPM(slot.endTime)}
                               </p>
                             </div>
-                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${
-                              slot.isBooked ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
-                            }`}>
+                            <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded shrink-0 ${slot.isBooked ? "bg-red-500/20 text-red-400" : "bg-emerald-500/20 text-emerald-400"
+                              }`}>
                               {slot.isBooked ? "BOOKED" : "AVAILABLE"}
                             </span>
                           </div>
-                          
+
                           <div className="flex gap-2 mt-2 pt-2 border-t border-neutral-800/50">
                             {!slot.isBooked && hasWriteAccess && (
                               <button
@@ -2401,13 +2381,12 @@ export default function DemoSessionsPage() {
                     {/* Availability check display */}
                     {form.teacher && form.date && (
                       <div
-                        className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${
-                          availability.isAvailable
-                            ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
-                            : availability.isSet
+                        className={`p-3 rounded-xl border text-xs flex items-start gap-2 ${availability.isAvailable
+                          ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+                          : availability.isSet
                             ? "bg-red-500/10 border-red-500/20 text-red-400"
                             : "bg-neutral-800 border-neutral-700 text-neutral-400"
-                        }`}
+                          }`}
                       >
                         {availability.isAvailable ? (
                           <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
@@ -2635,156 +2614,155 @@ export default function DemoSessionsPage() {
                 </button>
               </div>
               <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
-                 {/* Sibling Booking Banner if applicable */}
-                 {((viewingSession.siblingNames && viewingSession.siblingNames.length > 1) || (viewingSession.siblingCount && viewingSession.siblingCount > 1)) && (
-                   <div className="bg-indigo-950/30 border border-indigo-500/30 p-4 rounded-xl space-y-2">
-                     <h3 className="text-sm font-bold text-indigo-300 flex items-center gap-2">
-                       <Users className="w-4 h-4 text-indigo-400" /> Sibling Demo Booking ({viewingSession.siblingCount || viewingSession.siblingNames?.length} Students)
-                     </h3>
-                     <p className="text-xs text-neutral-300">
-                       This demo session was booked together under the same parent for multiple children.
-                     </p>
-                     {viewingSession.siblingNames && viewingSession.siblingNames.length > 0 && (
-                       <div className="flex flex-wrap gap-2 pt-1">
-                         {viewingSession.siblingNames.map((name, idx) => (
-                           <span
-                             key={idx}
-                             className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${
-                               name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase()
-                                 ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
-                                 : "bg-neutral-800 text-neutral-300 border-neutral-700"
-                             }`}
-                           >
-                             {name} {name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase() && "(This Student)"}
-                           </span>
-                         ))}
-                       </div>
-                     )}
-                   </div>
-                 )}
-
-                 {/* Basic Info */}
-                 <div>
-                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                     <User className="w-4 h-4 text-amber-500" /> Student Information
-                   </h3>
-                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Name</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.studentName}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Email</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.studentEmail || "-"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Age</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.age || "-"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Customer / Parent Name</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.customerName || "-"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Phone Number</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.phoneNumber || "-"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Place</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.place || "-"}</p>
-                     </div>
-                   </div>
-                 </div>
-
-                 {/* Class Details */}
-                 <div>
-                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                     <Video className="w-4 h-4 text-amber-500" /> Class Details
-                   </h3>
-                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Subject</p>
-                       <p className="text-sm text-amber-400 font-bold mt-1">{viewingSession.subject || (viewingSession.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Teacher</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.teacher?.name || "Unassigned"}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Status</p>
-                       <p className="text-sm font-medium mt-1">
-                         <span className={`px-2 py-1 rounded-md text-xs font-bold border ${viewingSession.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : viewingSession.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
-                           {viewingSession.status}
-                         </span>
-                       </p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Date</p>
-                       <p className="text-sm text-white font-medium mt-1">{formatDateSafe(viewingSession.date, "dd MMM yyyy")}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Time</p>
-                       <p className="text-sm text-white font-medium mt-1">{formatTimeAMPM(viewingSession.startTime)} - {formatTimeAMPM(viewingSession.endTime)}</p>
-                     </div>
-                     <div className="col-span-2 md:col-span-1">
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Meeting Link</p>
-                       {viewingSession.meetingLink ? (
-                         <a href={viewingSession.meetingLink} target="_blank" rel="noreferrer" className="text-sm text-blue-400 hover:text-blue-300 font-medium mt-1 break-all flex items-center gap-1">
-                           <LinkIcon className="w-3 h-3" /> Join Link
-                         </a>
-                       ) : (
-                         <p className="text-sm text-neutral-500 font-medium mt-1">-</p>
-                       )}
-                     </div>
-                     <div className="col-span-2 md:col-span-3 mt-2">
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Notes / Remarks</p>
-                       <div className="bg-neutral-950/50 border border-neutral-800 p-3 rounded-lg mt-1">
-                         <p className="text-sm text-neutral-300 whitespace-pre-wrap">{viewingSession.notes || "No notes provided."}</p>
-                       </div>
-                     </div>
-                   </div>
-                 </div>
-
-                 {/* Admission Tracker */}
-                 <div>
-                   <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
-                     <AlignLeft className="w-4 h-4 text-amber-500" /> Admission Tracker
-                   </h3>
-                   <div className="grid grid-cols-2 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
-                     <div>
-                       <p className="text-[10px] text-neutral-500 uppercase font-semibold">Sales Executive</p>
-                       <p className="text-sm text-white font-medium mt-1">{viewingSession.salesExecutive || "-"}</p>
-                     </div>
-                     <div>
-                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
-                        <p className="text-sm font-medium mt-1">
-                          <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(viewingSession.admissionConfirmed)}`}>
-                            {viewingSession.admissionConfirmed || "Pending"}
+                {/* Sibling Booking Banner if applicable */}
+                {((viewingSession.siblingNames && viewingSession.siblingNames.length > 1) || (viewingSession.siblingCount && viewingSession.siblingCount > 1)) && (
+                  <div className="bg-indigo-950/30 border border-indigo-500/30 p-4 rounded-xl space-y-2">
+                    <h3 className="text-sm font-bold text-indigo-300 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-indigo-400" /> Sibling Demo Booking ({viewingSession.siblingCount || viewingSession.siblingNames?.length} Students)
+                    </h3>
+                    <p className="text-xs text-neutral-300">
+                      This demo session was booked together under the same parent for multiple children.
+                    </p>
+                    {viewingSession.siblingNames && viewingSession.siblingNames.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {viewingSession.siblingNames.map((name, idx) => (
+                          <span
+                            key={idx}
+                            className={`px-2.5 py-1 rounded-lg text-xs font-semibold border ${name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase()
+                              ? "bg-amber-500/20 text-amber-300 border-amber-500/40"
+                              : "bg-neutral-800 text-neutral-300 border-neutral-700"
+                              }`}
+                          >
+                            {name} {name.trim().toLowerCase() === viewingSession.studentName?.trim().toLowerCase() && "(This Student)"}
                           </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Basic Info */}
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <User className="w-4 h-4 text-amber-500" /> Student Information
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Name</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.studentName}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Student Email</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.studentEmail || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Age</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.age || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Customer / Parent Name</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.customerName || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Phone Number</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.phoneNumber || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Place</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.place || "-"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Class Details */}
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <Video className="w-4 h-4 text-amber-500" /> Class Details
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Subject</p>
+                      <p className="text-sm text-amber-400 font-bold mt-1">{viewingSession.subject || (viewingSession.status === "Cancelled" && <span className="px-2 py-0.5 rounded-md text-[10px] font-bold border bg-red-500/10 text-red-400 border-red-500/20">Cancelled</span>) || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Teacher</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.teacher?.name || "Unassigned"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Status</p>
+                      <p className="text-sm font-medium mt-1">
+                        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${viewingSession.status === "Scheduled" ? "bg-amber-500/10 text-amber-400 border-amber-500/20" : viewingSession.status === "Completed" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"}`}>
+                          {viewingSession.status}
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Date</p>
+                      <p className="text-sm text-white font-medium mt-1">{formatDateSafe(viewingSession.date, "dd MMM yyyy")}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Time</p>
+                      <p className="text-sm text-white font-medium mt-1">{formatTimeAMPM(viewingSession.startTime)} - {formatTimeAMPM(viewingSession.endTime)}</p>
+                    </div>
+                    <div className="col-span-2 md:col-span-1">
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Meeting Link</p>
+                      {viewingSession.meetingLink ? (
+                        <a href={viewingSession.meetingLink} target="_blank" rel="noreferrer" className="text-sm text-blue-400 hover:text-blue-300 font-medium mt-1 break-all flex items-center gap-1">
+                          <LinkIcon className="w-3 h-3" /> Join Link
+                        </a>
+                      ) : (
+                        <p className="text-sm text-neutral-500 font-medium mt-1">-</p>
+                      )}
+                    </div>
+                    <div className="col-span-2 md:col-span-3 mt-2">
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Notes / Remarks</p>
+                      <div className="bg-neutral-950/50 border border-neutral-800 p-3 rounded-lg mt-1">
+                        <p className="text-sm text-neutral-300 whitespace-pre-wrap">{viewingSession.notes || "No notes provided."}</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Admission Tracker */}
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <AlignLeft className="w-4 h-4 text-amber-500" /> Admission Tracker
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4 bg-neutral-800/30 p-4 rounded-xl border border-neutral-800">
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Sales Executive</p>
+                      <p className="text-sm text-white font-medium mt-1">{viewingSession.salesExecutive || "-"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-neutral-500 uppercase font-semibold">Admission Confirmed</p>
+                      <p className="text-sm font-medium mt-1">
+                        <span className={`px-2 py-0.5 rounded-md text-xs font-bold border ${getAdmissionBadge(viewingSession.admissionConfirmed)}`}>
+                          {viewingSession.admissionConfirmed || "Pending"}
+                        </span>
+                      </p>
+                    </div>
+                    {(viewingSession.admissionConfirmed === "Yes" || viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor) && (
+                      <div>
+                        <p className="text-[10px] text-neutral-500 uppercase font-semibold">Class Assigned Tutor</p>
+                        <p className="text-sm text-white font-medium mt-1">
+                          {viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor === "Teacher is not confirmed" || viewingSession.classAssignedTutor === "Teacher Not Confirmed"
+                            ? <span className="text-sky-400 font-medium">Teacher is not confirmed</span>
+                            : (teachers.find((t: any) => t._id === viewingSession.classAssignedTutor)?.name || (viewingSession.classAssignedTutor as any)?.name || viewingSession.classAssignedTutor || "-")}
                         </p>
                       </div>
-                      {(viewingSession.admissionConfirmed === "Yes" || viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor) && (
-                        <div>
-                          <p className="text-[10px] text-neutral-500 uppercase font-semibold">Class Assigned Tutor</p>
-                          <p className="text-sm text-white font-medium mt-1">
-                            {viewingSession.admissionConfirmed === "Teacher is not confirmed" || viewingSession.admissionConfirmed === "Teacher Not Confirmed" || viewingSession.classAssignedTutor === "Teacher is not confirmed" || viewingSession.classAssignedTutor === "Teacher Not Confirmed"
-                              ? <span className="text-sky-400 font-medium">Teacher is not confirmed</span>
-                              : (teachers.find((t: any) => t._id === viewingSession.classAssignedTutor)?.name || (viewingSession.classAssignedTutor as any)?.name || viewingSession.classAssignedTutor || "-")}
-                          </p>
-                        </div>
-                      )}
+                    )}
 
-                     {/* Display cancellation reason if it exists */}
-                     {viewingSession.cancellationReason && (
-                       <div className="col-span-1 md:col-span-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
-                         <span className="text-[10px] uppercase font-semibold text-red-400 block">
-                           {viewingSession.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Rejection"}
-                         </span>
-                         <p className="text-sm text-white font-medium mt-1 whitespace-pre-wrap">{viewingSession.cancellationReason}</p>
-                       </div>
-                     )}
-                   </div>
-                 </div>
+                    {/* Display cancellation reason if it exists */}
+                    {viewingSession.cancellationReason && (
+                      <div className="col-span-1 md:col-span-2 p-3 bg-red-500/10 border border-red-500/20 rounded-xl mt-2">
+                        <span className="text-[10px] uppercase font-semibold text-red-400 block">
+                          {viewingSession.status === "Cancelled" ? "Reason for Cancellation" : "Reason for Rejection"}
+                        </span>
+                        <p className="text-sm text-white font-medium mt-1 whitespace-pre-wrap">{viewingSession.cancellationReason}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </motion.div>
           </div>
