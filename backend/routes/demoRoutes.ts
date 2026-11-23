@@ -1,8 +1,16 @@
 import express from 'express';
-import { getDemoSessions, createDemoSession, updateDemoSession, deleteDemoSession } from '../controllers/demoSessionController';
+import {
+  getDemoSessions,
+  createDemoSession,
+  updateDemoSession,
+  deleteDemoSession,
+  checkDuplicateDemoSession,
+} from '../controllers/demoSessionController';
 import { protect, permissionCheck } from '../middleware/authMiddleware';
 
 const router = express.Router();
+
+router.post('/check-duplicate', protect, checkDuplicateDemoSession);
 
 router.route('/')
   .get(protect, getDemoSessions)
@@ -13,3 +21,4 @@ router.route('/:id')
   .delete(protect, permissionCheck('demoSessions', 'write'), deleteDemoSession);
 
 export default router;
+

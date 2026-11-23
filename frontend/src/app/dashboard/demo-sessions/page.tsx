@@ -31,6 +31,7 @@ import {
   RotateCcw,
   SlidersHorizontal,
   CreditCard,
+  History,
 } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import { useSearchStore } from "@/store/searchStore";
@@ -89,6 +90,31 @@ interface DemoSession {
   groupBookingId?: string;
   siblingCount?: number;
   siblingNames?: string[];
+  demoHistory?: any[];
+  rescheduledCount?: number;
+}
+
+export interface DuplicateMatch {
+  _id: string;
+  studentName: string;
+  customerName?: string;
+  phoneNumber?: string;
+  studentEmail?: string;
+  subject?: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: string;
+  admissionConfirmed?: string;
+  teacher?: any;
+  salesExecutive?: string;
+  notes?: string;
+  cancellationReason?: string;
+  demoHistory?: any[];
+  createdAt?: string;
+  matchReasons: string[];
+  isExactStudent?: boolean;
+  isPotentialSibling?: boolean;
 }
 
 export type DemoStudentItem = {
@@ -124,6 +150,9 @@ type DemoSessionForm = {
   rescheduleDate?: string;
   rescheduleStartTime?: string;
   rescheduleEndTime?: string;
+  rescheduleReason?: string;
+  followUpNote?: string;
+  allowDuplicate?: boolean;
   students?: DemoStudentItem[];
 };
 
@@ -152,6 +181,9 @@ const emptyForm = (): DemoSessionForm => ({
   rescheduleDate: "",
   rescheduleStartTime: "",
   rescheduleEndTime: "",
+  rescheduleReason: "",
+  followUpNote: "",
+  allowDuplicate: false,
   students: [
     { id: "1", studentName: "", studentEmail: "", age: "", subject: "" },
   ],
@@ -195,6 +227,14 @@ export default function DemoSessionsPage() {
   const [recordPaymentForSession, setRecordPaymentForSession] = useState<any | null>(null);
   const [editPaymentForSession, setEditPaymentForSession] = useState<any | null>(null);
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
+  const [duplicateWarning, setDuplicateWarning] = useState<{
+    isOpen: boolean;
+    message: string;
+    matches: DuplicateMatch[];
+    isPotentialSibling: boolean;
+    pendingPayload: any;
+  } | null>(null);
+  const [isCheckingDuplicate, setIsCheckingDuplicate] = useState(false);
 
   const [activeTab, setActiveTab] = useState<"sessions" | "slots">("sessions");
   const [slotForm, setSlotForm] = useState({
@@ -264,6 +304,18 @@ export default function DemoSessionsPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       closeModal();
+      setDuplicateWarning(null);
+    },
+    onError: (error: any) => {
+      if (error?.response?.status === 409 && error?.response?.data?.matches) {
+        setDuplicateWarning({
+          isOpen: true,
+          message: error.response.data.message || "This student is already registered for a demo session. Do you want to view the existing record?",
+          matches: error.response.data.matches,
+          isPotentialSibling: !!error.response.data.isPotentialSibling,
+          pendingPayload: error.config?.data ? JSON.parse(error.config.data) : null,
+        });
+      }
     },
   });
 
@@ -559,7 +611,44 @@ export default function DemoSessionsPage() {
     setEditingId(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleViewExistingDemo = (match: DuplicateMatch) => {
+    setDuplicateWarning(null);
+    const fullSession = demoSessions.find((s) => s._id === match._id) || (match as any);
+    setViewingSession(fullSession);
+  };
+
+  const handleUpdateExistingDemo = (match: DuplicateMatch) => {
+    const pending = duplicateWarning?.pendingPayload;
+    setDuplicateWarning(null);
+    closeModal();
+
+    const targetSession = demoSessions.find((s) => s._id === match._id) || (match as any);
+    openEdit(targetSession, "Rescheduled");
+
+    if (pending) {
+      setForm((prev) => ({
+        ...prev,
+        rescheduleDate: pending.date ? formatDateSafe(pending.date, "yyyy-MM-dd") : prev.rescheduleDate,
+        rescheduleStartTime: pending.startTime || prev.rescheduleStartTime,
+        rescheduleEndTime: pending.endTime || prev.rescheduleEndTime,
+        date: pending.date ? formatDateSafe(pending.date, "yyyy-MM-dd") : prev.date,
+        startTime: pending.startTime || prev.startTime,
+        endTime: pending.endTime || prev.endTime,
+        teacher: pending.teacher && pending.teacher !== "unassigned" ? pending.teacher : prev.teacher,
+        notes: pending.notes ? `${prev.notes ? prev.notes + "\n" : ""}[Rescheduled Request]: ${pending.notes}` : prev.notes,
+        rescheduleReason: pending.notes || "Rescheduled requested via duplicate booking check",
+      }));
+    }
+  };
+
+  const handleContinueAnyway = () => {
+    if (!duplicateWarning?.pendingPayload) return;
+    const payload = { ...duplicateWarning.pendingPayload, allowDuplicate: true };
+    setDuplicateWarning(null);
+    createDemoMutation.mutate(payload);
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload: any = { ...form };
     payload.status = payload.status || "Scheduled";
@@ -567,6 +656,9 @@ export default function DemoSessionsPage() {
       if (payload.rescheduleDate) payload.date = payload.rescheduleDate;
       if (payload.rescheduleStartTime) payload.startTime = payload.rescheduleStartTime;
       if (payload.rescheduleEndTime) payload.endTime = payload.rescheduleEndTime;
+      if (payload.rescheduleReason) {
+        payload.followUpNote = payload.rescheduleReason;
+      }
     }
 
     // Filter valid students with non-empty names
@@ -583,12 +675,39 @@ export default function DemoSessionsPage() {
       payload.studentEmail = validStudents[0].studentEmail || payload.studentEmail || "";
       payload.age = validStudents[0].age !== undefined && validStudents[0].age !== "" ? validStudents[0].age : payload.age;
       payload.students = validStudents;
-    }
 
-    if (modal?.mode === "edit" && editingId) {
-      updateDemoMutation.mutate({ id: editingId, data: payload });
-    } else {
+      // Automatically check whether the student is already registered before creating (Requirements 1, 2, 8)
+      if (!payload.allowDuplicate) {
+        setIsCheckingDuplicate(true);
+        try {
+          const { data } = await api.post("/demo-sessions/check-duplicate", {
+            studentName: payload.studentName,
+            phoneNumber: payload.phoneNumber,
+            studentEmail: payload.studentEmail,
+            students: payload.students,
+          });
+
+          if (data?.hasDuplicate && data?.matches?.length > 0) {
+            setIsCheckingDuplicate(false);
+            setDuplicateWarning({
+              isOpen: true,
+              message: data.message || "This student is already registered for a demo session. Do you want to view the existing record?",
+              matches: data.matches,
+              isPotentialSibling: !!data.isPotentialSibling,
+              pendingPayload: payload,
+            });
+            return;
+          }
+        } catch (err: any) {
+          console.error("Duplicate check error:", err);
+        } finally {
+          setIsCheckingDuplicate(false);
+        }
+      }
+
       createDemoMutation.mutate(payload);
+    } else if (modal?.mode === "edit" && editingId) {
+      updateDemoMutation.mutate({ id: editingId, data: payload });
     }
   };
 
@@ -2494,6 +2613,16 @@ export default function DemoSessionsPage() {
                             />
                           </div>
                         </div>
+                        <div className="pt-1">
+                          <label className="text-[10px] text-neutral-400 font-semibold block mb-1">Reschedule / Follow-up Note</label>
+                          <input
+                            type="text"
+                            placeholder="e.g. Student requested next week due to exam"
+                            value={form.rescheduleReason || ""}
+                            onChange={(e) => setForm({ ...form, rescheduleReason: e.target.value })}
+                            className="w-full bg-neutral-900 border border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-purple-500"
+                          />
+                        </div>
                       </div>
                     )}
 
@@ -2535,10 +2664,15 @@ export default function DemoSessionsPage() {
                   </button>
                   <button
                     type="submit"
-                    disabled={createDemoMutation.isPending || updateDemoMutation.isPending}
+                    disabled={isCheckingDuplicate || createDemoMutation.isPending || updateDemoMutation.isPending}
                     className="flex-1 py-2.5 rounded-xl brand-gradient text-black font-semibold hover:opacity-90 transition-opacity text-sm disabled:opacity-50 flex items-center justify-center gap-1.5"
                   >
-                    {createDemoMutation.isPending || updateDemoMutation.isPending ? (
+                    {isCheckingDuplicate ? (
+                      <>
+                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                        Checking for duplicates...
+                      </>
+                    ) : createDemoMutation.isPending || updateDemoMutation.isPending ? (
                       <>
                         <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                         Saving...
@@ -2557,6 +2691,162 @@ export default function DemoSessionsPage() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Duplicate Demo Session Warning Modal (Requirements 3, 4, 5, 6, 8) */}
+      <AnimatePresence>
+        {duplicateWarning?.isOpen && duplicateWarning.matches.length > 0 && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-lg bg-neutral-900 border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-4 sm:p-5 border-b border-neutral-800 bg-amber-500/10 flex items-start justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-amber-500/20 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
+                    <AlertTriangle className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {duplicateWarning.isPotentialSibling ? "Sibling / Existing Contact Found" : "Student Already Registered"}
+                    </h3>
+                    <p className="text-xs text-amber-300 font-medium mt-1">
+                      This student is already registered for a demo session. Do you want to view the existing record?
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setDuplicateWarning(null)}
+                  className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-4 sm:p-5 overflow-y-auto space-y-4 custom-scrollbar">
+                {duplicateWarning.isPotentialSibling && (
+                  <div className="p-3 bg-indigo-950/40 border border-indigo-500/30 rounded-xl text-xs text-indigo-200">
+                    <span className="font-bold text-indigo-300 flex items-center gap-1.5 mb-1">
+                      <Users className="w-4 h-4 text-indigo-400" /> Sibling Registration Notice:
+                    </span>
+                    The phone number or email matches an existing parent account, but the student name is different. If this is a sibling, click <span className="font-bold text-white">"Continue Anyway"</span> to register as a separate student.
+                  </div>
+                )}
+
+                {/* Existing Demo Record Card */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs uppercase font-semibold text-neutral-400 tracking-wider">
+                      Existing Demo Record {duplicateWarning.matches.length > 1 ? `(1 of ${duplicateWarning.matches.length} matches)` : ""}
+                    </p>
+                    {duplicateWarning.matches[0]?.matchReasons && (
+                      <div className="flex flex-wrap gap-1 justify-end">
+                        {duplicateWarning.matches[0].matchReasons.map((r, i) => (
+                          <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                            {r}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {duplicateWarning.matches.slice(0, 1).map((match) => (
+                    <div key={match._id} className="p-4 bg-neutral-800/50 border border-neutral-700/80 rounded-xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
+                            <User className="w-4 h-4 text-amber-500" />
+                            {match.studentName}
+                          </h4>
+                          <p className="text-xs text-neutral-400 mt-0.5">
+                            Parent: <span className="text-neutral-200 font-medium">{match.customerName || "-"}</span> • Phone: <span className="text-neutral-200 font-medium">{match.phoneNumber || "-"}</span>
+                          </p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                          match.status === "Scheduled"
+                            ? "bg-amber-500/10 text-amber-400 border-amber-500/20"
+                            : match.status === "Completed"
+                            ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                            : match.status === "Rescheduled"
+                            ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
+                            : "bg-red-500/10 text-red-400 border-red-500/20"
+                        }`}>
+                          {match.status}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-neutral-800">
+                        <div>
+                          <span className="text-neutral-500">Subject:</span> <span className="text-neutral-200 font-medium">{match.subject || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Teacher:</span> <span className="text-neutral-200 font-medium">{typeof match.teacher === "object" ? match.teacher?.name : (teachers.find(t => t._id === match.teacher)?.name || "Unassigned")}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Date:</span> <span className="text-neutral-200 font-medium">{formatDateSafe(match.date, "dd MMM yyyy")}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Time:</span> <span className="text-neutral-200 font-medium">{formatTimeAMPM(match.startTime)} - {formatTimeAMPM(match.endTime)}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Salesperson:</span> <span className="text-neutral-200 font-medium">{match.salesExecutive || "-"}</span>
+                        </div>
+                        <div>
+                          <span className="text-neutral-500">Admission:</span> <span className="text-neutral-200 font-medium">{match.admissionConfirmed || "Pending"}</span>
+                        </div>
+                      </div>
+
+                      {match.notes && (
+                        <div className="pt-1 text-xs text-neutral-400 border-t border-neutral-800">
+                          <span className="text-neutral-500">Notes:</span> {match.notes}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {duplicateWarning.matches.length > 1 && (
+                    <p className="text-[11px] text-neutral-400 italic">
+                      + {duplicateWarning.matches.length - 1} other existing matching demo record(s) found in the database.
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Options */}
+              <div className="p-4 sm:p-5 border-t border-neutral-800 bg-neutral-900/90 flex flex-col sm:flex-row gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => handleViewExistingDemo(duplicateWarning.matches[0])}
+                  className="flex-1 py-2.5 px-3 rounded-xl border border-neutral-700 bg-neutral-800/80 hover:bg-neutral-700 text-neutral-200 text-xs sm:text-sm font-semibold flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <Eye className="w-4 h-4 text-blue-400" />
+                  View Existing Demo
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleUpdateExistingDemo(duplicateWarning.matches[0])}
+                  className="flex-1 py-2.5 px-3 rounded-xl brand-gradient text-black text-xs sm:text-sm font-semibold hover:opacity-90 flex items-center justify-center gap-1.5 transition-opacity"
+                >
+                  <RotateCcw className="w-4 h-4 text-black" />
+                  Update Existing Details
+                </button>
+                <button
+                  type="button"
+                  onClick={handleContinueAnyway}
+                  className="py-2.5 px-3 rounded-xl border border-neutral-700 text-neutral-400 hover:text-white hover:bg-neutral-800 text-xs sm:text-sm font-medium transition-colors"
+                  title="Only if genuinely a different student or sibling"
+                >
+                  Continue Anyway
+                </button>
+              </div>
             </motion.div>
           </div>
         )}
@@ -2762,6 +3052,70 @@ export default function DemoSessionsPage() {
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Demo History & Reschedule Records (Requirement 7) */}
+                <div>
+                  <h3 className="text-sm font-bold text-white mb-3 flex items-center gap-2">
+                    <History className="w-4 h-4 text-amber-500" />
+                    Demo History & Reschedule Records ({Array.isArray(viewingSession.demoHistory) ? viewingSession.demoHistory.length : 0})
+                  </h3>
+                  {Array.isArray(viewingSession.demoHistory) && viewingSession.demoHistory.length > 0 ? (
+                    <div className="space-y-3">
+                      {viewingSession.demoHistory.map((h: any, idx: number) => (
+                        <div key={idx} className="p-3.5 bg-neutral-800/40 border border-neutral-800 rounded-xl space-y-2 text-xs">
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold text-amber-400 flex items-center gap-1.5">
+                              <RotateCcw className="w-3.5 h-3.5" />
+                              {h.reason || (h.action === "rescheduled" ? "Rescheduled Demo" : "Details Updated")}
+                            </span>
+                            <span className="text-[11px] text-neutral-400">
+                              {formatDateSafe(h.updatedAt || h.changedAt, "dd MMM yyyy, hh:mm a")}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1 border-t border-neutral-800/80 text-[11px]">
+                            <div>
+                              <span className="text-neutral-500">Previous Date:</span>{" "}
+                              <span className="text-neutral-200 font-medium">{formatDateSafe(h.date || h.previousDate, "dd MMM yyyy")}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Previous Time:</span>{" "}
+                              <span className="text-neutral-200 font-medium">
+                                {formatTimeAMPM(h.startTime || h.previousStartTime)} - {formatTimeAMPM(h.endTime || h.previousEndTime)}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Previous Status:</span>{" "}
+                              <span className="text-neutral-200 font-medium">{h.status || h.previousStatus || "Scheduled"}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Previous Teacher:</span>{" "}
+                              <span className="text-neutral-200 font-medium">{h.teacher || h.previousTeacher || "Unassigned"}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Sales Executive:</span>{" "}
+                              <span className="text-neutral-200 font-medium">{h.salesExecutive || h.previousSalesExecutive || "-"}</span>
+                            </div>
+                            <div>
+                              <span className="text-neutral-500">Updated By:</span>{" "}
+                              <span className="text-neutral-200 font-medium">{h.updatedBy?.name || "Admin"}</span>
+                            </div>
+                          </div>
+
+                          {(h.notes || h.cancellationReason) && (
+                            <div className="pt-1 text-[11px] text-neutral-400 border-t border-neutral-800/60">
+                              <span className="text-neutral-500">Note:</span> {h.notes || h.cancellationReason}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-4 bg-neutral-800/20 border border-neutral-800 rounded-xl text-xs text-neutral-400 text-center">
+                      No previous reschedule or update history for this demo session.
+                    </div>
+                  )}
                 </div>
               </div>
             </motion.div>

@@ -1,4 +1,4 @@
-﻿import { Response } from 'express';
+import { Response } from 'express';
 import DemoSession from '../models/DemoSession';
 import Teacher from '../models/Teacher';
 import Schedule from '../models/Schedule';
@@ -186,6 +186,151 @@ export const getDemoSessions = async (req: any, res: Response): Promise<void> =>
   }
 };
 
+// Helper to normalize phone numbers (strip non-digits, compare last 10 digits)
+export function normalizePhone(phone: any): string {
+  if (!phone) return '';
+  const digits = String(phone).replace(/\D/g, '');
+  return digits.length >= 10 ? digits.slice(-10) : digits;
+}
+
+// Helper to normalize strings for case-insensitive matching
+export function normalizeStr(str: any): string {
+  return String(str || '').trim().toLowerCase();
+}
+
+// @desc    Check whether a demo student is already registered across any demo sessions
+// @route   POST /demo-sessions/check-duplicate
+// @access  Private
+export const checkDuplicateDemoSession = async (req: any, res: Response): Promise<void> => {
+  try {
+    const { studentName, phoneNumber, studentEmail, excludeId, students: rawStudents } = req.body;
+
+    const namesToCheck: string[] = [];
+    if (Array.isArray(rawStudents) && rawStudents.length > 0) {
+      for (const s of rawStudents) {
+        if (s && s.studentName && s.studentName.trim()) {
+          namesToCheck.push(s.studentName.trim());
+        }
+      }
+    }
+    if (studentName && studentName.trim() && !namesToCheck.includes(studentName.trim())) {
+      namesToCheck.unshift(studentName.trim());
+    }
+
+    const cleanPhones = [normalizePhone(phoneNumber)].filter(Boolean);
+    const cleanEmails = [normalizeStr(studentEmail)].filter(Boolean);
+
+    if (namesToCheck.length === 0 && cleanPhones.length === 0 && cleanEmails.length === 0) {
+      res.json({ hasDuplicate: false, matches: [] });
+      return;
+    }
+
+    // Query ALL demo sessions across all sales persons and teachers
+    const allDemos = await DemoSession.find({}).populate('teacher', 'name email status availability');
+
+    const matchedDemos: any[] = [];
+    const seenIds = new Set<string>();
+
+    for (const d of allDemos) {
+      const dId = d._id ? d._id.toString() : '';
+      if (!dId || seenIds.has(dId)) continue;
+      if (excludeId && (dId === excludeId || d._id === excludeId)) continue;
+
+      const dName = normalizeStr(d.studentName);
+      const dCustomer = normalizeStr(d.customerName);
+      const dPhone = normalizePhone(d.phoneNumber);
+      const dEmail = normalizeStr(d.studentEmail);
+
+      let nameMatch = false;
+      let exactNameMatch = false;
+      let matchedNameStr = '';
+
+      for (const name of namesToCheck) {
+        const cName = normalizeStr(name);
+        if (!cName) continue;
+        if (cName === dName) {
+          exactNameMatch = true;
+          nameMatch = true;
+          matchedNameStr = name;
+          break;
+        } else if (cName.length >= 3 && dName.length >= 3 && (cName.includes(dName) || dName.includes(cName))) {
+          nameMatch = true;
+          matchedNameStr = name;
+        }
+      }
+
+      const phoneMatch = cleanPhones.some(p => p.length >= 7 && dPhone.length >= 7 && (p === dPhone || p.endsWith(dPhone) || dPhone.endsWith(p)));
+      const emailMatch = cleanEmails.some(e => e.length >= 5 && dEmail.length >= 5 && e === dEmail);
+
+      const matchReasons: string[] = [];
+      if (exactNameMatch) matchReasons.push(`Exact Student Name: "${d.studentName}"`);
+      else if (nameMatch) matchReasons.push(`Similar Student Name: "${d.studentName}"`);
+      if (phoneMatch) matchReasons.push(`Phone Number: "${d.phoneNumber}"`);
+      if (emailMatch) matchReasons.push(`Email Address: "${d.studentEmail}"`);
+
+      if (matchReasons.length > 0) {
+        seenIds.add(dId);
+
+        const isExactStudent = nameMatch && (phoneMatch || emailMatch || cleanPhones.length === 0);
+        const isPotentialSibling = (phoneMatch || emailMatch) && !nameMatch && namesToCheck.length > 0;
+
+        matchedDemos.push({
+          _id: d._id,
+          studentName: d.studentName || '',
+          customerName: d.customerName || '',
+          phoneNumber: d.phoneNumber || '',
+          studentEmail: d.studentEmail || '',
+          subject: d.subject || '',
+          date: d.date,
+          startTime: d.startTime || '',
+          endTime: d.endTime || '',
+          status: d.status || 'Scheduled',
+          admissionConfirmed: d.admissionConfirmed || 'Pending',
+          teacher: d.teacher,
+          salesExecutive: d.salesExecutive || '',
+          notes: d.notes || '',
+          cancellationReason: d.cancellationReason || '',
+          demoHistory: Array.isArray(d.demoHistory) ? d.demoHistory : [],
+          createdAt: d.createdAt,
+          matchReasons,
+          isExactStudent,
+          isPotentialSibling,
+        });
+      }
+    }
+
+    // Sort matches: Exact student matches first, then by date descending (most recent first)
+    matchedDemos.sort((a, b) => {
+      if (a.isExactStudent && !b.isExactStudent) return -1;
+      if (!a.isExactStudent && b.isExactStudent) return 1;
+      const tA = a.date ? new Date(a.date).getTime() : 0;
+      const tB = b.date ? new Date(b.date).getTime() : 0;
+      return tB - tA;
+    });
+
+    const hasDuplicate = matchedDemos.length > 0;
+    const isExactMatch = matchedDemos.some(m => m.isExactStudent);
+    const isPotentialSibling = !isExactMatch && matchedDemos.some(m => m.isPotentialSibling);
+
+    let message = 'This student is already registered for a demo session. Do you want to view the existing record?';
+    if (isPotentialSibling) {
+      message = 'A demo session with this contact number/email already exists for another student (potential sibling). Do you want to view the existing record?';
+    }
+
+    res.json({
+      hasDuplicate,
+      isExactMatch,
+      isPotentialSibling,
+      message,
+      matches: matchedDemos,
+      existingDemo: matchedDemos[0] || null,
+    });
+  } catch (error: any) {
+    console.error('Check duplicate demo session error:', error.message);
+    res.status(500).json({ message: 'Server error checking duplicates', detail: error.message });
+  }
+};
+
 // Helper to automatically provision batch and student records when demo admission is confirmed
 async function provisionBatchAndStudentForDemo(demoSession: any): Promise<void> {
   const isConfirmedOnCreate =
@@ -305,6 +450,86 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
 
     const dateObj = new Date(date);
 
+    // Comprehensive Duplicate Check (Requirements 1, 2, 8):
+    // Before creating, check whether this student is already registered across any salesperson or demo.
+    if (!req.body.allowDuplicate) {
+      const cleanTargetPhone = normalizePhone(phoneNumber);
+      const cleanTargetEmail = normalizeStr(studentEmail);
+      const cleanTargetName = normalizeStr(effectiveStudentName);
+
+      const allExisting = await DemoSession.find({}).populate('teacher', 'name email status availability');
+      const matches: any[] = [];
+
+      for (const d of allExisting) {
+        const dName = normalizeStr(d.studentName);
+        const dPhone = normalizePhone(d.phoneNumber);
+        const dEmail = normalizeStr(d.studentEmail);
+
+        const nameMatch = cleanTargetName.length > 0 && dName.length > 0 && (cleanTargetName === dName || dName.includes(cleanTargetName) || cleanTargetName.includes(dName));
+        const exactName = cleanTargetName.length > 0 && dName.length > 0 && cleanTargetName === dName;
+        const phoneMatch = cleanTargetPhone.length >= 7 && dPhone.length >= 7 && (cleanTargetPhone === dPhone || cleanTargetPhone.endsWith(dPhone) || dPhone.endsWith(cleanTargetPhone));
+        const emailMatch = cleanTargetEmail.length >= 5 && dEmail.length >= 5 && cleanTargetEmail === dEmail;
+
+        if (nameMatch || phoneMatch || emailMatch) {
+          const isExactStudent = nameMatch && (phoneMatch || emailMatch || !cleanTargetPhone);
+          const isPotentialSibling = (phoneMatch || emailMatch) && !nameMatch && cleanTargetName.length > 0;
+          const matchReasons: string[] = [];
+          if (exactName) matchReasons.push(`Exact Student Name: "${d.studentName}"`);
+          else if (nameMatch) matchReasons.push(`Similar Student Name: "${d.studentName}"`);
+          if (phoneMatch) matchReasons.push(`Phone Number: "${d.phoneNumber}"`);
+          if (emailMatch) matchReasons.push(`Email Address: "${d.studentEmail}"`);
+
+          matches.push({
+            _id: d._id,
+            studentName: d.studentName || '',
+            customerName: d.customerName || '',
+            phoneNumber: d.phoneNumber || '',
+            studentEmail: d.studentEmail || '',
+            subject: d.subject || '',
+            date: d.date,
+            startTime: d.startTime || '',
+            endTime: d.endTime || '',
+            status: d.status || 'Scheduled',
+            admissionConfirmed: d.admissionConfirmed || 'Pending',
+            teacher: d.teacher,
+            salesExecutive: d.salesExecutive || '',
+            notes: d.notes || '',
+            cancellationReason: d.cancellationReason || '',
+            demoHistory: Array.isArray(d.demoHistory) ? d.demoHistory : [],
+            createdAt: d.createdAt,
+            matchReasons,
+            isExactStudent,
+            isPotentialSibling,
+          });
+        }
+      }
+
+      if (matches.length > 0) {
+        matches.sort((a, b) => {
+          if (a.isExactStudent && !b.isExactStudent) return -1;
+          if (!a.isExactStudent && b.isExactStudent) return 1;
+          const tA = a.date ? new Date(a.date).getTime() : 0;
+          const tB = b.date ? new Date(b.date).getTime() : 0;
+          return tB - tA;
+        });
+
+        const hasExact = matches.some(m => m.isExactStudent);
+        const isPotentialSibling = !hasExact && matches.some(m => m.isPotentialSibling);
+
+        res.status(409).json({
+          message: isPotentialSibling
+            ? 'A demo session with this contact number/email already exists for another student (potential sibling). Do you want to view the existing record?'
+            : 'This student is already registered for a demo session. Do you want to view the existing record?',
+          isDuplicate: true,
+          requiresConfirmation: true,
+          isPotentialSibling,
+          existingDemo: matches[0],
+          matches,
+        });
+        return;
+      }
+    }
+
     // Prevent duplicate demo booking for the same student on the same date and startTime
     const existingStudentDemo = await DemoSession.findOne({
       $or: [
@@ -316,7 +541,7 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
       startTime,
       status: { $ne: 'Cancelled' }
     });
-    if (existingStudentDemo) {
+    if (existingStudentDemo && !req.body.allowDuplicate) {
       res.status(409).json({
         message: `A demo session for "${effectiveStudentName}" is already scheduled on ${formatDateToYYYYMMDD(dateObj)} at ${startTime}.`,
         isDuplicate: true,
@@ -422,7 +647,8 @@ export const createDemoSession = async (req: any, res: Response): Promise<void> 
     }
 
     // SINGLE STUDENT BOOKING (Standard / Existing Flow)
-    const deterministicDemoId = `demo_${(teacher ? (typeof teacher === 'object' ? teacher._id : teacher) : 'unassigned')}_${effectiveStudentName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${formatDateToYYYYMMDD(dateObj)}_${startTime.replace(':', '')}`;
+    const idSalt = req.body.allowDuplicate ? `_${Date.now()}` : '';
+    const deterministicDemoId = `demo_${(teacher ? (typeof teacher === 'object' ? teacher._id : teacher) : 'unassigned')}_${effectiveStudentName.toLowerCase().replace(/[^a-z0-9]/g, '')}_${formatDateToYYYYMMDD(dateObj)}_${startTime.replace(':', '')}${idSalt}`;
     const demoSession = await DemoSession.create({
       _id: deterministicDemoId,
       teacher: teacher || null,
@@ -517,6 +743,46 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
     if (!isAdmin && !isAssignedTeacher && !isSalesPerson) {
       res.status(403).json({ message: 'Not authorized to update this demo session' });
       return;
+    }
+
+    // -------------------------------------------------------------
+    // History Preservation (Requirements 5 & 7):
+    // Maintain all previous demo history (previous dates, assigned
+    // salesperson, demo status, teacher, and follow-up records).
+    // -------------------------------------------------------------
+    const hasDateChanged = req.body.date && formatDateToYYYYMMDD(new Date(req.body.date)) !== formatDateToYYYYMMDD(new Date(demoSession.date));
+    const hasTimeChanged = (req.body.startTime && req.body.startTime !== demoSession.startTime) || (req.body.endTime && req.body.endTime !== demoSession.endTime);
+    const hasStatusChanged = req.body.status && req.body.status !== demoSession.status;
+    const hasTeacherChanged = req.body.teacher !== undefined && String(req.body.teacher === 'unassigned' ? '' : req.body.teacher) !== String(demoSession.teacher?._id || demoSession.teacher || '');
+    const hasSalesChanged = req.body.salesExecutive !== undefined && req.body.salesExecutive !== demoSession.salesExecutive;
+    const isExplicitReschedule = req.body.status === 'Rescheduled' || req.body.isReschedule === true || req.body.rescheduleReason;
+
+    if (hasDateChanged || hasTimeChanged || isExplicitReschedule || hasStatusChanged || hasTeacherChanged || hasSalesChanged) {
+      if (!Array.isArray(demoSession.demoHistory)) {
+        demoSession.demoHistory = [];
+      }
+
+      const historyEntry = {
+        date: demoSession.date,
+        startTime: demoSession.startTime,
+        endTime: demoSession.endTime,
+        teacher: demoSession.teacher ? (typeof demoSession.teacher === 'object' ? (demoSession.teacher.name || demoSession.teacher._id) : demoSession.teacher) : null,
+        salesExecutive: demoSession.salesExecutive || '',
+        status: demoSession.status || 'Scheduled',
+        notes: demoSession.notes || '',
+        cancellationReason: demoSession.cancellationReason || '',
+        reason: req.body.rescheduleReason || req.body.updateReason || (isExplicitReschedule ? 'Rescheduled to new date/time' : 'Demo session details updated'),
+        updatedAt: new Date(),
+        updatedBy: req.user ? { _id: req.user._id, name: req.user.name, role: req.user.role } : null
+      };
+
+      demoSession.demoHistory.push(historyEntry);
+      demoSession.rescheduledCount = (demoSession.rescheduledCount || 0) + (isExplicitReschedule || hasDateChanged ? 1 : 0);
+    }
+
+    if (req.body.followUpNote && typeof req.body.followUpNote === 'string' && req.body.followUpNote.trim()) {
+      const followUpText = `[${new Date().toLocaleDateString('en-GB')}] ${req.user?.name || 'Admin'}: ${req.body.followUpNote.trim()}`;
+      demoSession.notes = demoSession.notes ? `${demoSession.notes}\n${followUpText}` : followUpText;
     }
 
     if (isAdmin || isSalesPerson) {
