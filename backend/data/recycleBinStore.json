@@ -1,1 +1,48 @@
-[]
+[
+  {
+    "_id": "dd352d70-8766-49d4-ac8b-b0ab186c34f1",
+    "entityType": "demoSession",
+    "entityId": "demo_unassigned_muhammadmebshamali_2026-11-25_1000_1795509295685",
+    "name": "Demo (Muhammad Mebsham ali - AI Coding)",
+    "secondaryInfo": "Date: 2026-11-25T00:00:00.000Z • Status: Scheduled",
+    "itemData": {
+      "age": 13,
+      "date": "2026-11-25T00:00:00.000Z",
+      "notes": "",
+      "place": "Malappuram ",
+      "status": "Scheduled",
+      "endTime": "11:00",
+      "subject": "AI Coding",
+      "teacher": null,
+      "conflict": false,
+      "createdBy": "e4VWGRrirSvMQ8CXcfrN",
+      "startTime": "10:00",
+      "meetingLink": "",
+      "phoneNumber": " 9961594264",
+      "studentName": "Muhammad Mebsham ali",
+      "customerName": "Nishad",
+      "feeDiscussed": "",
+      "studentEmail": "nishadvenkitta@yahoo.com",
+      "salesExecutive": "Arjun venugopal",
+      "numberOfSessions": "",
+      "admissionConfirmed": "Pending",
+      "cancellationReason": "",
+      "_id": "demo_unassigned_muhammadmebshamali_2026-11-25_1000_1795509295685",
+      "slot": null,
+      "student": null,
+      "salesPerson": null,
+      "report": null,
+      "createdAt": "2026-11-24T08:34:55.686+00:00",
+      "updatedAt": "2026-11-24T08:34:55.686+00:00"
+    },
+    "associatedData": {},
+    "deletedAt": "2026-11-24T09:05:17.388Z",
+    "deletedBy": {
+      "_id": "6a0d950f2af11d96b3196d6c",
+      "name": "Super Admin",
+      "email": "admin@gmail.com",
+      "role": "Admin"
+    },
+    "status": "in_bin"
+  }
+]

@@ -2717,7 +2717,7 @@ export default function DemoSessionsPage() {
                       {duplicateWarning.isPotentialSibling ? "Sibling / Existing Contact Found" : "Student Already Registered"}
                     </h3>
                     <p className="text-xs text-amber-300 font-medium mt-1">
-                      This student is already registered for a demo session. Do you want to view the existing record?
+                      {duplicateWarning.message || "This student is already registered for a demo session under this phone number. Do you want to view the existing record?"}
                     </p>
                   </div>
                 </div>
@@ -2737,7 +2737,7 @@ export default function DemoSessionsPage() {
                     <span className="font-bold text-indigo-300 flex items-center gap-1.5 mb-1">
                       <Users className="w-4 h-4 text-indigo-400" /> Sibling Registration Notice:
                     </span>
-                    The phone number or email matches an existing parent account, but the student name is different. If this is a sibling, click <span className="font-bold text-white">"Continue Anyway"</span> to register as a separate student.
+                    The phone number matches an existing parent account, but the student name is different. If this is a sibling, click <span className="font-bold text-white">"Continue Anyway"</span> to register as a separate student.
                   </div>
                 )}
 
