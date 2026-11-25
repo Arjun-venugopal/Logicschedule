@@ -305,6 +305,8 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/students/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      queryClient.invalidateQueries({ queryKey: ["student"] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["batches"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-stats"] });
@@ -314,7 +316,8 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
       onClose();
     },
     onError: (err: any) => {
-      setErrorMsg(err.response?.data?.message || err.message || "Failed to update student");
+      const firstIssue = err.response?.data?.errors?.[0]?.message;
+      setErrorMsg(firstIssue || err.response?.data?.message || err.message || "Failed to update student");
     },
   });
 
@@ -417,6 +420,10 @@ export function EditStudentModal({ student, onClose, onSuccess }: EditStudentMod
     const payload = {
       ...formData,
       name: formData.name.trim(),
+      parentName: formData.parentName.trim(),
+      mobileNumber: formData.mobileNumber.trim(),
+      whatsappNumber: formData.whatsappNumber.trim(),
+      email: formData.email.trim(),
       batch: finalBatchId,
     };
 

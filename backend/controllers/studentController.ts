@@ -650,7 +650,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor, status } = parsed.data;
     const studentId = req.params.id as string;
 
     const student = await Student.findById(studentId);
@@ -919,6 +919,7 @@ if (statusChanged) {
 
     res.status(200).json(student);
   } catch (error) {
+    console.error('updateStudent error:', error);
     res.status(500).json({ message: 'Failed to update student' });
   }
 };
@@ -1028,6 +1029,11 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
           targetBatchDoc.numberOfSessions = targetSessions;
           changed = true;
         }
+        if (!targetBatchDoc.isRetention) {
+          targetBatchDoc.isRetention = true;
+          targetBatchDoc.retentionLevel = finalLevelTag;
+          changed = true;
+        }
         if (changed) {
           await targetBatchDoc.save();
         }
@@ -1057,6 +1063,9 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
         numberOfSessions: targetSessions,
         studentsCount: 1,
         status: 'Active',
+        isRetention: true,
+        retentionLevel: finalLevelTag,
+        retentionFromBatch: oldBatchId || undefined,
         days: targetDays,
         timing: targetTiming,
         meetingLink: targetMeetingLink,

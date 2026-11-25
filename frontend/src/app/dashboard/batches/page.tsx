@@ -98,6 +98,7 @@ type BatchForm = {
   durationType: string;
   startDate: string;
   status: string;
+  isRetention?: boolean;
   numberOfSessions: number | "";
   preCompletedClasses?: number | "";
 };
@@ -116,6 +117,7 @@ const emptyForm = (): BatchForm => ({
   durationType: "Custom",
   startDate: "",
   status: "Upcoming",
+  isRetention: false,
   numberOfSessions: "",
   preCompletedClasses: "",
 });
@@ -327,6 +329,7 @@ export default function BatchesPage() {
       durationType: b.durationType || "Custom",
       startDate: getSafeDateOnly(b.startDate),
       status: b.status || "Upcoming",
+      isRetention: Boolean(b.isRetention),
       numberOfSessions: b.numberOfSessions || "",
       preCompletedClasses: b.preCompletedClasses !== undefined && b.preCompletedClasses !== null && b.preCompletedClasses !== "" ? b.preCompletedClasses : (b.completedClassesCount || ""),
     });
@@ -420,16 +423,21 @@ export default function BatchesPage() {
     });
   }, [batches, filterTeacher, filterCourse]);
 
-  // Aggregate batch counts for: Total Batches, Ongoing, Completed, Dropped/Cancelled, Upcoming
+  // Aggregate batch counts for: Total Batches, Ongoing, Retention, Completed, Dropped/Cancelled, Upcoming
   const batchStats = useMemo(() => {
     const totalBatches = baseBatchesForStats.length;
     let ongoingBatches = 0;
+    let retentionBatches = 0;
     let completedBatches = 0;
     let droppedBatches = 0;
     let upcomingBatches = 0;
 
     baseBatchesForStats.forEach((b: any) => {
       const effective = getBatchEffectiveStatus(b);
+
+      if (b.isRetention && effective !== "Dropped") {
+        retentionBatches++;
+      }
 
       if (effective === "Completed") {
         completedBatches++;
@@ -445,6 +453,7 @@ export default function BatchesPage() {
     return {
       totalBatches,
       ongoingBatches,
+      retentionBatches,
       completedBatches,
       droppedBatches,
       upcomingBatches,
@@ -456,6 +465,7 @@ export default function BatchesPage() {
 
     if (filterStatus) {
       const effective = getBatchEffectiveStatus(b);
+      if (filterStatus === "Retention" && (!b.isRetention || effective === "Dropped")) return false;
       if (filterStatus === "Ongoing" && effective !== "Ongoing") return false;
       if (filterStatus === "Completed" && effective !== "Completed") return false;
       if (filterStatus === "Dropped" && effective !== "Dropped") return false;
@@ -503,8 +513,8 @@ export default function BatchesPage() {
         </div>
       </div>
 
-      {/* Overview Count Cards: Batches (Total, Ongoing, Completed, Upcoming, Dropped/Cancelled) */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 shrink-0">
+      {/* Overview Count Cards: Batches (Total, Ongoing, Retention, Completed, Upcoming, Dropped/Cancelled) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4 shrink-0">
         {/* Total Batches Card */}
         <div
           onClick={() => setFilterStatus("")}
@@ -556,6 +566,33 @@ export default function BatchesPage() {
           </div>
           <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
             <Clock3 className="w-24 h-24 text-emerald-500" />
+          </div>
+        </div>
+
+        {/* Retention (Next Level) Card */}
+        <div
+          onClick={() => setFilterStatus(filterStatus === "Retention" ? "" : "Retention")}
+          className={`bg-neutral-900 border rounded-2xl p-4 sm:p-5 relative overflow-hidden group transition-all cursor-pointer ${filterStatus === "Retention"
+            ? "border-purple-500/50 ring-1 ring-purple-500/30 bg-purple-500/5 shadow-lg shadow-purple-500/10"
+            : "border-neutral-800 hover:border-purple-500/30"
+            }`}
+          title="Click to filter by Retention (Next Level) batches"
+        >
+          <div className="flex justify-between items-start">
+            <div>
+              <p className="text-[10px] sm:text-xs text-neutral-500 uppercase font-semibold tracking-wider mb-1">Retention</p>
+              <div className="flex items-baseline gap-1.5">
+                <h3 className="text-2xl sm:text-3xl font-extrabold text-white">{batchStats.retentionBatches}</h3>
+                <span className="text-xs text-neutral-400 font-medium">batches</span>
+              </div>
+            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${filterStatus === "Retention" ? "bg-purple-500/20 text-purple-400" : "bg-purple-500/10 text-purple-500 group-hover:bg-purple-500/20"
+              }`}>
+              <Sparkles className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="absolute -right-4 -bottom-4 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+            <Sparkles className="w-24 h-24 text-purple-500" />
           </div>
         </div>
 
@@ -668,6 +705,7 @@ export default function BatchesPage() {
           >
             <option value="">All Statuses ({batchStats.totalBatches})</option>
             <option value="Ongoing">Ongoing / Active ({batchStats.ongoingBatches})</option>
+            <option value="Retention">Retention / Next Level ({batchStats.retentionBatches})</option>
             <option value="Completed">Completed ({batchStats.completedBatches})</option>
             <option value="Dropped">Dropped / Cancelled ({batchStats.droppedBatches})</option>
             <option value="Upcoming">Upcoming ({batchStats.upcomingBatches})</option>
@@ -786,6 +824,11 @@ export default function BatchesPage() {
                       {batch.status}
                     </span>
                   ) : null}
+                  {batch.isRetention && (
+                    <span className="flex items-center gap-1 text-[10px] px-2.5 py-0.5 rounded-full bg-purple-500/15 text-purple-400 border border-purple-500/30 font-bold">
+                      <Sparkles className="w-2.5 h-2.5" /> Retention
+                    </span>
+                  )}
                   {batch.durationType && (
                     <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20 font-semibold">
                       <Clock3 className="w-2.5 h-2.5" />
@@ -1166,6 +1209,21 @@ export default function BatchesPage() {
                       </button>
                     ))}
                   </div>
+                  <label className="mt-2.5 flex items-center justify-between p-2.5 rounded-xl bg-neutral-800/50 border border-neutral-700/70 cursor-pointer hover:border-purple-500/40 transition-colors">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-purple-400" />
+                      <div>
+                        <span className="text-xs font-semibold text-white block">Retention Batch (Next Level)</span>
+                        <span className="text-[10px] text-neutral-400 block">Tag this batch for students continuing to Level 2+</span>
+                      </div>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(form.isRetention)}
+                      onChange={(e) => setForm({ ...form, isRetention: e.target.checked })}
+                      className="w-4 h-4 rounded border-neutral-600 text-purple-500 focus:ring-purple-500 bg-neutral-900"
+                    />
+                  </label>
                 </div>
 
                 {/* Days Selection */}

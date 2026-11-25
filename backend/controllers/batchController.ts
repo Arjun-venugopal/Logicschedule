@@ -318,10 +318,19 @@ export const getBatches = async (req: any, res: Response) => {
       return;
     }
 
-    // Fetch schedules count for these unique batches
+    // Fetch schedules count and student retention info in parallel (no N+1)
     const batchIds = Array.from(new Set(batches.map((b: any) => b._id)));
-    const allSchedules = await Schedule.find({
-      batch: { $in: batchIds }
+    const [allSchedules, allStudentsForRetention] = await Promise.all([
+      Schedule.find({ batch: { $in: batchIds } }),
+      Student.find({}).select('batch pastBatches'),
+    ]);
+
+    const retentionBatchIds = new Set<string>();
+    allStudentsForRetention.forEach((st: any) => {
+      if (Array.isArray(st.pastBatches) && st.pastBatches.length > 0 && st.batch) {
+        const bId = st.batch?._id ? st.batch._id.toString() : st.batch.toString();
+        if (bId) retentionBatchIds.add(bId);
+      }
     });
 
     const completedCountMap: Record<string, number> = {};
@@ -377,6 +386,7 @@ export const getBatches = async (req: any, res: Response) => {
       return {
         ...batchObj,
         status: effectiveStatus,
+        isRetention: Boolean(batchObj.isRetention || retentionBatchIds.has(bId)),
         completedClassesCount: completedCount,
         cancelledClassesCount: cancelledCountMap[bId] || 0,
         upcomingClassesCount: upcomingCountMap[bId] || 0,
@@ -403,7 +413,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       name, subject, assignedTeacher, studentsCount,
       timing, days, meetingLink,
       startDate, durationType, status, numberOfSessions, preCompletedClasses,
-      dayTimings, timeMode
+      dayTimings, timeMode, isRetention
     } = req.body;
 
     if (!name || !subject) {
@@ -484,6 +494,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       startDate: normalizeDateOnlyToUtc(startDate),
       durationType: durationType || 'Custom',
       status: status || 'Upcoming',
+      isRetention: Boolean(isRetention),
       numberOfSessions: numberOfSessions || null,
       preCompletedClasses: validatedPreCompleted,
     });
@@ -581,6 +592,9 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.meetingLink = req.body.meetingLink ?? batch.meetingLink;
     batch.durationType = req.body.durationType ?? batch.durationType;
     batch.status = req.body.status ?? batch.status;
+    if (req.body.isRetention !== undefined) {
+      batch.isRetention = Boolean(req.body.isRetention);
+    }
     batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
 
     if (req.body.startDate !== undefined)

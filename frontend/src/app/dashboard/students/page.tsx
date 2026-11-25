@@ -563,43 +563,41 @@ export default function StudentsPage() {
         </div>
       )}
 
-      <AnimatePresence>
-        {selectedStudentId && (
-          <StudentDetailsModal
-            studentId={selectedStudentId}
-            initialOpenAdvance={openAdvanceDirectly}
-            onClose={() => {
-              setSelectedStudentId(null);
-              setOpenAdvanceDirectly(false);
-            }}
-          />
-        )}
-
-        {editStudent && (
-          <EditStudentModal
-            student={editStudent}
-            onClose={() => setEditStudent(null)}
-            onSuccess={() => {
-              queryClient.invalidateQueries({ queryKey: ["students-all"] });
-              setEditStudent(null);
-            }}
-          />
-        )}
-
-        <DeleteConfirmModal
-          isOpen={!!deleteConfirm}
-          onClose={() => setDeleteConfirm(null)}
-          onConfirm={() => {
-            if (deleteConfirm) deleteMutation.mutate(deleteConfirm);
+      {selectedStudentId && (
+        <StudentDetailsModal
+          studentId={selectedStudentId}
+          initialOpenAdvance={openAdvanceDirectly}
+          onClose={() => {
+            setSelectedStudentId(null);
+            setOpenAdvanceDirectly(false);
           }}
-          title="Delete Student"
-          itemName={students.find((s: any) => s._id === deleteConfirm)?.name}
-          message="Are you sure you want to delete this item? This action cannot be undone."
-          isLoading={deleteMutation.isPending}
         />
+      )}
 
-        <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
-      </AnimatePresence>
+      {editStudent && (
+        <EditStudentModal
+          student={editStudent}
+          onClose={() => setEditStudent(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ["students-all"] });
+            setEditStudent(null);
+          }}
+        />
+      )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => {
+          if (deleteConfirm) deleteMutation.mutate(deleteConfirm);
+        }}
+        title="Delete Student"
+        itemName={students.find((s: any) => s._id === deleteConfirm)?.name}
+        message="Are you sure you want to delete this item? This action cannot be undone."
+        isLoading={deleteMutation.isPending}
+      />
+
+      <SuccessToast message={successMessage} onClose={() => setSuccessMessage(null)} />
     </div>
   );
 }

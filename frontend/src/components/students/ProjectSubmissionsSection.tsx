@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { useAuthStore } from "@/store/authStore";
+import { useTheme } from "@/context/ThemeContext";
 import { ProjectSubmission } from "@/types";
 
 interface ProjectSubmissionsSectionProps {
@@ -52,6 +53,7 @@ export function ProjectSubmissionsSection({
 }: ProjectSubmissionsSectionProps) {
   const queryClient = useQueryClient();
   const { user } = useAuthStore();
+  const { isDark } = useTheme();
 
   // Active submission form state
   const [editingMilestone, setEditingMilestone] = useState<number | null>(null);
@@ -216,30 +218,46 @@ export function ProjectSubmissionsSection({
   return (
     <div className="space-y-4">
       {/* Header & Milestone Status Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b pb-3" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-            <FolderGit2 className="w-4 h-4" />
+          <div
+            className="w-8 h-8 rounded-xl border flex items-center justify-center shrink-0"
+            style={
+              isDark
+                ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)" }
+                : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+            }
+          >
+            <FolderGit2 className="w-4 h-4" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
           </div>
           <div>
-            <h3 className="font-bold text-white text-sm sm:text-base flex items-center gap-2">
+            <h3 className="font-bold text-sm sm:text-base flex items-center gap-2" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
               Project Submissions
-              <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              <span
+                className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+                style={
+                  isDark
+                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FCD34D" }
+                    : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                }
+              >
                 {sortedMilestones.length} {sortedMilestones.length === 1 ? "Milestone" : "Milestones"}
               </span>
             </h3>
-            <p className="text-xs text-neutral-400">
+            <p className="text-xs" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
               Automatic project milestones every 5 completed classes (5, 10, 15, 20...)
             </p>
           </div>
         </div>
 
         {/* Next Milestone Countdown Pill */}
-        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-neutral-800/80 border border-neutral-700/60 text-xs text-neutral-300 shrink-0">
-          <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+        <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs shrink-0 ${
+          isDark ? "bg-neutral-800/80 border-neutral-700/60 text-neutral-300" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
+        }`}>
+          <Sparkles className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
           <span>
             {actualCompleted} Classes Done ·{" "}
-            <strong className="text-white">Next at Class {nextMilestoneNumber}</strong>{" "}
+            <strong style={{ color: isDark ? "#FFFFFF" : "#171717" }}>Next at Class {nextMilestoneNumber}</strong>{" "}
             ({classesUntilNext} {classesUntilNext === 1 ? "class" : "classes"} left)
           </span>
         </div>
@@ -247,12 +265,17 @@ export function ProjectSubmissionsSection({
 
       {/* Milestones List */}
       {sortedMilestones.length === 0 ? (
-        <div className="bg-neutral-800/20 border border-neutral-800 rounded-2xl p-6 text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center mx-auto">
-            <Award className="w-6 h-6" />
+        <div className={`border rounded-2xl p-6 text-center space-y-2 ${
+          isDark ? "bg-neutral-800/20 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"
+        }`}>
+          <div
+            className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto"
+            style={{ backgroundColor: isDark ? "rgba(245, 158, 11, 0.1)" : "#FFF7E6" }}
+          >
+            <Award className="w-6 h-6" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
           </div>
-          <p className="text-sm font-semibold text-neutral-300">No project milestones unlocked yet</p>
-          <p className="text-xs text-neutral-500 max-w-md mx-auto">
+          <p className="text-sm font-semibold" style={{ color: isDark ? "#D4D4D4" : "#171717" }}>No project milestones unlocked yet</p>
+          <p className="text-xs max-w-md mx-auto" style={{ color: "#6B7280" }}>
             {student.name} has completed <strong>{actualCompleted}</strong> of the 5 classes required for the first project milestone. Once class 5 is completed, Milestone 1 will unlock automatically here.
           </p>
         </div>
@@ -276,11 +299,13 @@ export function ProjectSubmissionsSection({
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: idx * 0.04 }}
                 className={`rounded-2xl border p-4 transition-all relative overflow-hidden ${
-                  isReviewed
-                    ? "bg-emerald-950/20 border-emerald-500/30 hover:border-emerald-500/50"
-                    : isSubmitted
-                    ? "bg-blue-950/20 border-blue-500/30 hover:border-blue-500/50"
-                    : "bg-neutral-800/30 border-amber-500/20 hover:border-amber-500/40"
+                  isDark
+                    ? isReviewed
+                      ? "bg-emerald-950/20 border-emerald-500/30 hover:border-emerald-500/50"
+                      : isSubmitted
+                      ? "bg-blue-950/20 border-blue-500/30 hover:border-blue-500/50"
+                      : "bg-neutral-800/30 border-amber-500/20 hover:border-amber-500/40"
+                    : "bg-[#F9FAFB] border-[#E5E7EB]"
                 }`}
               >
                 {/* Accent vertical side line */}
@@ -298,29 +323,52 @@ export function ProjectSubmissionsSection({
                   <div className="space-y-2 flex-1 min-w-0">
                     {/* Milestone badge + Status */}
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-neutral-900 border border-neutral-700/80 text-xs font-bold text-white shadow-sm">
-                        <Award className="w-3.5 h-3.5 text-amber-400" />
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold shadow-sm ${
+                        isDark ? "bg-neutral-900 border-neutral-700/80 text-white" : "bg-[#FFFFFF] border-[#E5E7EB] text-[#171717]"
+                      }`}>
+                        <Award className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
                         Milestone {idx + 1} ({milestoneNum} Classes Completed)
                       </span>
 
                       {/* Status Badges */}
                       {isReviewed ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
-                          <CheckCircle2 className="w-3.5 h-3.5" /> Reviewed
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold"
+                          style={
+                            isDark
+                              ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                              : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                          }
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} /> Reviewed
                         </span>
                       ) : isSubmitted ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/15 border border-blue-500/30 text-blue-400 text-xs font-bold">
-                          <LinkIcon className="w-3.5 h-3.5" /> Link Submitted
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold"
+                          style={
+                            isDark
+                              ? { backgroundColor: "rgba(59, 130, 246, 0.15)", borderColor: "rgba(59, 130, 246, 0.3)", color: "#60A5FA" }
+                              : { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE", color: "#1D4ED8" }
+                          }
+                        >
+                          <LinkIcon className="w-3.5 h-3.5" style={{ color: isDark ? "#60A5FA" : "#1D4ED8" }} /> Link Submitted
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-400 text-xs font-bold">
-                          <Clock className="w-3.5 h-3.5" /> Pending Link Submission
+                        <span
+                          className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold"
+                          style={
+                            isDark
+                              ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                              : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                          }
+                        >
+                          <Clock className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} /> Pending Link Submission
                         </span>
                       )}
 
                       {submission?.submissionDate && (
-                        <span className="text-[11px] text-neutral-400 flex items-center gap-1 ml-auto sm:ml-0">
-                          <Calendar className="w-3 h-3 text-neutral-500" />
+                        <span className="text-[11px] flex items-center gap-1 ml-auto sm:ml-0" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                          <Calendar className="w-3 h-3" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                           {formatDateDisplay(submission.submissionDate)}
                         </span>
                       )}
@@ -329,7 +377,7 @@ export function ProjectSubmissionsSection({
                     {/* Project Title & Link */}
                     {isSubmitted ? (
                       <div className="space-y-1.5 pt-1">
-                        <h4 className="font-bold text-white text-sm sm:text-base leading-snug">
+                        <h4 className="font-bold text-sm sm:text-base leading-snug" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                           {submission?.projectTitle || "Student Project"}
                         </h4>
 
@@ -339,18 +387,21 @@ export function ProjectSubmissionsSection({
                               href={submission.projectLink}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 font-semibold underline underline-offset-2 break-all group max-w-full"
+                              className="inline-flex items-center gap-1.5 font-semibold underline underline-offset-2 break-all group max-w-full"
+                              style={{ color: isDark ? "#34D399" : "#047857" }}
                             >
-                              <ExternalLink className="w-3.5 h-3.5 shrink-0 group-hover:scale-110 transition-transform" />
+                              <ExternalLink className="w-3.5 h-3.5 shrink-0 group-hover:scale-110 transition-transform" style={{ color: isDark ? "#34D399" : "#047857" }} />
                               <span className="truncate">{submission.projectLink}</span>
                             </a>
                             <button
                               onClick={() => handleCopyLink(submission.projectLink!)}
-                              className="p-1 text-neutral-400 hover:text-white rounded hover:bg-neutral-800 transition-colors"
+                              className={`p-1 rounded transition-colors cursor-pointer ${
+                                isDark ? "text-neutral-400 hover:text-white hover:bg-neutral-800" : "text-[#4B5563] hover:text-[#171717] hover:bg-[#E5E7EB]"
+                              }`}
                               title="Copy project link"
                             >
                               {copiedLink === submission.projectLink ? (
-                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <Check className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
                               ) : (
                                 <Copy className="w-3.5 h-3.5" />
                               )}
@@ -359,26 +410,28 @@ export function ProjectSubmissionsSection({
                         )}
                       </div>
                     ) : (
-                      <p className="text-xs text-neutral-400 italic pt-1">
+                      <p className="text-xs italic pt-1" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
                         Milestone reached. Waiting for assigned teacher to submit the project link.
                       </p>
                     )}
 
                     {/* Teacher Remarks & Teacher Name */}
                     {submission?.teacherRemarks && (
-                      <div className="bg-neutral-900/80 border border-neutral-800 rounded-xl p-2.5 text-xs text-neutral-300 mt-2 flex items-start gap-2">
-                        <MessageSquare className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                      <div className={`border rounded-xl p-2.5 text-xs mt-2 flex items-start gap-2 ${
+                        isDark ? "bg-neutral-900/80 border-neutral-800 text-neutral-300" : "bg-[#FFFFFF] border-[#E5E7EB] text-[#171717]"
+                      }`}>
+                        <MessageSquare className="w-3.5 h-3.5 shrink-0 mt-0.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
                         <div>
-                          <span className="font-semibold text-neutral-400 text-[11px] block">Teacher Remarks:</span>
+                          <span className="font-semibold text-[11px] block" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>Teacher Remarks:</span>
                           <p className="mt-0.5 whitespace-pre-wrap">{submission.teacherRemarks}</p>
                         </div>
                       </div>
                     )}
 
                     {submission?.teacherName && (
-                      <div className="text-[11px] text-neutral-500 flex items-center gap-1.5 pt-1">
-                        <User className="w-3 h-3 text-neutral-500" />
-                        <span>Submitted by Teacher: <strong className="text-neutral-300">{submission.teacherName}</strong></span>
+                      <div className="text-[11px] flex items-center gap-1.5 pt-1" style={{ color: "#6B7280" }}>
+                        <User className="w-3 h-3" style={{ color: isDark ? "#737373" : "#6B7280" }} />
+                        <span>Submitted by Teacher: <strong style={{ color: isDark ? "#D4D4D4" : "#171717" }}>{submission.teacherName}</strong></span>
                       </div>
                     )}
                   </div>
@@ -390,31 +443,41 @@ export function ProjectSubmissionsSection({
                         <>
                           <button
                             onClick={() => handleQuickReviewToggle(milestoneNum, currentStatus)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-colors flex items-center gap-1.5 ${
+                            className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-opacity hover:opacity-90 flex items-center gap-1.5 cursor-pointer"
+                            style={
                               isReviewed
-                                ? "bg-neutral-800 text-neutral-300 border-neutral-700 hover:bg-neutral-700"
-                                : "bg-emerald-500/15 text-emerald-400 border-emerald-500/30 hover:bg-emerald-500/25"
-                            }`}
+                                ? isDark
+                                  ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#D4D4D4" }
+                                  : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#171717" }
+                                : isDark
+                                ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                            }
                             title={isReviewed ? "Revert to Link Submitted" : "Mark Project as Reviewed"}
                           >
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            {isReviewed ? "Reviewed" : "Mark Reviewed"}
+                            <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isReviewed ? (isDark ? "#D4D4D4" : "#1F2937") : (isDark ? "#34D399" : "#047857") }} />
+                            <span>{isReviewed ? "Reviewed" : "Mark Reviewed"}</span>
                           </button>
                           <button
                             onClick={() => handleOpenForm(milestoneNum)}
-                            className="px-3 py-1.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border border-neutral-700 text-xs font-semibold transition-colors flex items-center gap-1.5"
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer ${
+                              isDark
+                                ? "bg-neutral-800 hover:bg-neutral-700 text-neutral-200 border-neutral-700"
+                                : "bg-[#FFFFFF] hover:bg-[#F3F4F6] text-[#171717] border-[#E5E7EB]"
+                            }`}
                           >
-                            <Edit2 className="w-3.5 h-3.5 text-amber-400" />
-                            Edit Link
+                            <Edit2 className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                            <span>Edit Link</span>
                           </button>
                         </>
                       ) : (
                         <button
                           onClick={() => handleOpenForm(milestoneNum)}
-                          className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-all shadow-md shadow-amber-500/20 flex items-center gap-1.5 hover:scale-[1.02]"
+                          className="px-3.5 py-2 rounded-xl brand-gradient text-xs font-bold transition-opacity hover:opacity-90 shadow-sm flex items-center gap-1.5 cursor-pointer"
+                          style={{ color: "#171717" }}
                         >
-                          <LinkIcon className="w-3.5 h-3.5" />
-                          Submit Project Link
+                          <LinkIcon className="w-3.5 h-3.5" style={{ color: "#171717" }} />
+                          <span style={{ color: "#171717" }}>Submit Project Link</span>
                         </button>
                       )}
                     </div>
@@ -434,26 +497,37 @@ export function ProjectSubmissionsSection({
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-neutral-900 border border-neutral-700 rounded-2xl w-full max-w-lg shadow-2xl p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto"
+              className={`border rounded-2xl w-full max-w-lg shadow-2xl p-5 sm:p-6 space-y-4 max-h-[92vh] overflow-y-auto ${
+                isDark ? "bg-neutral-900 border-neutral-700" : "bg-[#FFFFFF] border-[#E5E7EB]"
+              }`}
             >
               {/* Header */}
-              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+              <div className={`flex items-center justify-between border-b pb-3 ${isDark ? "border-neutral-800" : "border-[#E5E7EB]"}`}>
                 <div className="flex items-center gap-2.5">
-                  <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center">
-                    <FolderGit2 className="w-5 h-5" />
+                  <div
+                    className="w-9 h-9 rounded-xl border flex items-center justify-center"
+                    style={
+                      isDark
+                        ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)" }
+                        : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+                    }
+                  >
+                    <FolderGit2 className="w-5 h-5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-white text-base">
+                    <h3 className="font-bold text-base" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                       {formLink ? "Update Project Submission" : "Submit Student Project Link"}
                     </h3>
-                    <p className="text-xs text-neutral-400">
+                    <p className="text-xs" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
                       Milestone: {editingMilestone} Completed Classes · {student.name}
                     </p>
                   </div>
                 </div>
                 <button
                   onClick={() => setEditingMilestone(null)}
-                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                  className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
+                    isDark ? "text-neutral-400 hover:text-white hover:bg-neutral-800" : "text-[#4B5563] hover:text-[#171717] hover:bg-[#F3F4F6]"
+                  }`}
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -461,7 +535,14 @@ export function ProjectSubmissionsSection({
 
               {/* Error Message */}
               {errorMsg && (
-                <div className="p-3 bg-red-500/15 border border-red-500/30 rounded-xl text-red-400 text-xs font-medium">
+                <div
+                  className="p-3 border rounded-xl text-xs font-medium"
+                  style={
+                    isDark
+                      ? { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)", color: "#F87171" }
+                      : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                  }
+                >
                   {errorMsg}
                 </div>
               )}
@@ -470,25 +551,29 @@ export function ProjectSubmissionsSection({
               <div className="space-y-4 text-xs">
                 {/* Project Title */}
                 <div>
-                  <label className="block text-neutral-400 font-semibold mb-1">
-                    Project Title <span className="text-amber-500">*</span>
+                  <label className="block font-semibold mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                    Project Title <span style={{ color: "#F59E0B" }}>*</span>
                   </label>
                   <input
                     type="text"
                     value={formTitle}
                     onChange={(e) => setFormTitle(e.target.value)}
                     placeholder="e.g. Space Shooter Game, Python Calculator, Portfolio Website"
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 text-sm"
+                    className={`w-full border rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-amber-500 text-sm ${
+                      isDark
+                        ? "bg-neutral-950 border-neutral-800 text-white placeholder-neutral-500"
+                        : "bg-[#F9FAFB] border-[#E5E7EB] text-[#171717] placeholder-[#6B7280]"
+                    }`}
                   />
                 </div>
 
                 {/* Project Link URL */}
                 <div>
-                  <label className="block text-neutral-400 font-semibold mb-1">
-                    Project Link (URL) <span className="text-amber-500">*</span>
+                  <label className="block font-semibold mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                    Project Link (URL) <span style={{ color: "#F59E0B" }}>*</span>
                   </label>
                   <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-neutral-500">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none" style={{ color: "#6B7280" }}>
                       <LinkIcon className="w-4 h-4" />
                     </div>
                     <input
@@ -496,7 +581,11 @@ export function ProjectSubmissionsSection({
                       value={formLink}
                       onChange={(e) => setFormLink(e.target.value)}
                       placeholder="https://scratch.mit.edu/projects/... or https://github.com/..."
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl pl-9 pr-3.5 py-2.5 text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 text-sm"
+                      className={`w-full border rounded-xl pl-9 pr-3.5 py-2.5 focus:outline-none focus:border-amber-500 text-sm ${
+                        isDark
+                          ? "bg-neutral-950 border-neutral-800 text-white placeholder-neutral-500"
+                          : "bg-[#F9FAFB] border-[#E5E7EB] text-[#171717] placeholder-[#6B7280]"
+                      }`}
                     />
                   </div>
                 </div>
@@ -504,21 +593,25 @@ export function ProjectSubmissionsSection({
                 {/* Submission Date & Status */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-neutral-400 font-semibold mb-1">Submission Date</label>
+                    <label className="block font-semibold mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>Submission Date</label>
                     <input
                       type="date"
                       value={formDate}
                       onChange={(e) => setFormDate(e.target.value)}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      className={`w-full border rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-amber-500 text-sm ${
+                        isDark ? "bg-neutral-950 border-neutral-800 text-white" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#171717]"
+                      }`}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-neutral-400 font-semibold mb-1">Status</label>
+                    <label className="block font-semibold mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>Status</label>
                     <select
                       value={formStatus}
                       onChange={(e) => setFormStatus(e.target.value as any)}
-                      className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-amber-500 text-sm"
+                      className={`w-full border rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-amber-500 text-sm ${
+                        isDark ? "bg-neutral-950 border-neutral-800 text-white" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#171717]"
+                      }`}
                     >
                       <option value="Link Submitted">Link Submitted</option>
                       <option value="Reviewed">Reviewed</option>
@@ -529,34 +622,44 @@ export function ProjectSubmissionsSection({
 
                 {/* Teacher Remarks */}
                 <div>
-                  <label className="block text-neutral-400 font-semibold mb-1">
-                    Teacher Remarks / Feedback <span className="text-neutral-500 font-normal">(optional)</span>
+                  <label className="block font-semibold mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                    Teacher Remarks / Feedback <span className="font-normal" style={{ color: "#6B7280" }}>(optional)</span>
                   </label>
                   <textarea
                     rows={3}
                     value={formRemarks}
                     onChange={(e) => setFormRemarks(e.target.value)}
                     placeholder="Add teacher remarks, feedback, or key concepts demonstrated in this project..."
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-3.5 py-2.5 text-white placeholder-neutral-500 focus:outline-none focus:border-amber-500 text-sm resize-none"
+                    className={`w-full border rounded-xl px-3.5 py-2.5 focus:outline-none focus:border-amber-500 text-sm resize-none ${
+                      isDark
+                        ? "bg-neutral-950 border-neutral-800 text-white placeholder-neutral-500"
+                        : "bg-[#F9FAFB] border-[#E5E7EB] text-[#171717] placeholder-[#6B7280]"
+                    }`}
                   />
                 </div>
 
                 {/* Teacher Submitting Info */}
-                <div className="bg-neutral-950/60 border border-neutral-800/80 rounded-xl p-3 flex items-center justify-between text-[11px] text-neutral-400">
+                <div className={`border rounded-xl p-3 flex items-center justify-between text-[11px] ${
+                  isDark ? "bg-neutral-950/60 border-neutral-800/80 text-neutral-400" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
+                }`}>
                   <span className="flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-neutral-500" />
+                    <User className="w-3.5 h-3.5" style={{ color: "#6B7280" }} />
                     Submitting Teacher:
                   </span>
-                  <strong className="text-white">{user?.name || "Assigned Teacher"}</strong>
+                  <strong style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{user?.name || "Assigned Teacher"}</strong>
                 </div>
               </div>
 
               {/* Modal Actions */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-neutral-800">
+              <div className="flex items-center justify-end gap-3 pt-3 border-t" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                 <button
                   type="button"
                   onClick={() => setEditingMilestone(null)}
-                  className="px-4 py-2.5 rounded-xl border border-neutral-700 text-neutral-300 hover:bg-neutral-800 text-xs font-semibold transition-colors"
+                  className={`px-4 py-2.5 rounded-xl border text-xs font-semibold transition-colors cursor-pointer ${
+                    isDark
+                      ? "border-neutral-700 text-neutral-300 hover:bg-neutral-800"
+                      : "border-[#E5E7EB] bg-[#FFFFFF] text-[#171717] hover:bg-[#F3F4F6]"
+                  }`}
                 >
                   Cancel
                 </button>
@@ -564,13 +667,15 @@ export function ProjectSubmissionsSection({
                   type="button"
                   onClick={handleSaveSubmission}
                   disabled={submitMutation.isPending}
-                  className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold transition-all shadow-md shadow-amber-500/20 disabled:opacity-50 flex items-center gap-2"
+                  className="px-5 py-2.5 rounded-xl brand-gradient text-xs font-bold transition-opacity hover:opacity-90 shadow-sm disabled:opacity-50 flex items-center gap-2 cursor-pointer"
+                  style={{ color: "#171717" }}
                 >
                   {submitMutation.isPending ? (
                     <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
                   ) : (
                     <>
-                      <Check className="w-4 h-4" /> Save Project Submission
+                      <Check className="w-4 h-4" style={{ color: "#171717" }} />
+                      <span style={{ color: "#171717" }}>Save Project Submission</span>
                     </>
                   )}
                 </button>

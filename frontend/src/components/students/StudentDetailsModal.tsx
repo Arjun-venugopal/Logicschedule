@@ -1,17 +1,23 @@
 "use client";
 import React from "react";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
-import { X, User, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2, History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock, Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles, Sliders } from "lucide-react";
+import {
+  X, User, Users, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2,
+  History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock,
+  Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles, Sliders,
+  BarChart3, Zap, Play, RefreshCw, FileText, ArrowRight, Laptop, Code2, Gamepad2
+} from "lucide-react";
 import { format } from "date-fns";
 import { RecordPaymentModal } from "@/components/payments/RecordPaymentModal";
 import { AdmissionPaymentModal } from "@/components/payments/AdmissionPaymentModal";
 import { ProjectSubmissionsSection } from "./ProjectSubmissionsSection";
 import { SuccessToast } from "@/components/common/SuccessToast";
 import { extractLevel } from "@/lib/utils";
+import { useTheme } from "@/context/ThemeContext";
 
 function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback = "Session"): string {
   if (!dateVal) return fallback;
@@ -83,10 +89,16 @@ export function StudentDetailsModal({
   const [progressNextClassEndTime, setProgressNextClassEndTime] = useState<string>("10:00");
   const [progressError, setProgressError] = useState<string>("");
   const [successToastMessage, setSuccessToastMessage] = useState<string | null>(null);
+  const { isDark } = useTheme();
+  const [activeTab, setActiveTab] = useState<"overview" | "progress" | "attendance" | "activity">("overview");
+  const [showChangeBatchModal, setShowChangeBatchModal] = useState(false);
+  const [changeBatchId, setChangeBatchId] = useState("");
+  const [changeBatchError, setChangeBatchError] = useState("");
 
-  const { data: student, isLoading } = useQuery({
+  const { data: student, isLoading, isError, error } = useQuery({
     queryKey: ["student", studentId],
     queryFn: async () => (await api.get(`/students/${studentId}`)).data,
+    enabled: !!studentId,
   });
 
   const { data: allTeachers = [] } = useQuery({
@@ -301,6 +313,50 @@ export function StudentDetailsModal({
     },
   });
 
+  const correctProgressMutation = useMutation({
+    mutationFn: async (payload: {
+      totalSessions: number;
+      completedSessions: number;
+      nextSessionNumber: number;
+      nextClassDate: string;
+      nextClassStartTime: string;
+      nextClassEndTime: string;
+    }) => {
+      return (await api.post(`/students/${studentId}/correct-progress`, payload)).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      setShowEditProgressModal(false);
+      setSuccessToastMessage("Class progress and schedule updated successfully!");
+    },
+    onError: (err: any) => {
+      setProgressError(err.response?.data?.message || err.message || "Failed to update class progress");
+    },
+  });
+
+  const changeBatchMutation = useMutation({
+    mutationFn: async (newBatchId: string) => {
+      return (await api.put(`/students/${studentId}`, { batch: newBatchId })).data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
+      queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
+      setShowChangeBatchModal(false);
+      setChangeBatchError("");
+      setSuccessToastMessage("Batch updated successfully!");
+    },
+    onError: (err: any) => {
+      setChangeBatchError(err.response?.data?.message || err.message || "Failed to change batch");
+    },
+  });
+
   const handleOpenReassignModal = () => {
     const currentTId =
       (typeof student?.assignedTutor === "string" ? student?.assignedTutor : student?.assignedTutor?._id) ||
@@ -397,6 +453,57 @@ export function StudentDetailsModal({
     enabled: !!studentId,
   });
 
+  const monthlyAttendanceData = useMemo(() => {
+    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const byMonth = new Map<string, { label: string; sortKey: string; total: number; attended: number }>();
+
+    (studentSchedules || []).forEach((s: any) => {
+      if (!s.date) return;
+      const d = new Date(s.date);
+      if (isNaN(d.getTime())) return;
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth();
+      const key = `${y}-${String(m + 1).padStart(2, "0")}`;
+      const label = monthNames[m];
+
+      if (!byMonth.has(key)) {
+        byMonth.set(key, { label, sortKey: key, total: 0, attended: 0 });
+      }
+      const bucket = byMonth.get(key)!;
+      if (s.status === "Completed" || s.status === "Scheduled") {
+        bucket.total++;
+        if (s.status === "Completed") {
+          if (Array.isArray(s.attendance) && s.attendance.length > 0 && student?._id) {
+            const rec = s.attendance.find((a: any) => {
+              const id = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+              return id === student._id;
+            });
+            if (!rec || rec.isPresent !== false) bucket.attended++;
+          } else {
+            bucket.attended++;
+          }
+        }
+      }
+    });
+
+    const sorted = Array.from(byMonth.values()).sort((a, b) => a.sortKey.localeCompare(b.sortKey)).slice(-4);
+    if (sorted.length === 0) {
+      const now = new Date();
+      const fallback = [];
+      for (let i = 3; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        fallback.push({ label: monthNames[d.getMonth()], pct: 0, total: 0, attended: 0 });
+      }
+      return fallback;
+    }
+    return sorted.map((b) => ({
+      label: b.label,
+      pct: b.total > 0 ? Math.round((b.attended / b.total) * 100) : 0,
+      total: b.total,
+      attended: b.attended,
+    }));
+  }, [studentSchedules, student?._id]);
+
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4">
@@ -405,7 +512,30 @@ export function StudentDetailsModal({
     );
   }
 
-  if (!student) return null;
+  if (isError || !student) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+        <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 flex items-center justify-center mx-auto">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <div>
+            <h3 className="text-base font-bold text-white">Unable to Load Student</h3>
+            <p className="text-xs text-neutral-400 mt-1">
+              {(error as any)?.response?.data?.message || "Could not fetch student details. Please try again."}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-full py-2.5 rounded-xl bg-neutral-800 hover:bg-neutral-700 text-white text-xs font-semibold transition-colors"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const currentTeacherName =
     getTeacherName(student?.assignedTutor) ||
@@ -448,6 +578,32 @@ export function StudentDetailsModal({
   const ringCircumference = 2 * Math.PI * 36;
   const ringOffset = ringCircumference - (attendancePercentage / 100) * ringCircumference;
   const ringColor = attendancePercentage >= 75 ? "text-emerald-500" : attendancePercentage >= 50 ? "text-amber-500" : "text-red-500";
+  const courseRingOffset = ringCircumference - (currentProgressPct / 100) * ringCircumference;
+
+  const isOneToOneBatch = student.batch
+    ? ((student.batch.name || "").includes("1:1") || (student.batch.studentsCount !== undefined && student.batch.studentsCount <= 1))
+    : true;
+  const batchNumberMatch = student.batch?.name?.match(/\b(\d+)\b/)?.[1];
+  const batchDisplayLabel = student.batch
+    ? (batchNumberMatch ? `Batch #${batchNumberMatch}` : student.batch.name)
+    : "Unassigned";
+
+  // Recent Activity rows for Overview table (Completed first / newest first)
+  const recentActivityRows = (() => {
+    const completed = [...studentSchedules]
+      .filter((s: any) => s.status === "Completed")
+      .sort((a: any, b: any) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
+    const others = [...studentSchedules]
+      .filter((s: any) => s.status !== "Completed")
+      .sort((a: any, b: any) => new Date(a.date || 0).getTime() - new Date(b.date || 0).getTime());
+    return [...completed, ...others].slice(0, 4);
+  })();
+
+  const handleOpenChangeBatchModal = () => {
+    setChangeBatchId(currentBatchId || "");
+    setChangeBatchError("");
+    setShowChangeBatchModal(true);
+  };
 
   const handleOpenEditProgressModal = () => {
     setProgressError("");
@@ -484,31 +640,6 @@ export function StudentDetailsModal({
     setProgressCompletedSessions(clamped);
     setProgressNextSessionNumber(clamped + 1);
   };
-
-  const correctProgressMutation = useMutation({
-    mutationFn: async (payload: {
-      totalSessions: number;
-      completedSessions: number;
-      nextSessionNumber: number;
-      nextClassDate: string;
-      nextClassStartTime: string;
-      nextClassEndTime: string;
-    }) => {
-      return (await api.post(`/students/${studentId}/correct-progress`, payload)).data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["student", studentId] });
-      queryClient.invalidateQueries({ queryKey: ["student-schedules", studentId] });
-      queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      queryClient.invalidateQueries({ queryKey: ["batches"] });
-      queryClient.invalidateQueries({ queryKey: ["students-all"] });
-      setShowEditProgressModal(false);
-      setSuccessToastMessage("Class progress and schedule updated successfully!");
-    },
-    onError: (err: any) => {
-      setProgressError(err.response?.data?.message || err.message || "Failed to update class progress");
-    },
-  });
 
   const handleSubmitProgressCorrection = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -553,218 +684,783 @@ export function StudentDetailsModal({
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 20 }}
         transition={{ type: "spring", stiffness: 300, damping: 30 }}
-        className="bg-neutral-900 border border-neutral-800 rounded-2xl sm:rounded-[2rem] w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col relative z-10 max-h-[92vh]"
+        className={`rounded-2xl sm:rounded-3xl w-full max-w-5xl shadow-2xl overflow-hidden flex flex-col md:flex-row relative z-10 max-h-[92vh] border ${
+          isDark
+            ? "bg-neutral-900 border-neutral-800"
+            : "bg-[#FFFFFF] border-[#E5E7EB]"
+        }`}
+        style={!isDark ? { boxShadow: "0 20px 50px rgba(23, 23, 23, 0.12)" } : undefined}
       >
-        {/* Dynamic Glass Header */}
-        <div className="relative h-14 sm:h-16 shrink-0 overflow-hidden bg-orange-900">
-          <div className="absolute inset-0 brand-gradient opacity-70" />
-          <div className="absolute top-0 right-0 p-8 w-full h-full" />
+        {/* Left Profile Sidebar Panel (Adapts to Dark & White Theme) */}
+        <div
+          className={`w-full md:w-[268px] lg:w-[285px] shrink-0 flex flex-col justify-between p-5 sm:p-6 relative overflow-hidden border-b md:border-b-0 md:border-r ${
+            isDark
+              ? "bg-[#121212] border-[#292929]"
+              : "bg-[#F9FAFB] border-[#E5E7EB]"
+          }`}
+        >
+          <div>
+            {/* Brand Header */}
+            <div className="flex items-center gap-2.5 mb-6">
+              <img
+                src="/logicbox-logo.png"
+                alt="LogicBox"
+                className={`w-9 h-9 rounded-xl object-contain shrink-0 p-0.5 ${
+                  isDark ? "bg-white/10" : "bg-[#FFFFFF] border border-[#E5E7EB]"
+                }`}
+              />
+              <div>
+                <h3
+                  className="text-lg font-extrabold tracking-tight leading-none"
+                  style={{ color: isDark ? "#FFFFFF" : "#171717" }}
+                >
+                  LogicBox
+                </h3>
+                <p
+                  className="text-[10px] font-semibold mt-0.5"
+                  style={{ color: isDark ? "#FBBF24" : "#B45309" }}
+                >
+                  Start Young, Dream Big.
+                </p>
+              </div>
+            </div>
 
-          <button onClick={onClose} className="absolute top-3 right-3 sm:top-4 sm:right-4 p-2 bg-black/40 hover:bg-black/60 text-white rounded-full transition-all backdrop-blur-md hover:scale-110 min-h-[38px] min-w-[38px] flex items-center justify-center">
-            <X className="w-4 h-4 sm:w-5 sm:h-5" />
-          </button>
-        </div>
+            {/* Avatar & Name */}
+            <div className="flex flex-col items-center text-center mb-6">
+              <div className="relative mb-3.5">
+                <div
+                  className={`w-24 h-24 sm:w-28 sm:h-28 rounded-full border-4 flex items-center justify-center shadow-sm overflow-hidden ${
+                    isDark ? "border-[#292929] bg-neutral-800" : "bg-[#FFF7E6]"
+                  }`}
+                  style={!isDark ? { borderColor: "#FDE68A" } : undefined}
+                >
+                  {/* Friendly Student Avatar Illustration */}
+                  <svg viewBox="0 0 120 120" className="w-full h-full">
+                    <circle cx="60" cy="60" r="60" fill={isDark ? "#1F2937" : "#FFF7E6"} />
+                    {/* Shoulders / Hoodie */}
+                    <path d="M24 120 C24 92 40 84 60 84 C80 84 96 92 96 120 Z" fill="#F59E0B" />
+                    <path d="M44 86 L60 100 L76 86" fill="none" stroke="#FFFFFF" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Neck */}
+                    <rect x="52" y="72" width="16" height="16" rx="6" fill="#FCD5B5" />
+                    {/* Face */}
+                    <circle cx="60" cy="54" r="24" fill="#FCD5B5" />
+                    {/* Hair */}
+                    <path d="M35 50 C35 28 85 28 85 50 C82 38 72 34 60 36 C48 34 38 38 35 50 Z" fill="#451A03" />
+                    <path d="M40 38 C48 26 74 26 80 40 C70 32 50 32 40 38 Z" fill="#5C2607" />
+                    {/* Eyes & Smile */}
+                    <circle cx="51" cy="53" r="2.8" fill="#1E293B" />
+                    <circle cx="69" cy="53" r="2.8" fill="#1E293B" />
+                    <circle cx="52" cy="52" r="0.9" fill="#FFFFFF" />
+                    <circle cx="70" cy="52" r="0.9" fill="#FFFFFF" />
+                    <circle cx="44" cy="60" r="3" fill="#FDA4AF" opacity="0.6" />
+                    <circle cx="76" cy="60" r="3" fill="#FDA4AF" opacity="0.6" />
+                    <path d="M52 63 Q60 70 68 63" fill="none" stroke="#9A3412" strokeWidth="2.4" strokeLinecap="round" />
+                  </svg>
+                </div>
+                <span
+                  className="absolute bottom-1 right-1.5 w-5 h-5 rounded-full border-[3px]"
+                  style={{
+                    borderColor: isDark ? "#121212" : "#F9FAFB",
+                    backgroundColor: student.status === "Dropped" ? "#EF4444" : "#10B981",
+                  }}
+                  title={student.status === "Dropped" ? "Dropped" : "Active"}
+                />
+              </div>
 
-        <div className="px-4 sm:px-8 pb-6 sm:pb-8 pt-0 relative flex-1 overflow-y-auto custom-scrollbar">
-          {/* Profile Header (Overlapping) */}
-          <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 items-center sm:items-end mb-6 sm:mb-8 text-center sm:text-left -mt-8 sm:-mt-10">
-            <motion.div
-              initial={{ scale: 0.8, y: 20 }}
-              animate={{ scale: 1, y: 0 }}
-              transition={{ type: "spring", delay: 0.1 }}
-              className="w-20 h-20 sm:w-28 sm:h-28 rounded-2xl sm:rounded-[2rem] bg-neutral-900 border-4 sm:border-[6px] border-neutral-900 flex items-center justify-center text-3xl sm:text-4xl font-black text-amber-500 shadow-2xl shrink-0 brand-gradient-bg relative overflow-hidden group"
-            >
-              <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 transition-colors" />
-              <span className="relative z-10">{student.name.charAt(0).toUpperCase()}</span>
-            </motion.div>
+              <h2
+                className="text-lg sm:text-xl font-bold tracking-tight"
+                style={{ color: isDark ? "#FFFFFF" : "#171717" }}
+              >
+                {student.name || "Student"}
+              </h2>
 
-            <div className="flex-1 pb-1 sm:pb-2">
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 sm:gap-3">
-                <h2 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">{student.name}</h2>
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/20 to-orange-500/20 border border-amber-500/35 text-amber-300 font-bold text-xs uppercase tracking-wider shadow-sm shadow-amber-500/10">
-                  <GraduationCap className="w-3.5 h-3.5 text-amber-400" />
+              <div
+                className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border"
+                style={
+                  isDark
+                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                    : { backgroundColor: "#FFF7E6", borderColor: "#FCD34D", color: "#B45309" }
+                }
+              >
+                <Code2 className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                <span style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
                   {currentLevelTag}
+                  {student.batch?.subject ? ` – ${student.batch.subject}` : ""}
                 </span>
               </div>
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1">
-                <p className="text-amber-500/80 flex items-center gap-1.5 font-medium text-xs sm:text-sm">
-                  <BookOpen className="w-4 h-4" /> {student.batch?.name || "Unassigned Batch"}
-                </p>
-                {student.batch && (
-                  <div className="flex items-center gap-1.5 text-[11px]">
-                    <span className="px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 font-semibold border border-neutral-700">
-                      {((student.batch.name || "").includes("1:1") || (student.batch.studentsCount !== undefined && student.batch.studentsCount <= 1)) ? "1:1 Batch" : "Group Batch"}
-                    </span>
-                    {student.batch.name?.match(/\b(\d+)\b/)?.[1] && (
-                      <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold border border-amber-500/20">
-                        ID: {student.batch.name.match(/\b(\d+)\b/)?.[1]}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
             </div>
 
-            <div className="pb-2 flex flex-wrap items-center gap-2">
-              {student.status === "Dropped" ? (
-                <>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs font-bold shadow-lg shadow-rose-500/5">
-                    <UserX className="w-3.5 h-3.5" /> Dropped Student
-                  </div>
-                  <button
-                    onClick={() => updateStatusMutation.mutate("Active")}
-                    disabled={updateStatusMutation.isPending}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-500/40 text-emerald-300 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    {updateStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                    Activate Student
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold shadow-lg shadow-emerald-500/5">
-                    <CheckCircle2 className="w-3.5 h-3.5" /> Active Student
-                  </div>
-                  <button
-                    onClick={() => {
-                      if (confirm("Change student status to Dropped? This will automatically remove them from daily/weekly schedules and upcoming class lists while preserving their previous attendance and class history.")) {
-                        updateStatusMutation.mutate("Dropped");
-                      }
-                    }}
-                    disabled={updateStatusMutation.isPending}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 text-rose-400 text-xs font-bold transition-all cursor-pointer"
-                  >
-                    {updateStatusMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <UserX className="w-3.5 h-3.5" />}
-                    Mark as Dropped
-                  </button>
-                </>
-              )}
-              {student.batch && (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleOpenEditProgressModal}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 text-xs font-bold transition-all shadow-sm shadow-amber-500/10 cursor-pointer"
-                    title="Edit total sessions, completed sessions, and next class schedule"
-                  >
-                    <Sliders className="w-3.5 h-3.5 text-amber-400" />
-                    Edit Class Progress
-                  </button>
-                  <button
-                    onClick={handleOpenNextCourseModal}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 text-xs font-bold transition-all shadow-sm shadow-emerald-500/10"
-                  >
-                    <GraduationCap className="w-3.5 h-3.5 text-emerald-400" />
-                    Move to Next Level
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Next Course Banner for Completed Batches */}
-          {(student.batch?.status === "Completed" || attendancePercentage >= 100) && (
-            <div className="bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 border border-emerald-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 mb-6 shadow-lg shadow-emerald-950/20">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
-                  <GraduationCap className="w-5 h-5" />
+            {/* Contact Info List */}
+            <div
+              className="space-y-3.5 pt-4 border-t text-xs"
+              style={{ borderColor: isDark ? "#292929" : "#E5E7EB" }}
+            >
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border"
+                  style={
+                    isDark
+                      ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                      : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                  }
+                >
+                  <User className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
                 </div>
-                <div>
-                  <h4 className="font-bold text-white text-sm">Course Level Completed! 🎉</h4>
-                  <p className="text-xs text-neutral-300">
-                    {student.name} finished <strong>{student.batch.name}</strong> ({student.batch.subject}). Move to the second level to continue learning without duplicating child details.
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium" style={{ color: isDark ? "#A3A3A3" : "#6B7280" }}>
+                    Parent / Guardian
+                  </p>
+                  <p className="text-xs font-semibold truncate mt-0.5" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                    {student.parentName || "—"}
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleOpenNextCourseModal}
-                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shrink-0 shadow-lg shadow-emerald-500/20"
+
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border"
+                  style={
+                    isDark
+                      ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                      : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                  }
+                >
+                  <Phone className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium" style={{ color: isDark ? "#A3A3A3" : "#6B7280" }}>
+                    Mobile Number
+                  </p>
+                  <p className="text-xs font-semibold truncate mt-0.5" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                    {student.mobileNumber || student.phone || "—"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border"
+                  style={
+                    isDark
+                      ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                      : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                  }
+                >
+                  <Mail className="w-3.5 h-3.5" style={{ color: isDark ? "#60A5FA" : "#1D4ED8" }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium" style={{ color: isDark ? "#A3A3A3" : "#6B7280" }}>
+                    Email Address
+                  </p>
+                  <p className="text-xs font-semibold break-all mt-0.5" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                    {student.email || "—"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-3">
+                <div
+                  className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 border"
+                  style={
+                    isDark
+                      ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }
+                      : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" }
+                  }
+                >
+                  <MessageCircle className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-medium" style={{ color: isDark ? "#A3A3A3" : "#6B7280" }}>
+                    WhatsApp
+                  </p>
+                  <p className="text-xs font-semibold truncate mt-0.5" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                    {student.whatsappNumber || "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Decorative Coding Accent & Status Toggle */}
+          <div
+            className="hidden md:flex items-center justify-between pt-5 mt-5 border-t"
+            style={{ borderColor: isDark ? "#292929" : "#E5E7EB" }}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="w-9 h-9 rounded-xl border flex items-center justify-center"
+                style={
+                  isDark
+                    ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                    : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                }
               >
-                <Plus className="w-4 h-4" /> Move to Next Level
-              </button>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 sm:gap-6">
-            {/* Contact Information Cards (Col Span 3) */}
-            <div className="md:col-span-3 space-y-4">
-              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest px-1">
-                <User className="w-4 h-4 text-amber-500" />
-                <span>Contact Info</span>
+                <Laptop className="w-4 h-4" style={{ color: isDark ? "#FBBF24" : "#D97706" }} />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Parent */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-                    <User className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Parent / Guardian</p>
-                    <p className="text-sm font-semibold text-white truncate">{student.parentName || "—"}</p>
-                  </div>
-                </div>
-
-                {/* Mobile */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-                    <Phone className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Mobile Number</p>
-                    <p className="text-sm font-semibold text-white truncate">{student.mobileNumber || "—"}</p>
-                  </div>
-                </div>
-
-                {/* Email */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-                    <Mail className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">Email Address</p>
-                    <p className="text-sm font-semibold text-white truncate">{student.email || "—"}</p>
-                  </div>
-                </div>
-
-                {/* WhatsApp */}
-                <div className="bg-neutral-800/40 hover:bg-neutral-800/80 transition-colors rounded-2xl p-3.5 sm:p-4 border border-neutral-800/50 flex items-center gap-3.5 sm:gap-4 group">
-                  <div className="w-10 h-10 rounded-xl bg-green-500/10 text-green-500 flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
-                    <MessageCircle className="w-5 h-5" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[10px] text-neutral-500 font-bold uppercase tracking-wider mb-0.5">WhatsApp</p>
-                    <p className="text-sm font-semibold text-white truncate">{student.whatsappNumber || "—"}</p>
-                  </div>
-                </div>
+              <div
+                className="w-8 h-8 rounded-xl border flex items-center justify-center"
+                style={
+                  isDark
+                    ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                    : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                }
+              >
+                <Code2 className="w-3.5 h-3.5" style={{ color: isDark ? "#C084FC" : "#7E22CE" }} />
+              </div>
+              <div
+                className="w-8 h-8 rounded-xl border flex items-center justify-center"
+                style={
+                  isDark
+                    ? { backgroundColor: "#1F1F1F", borderColor: "#292929" }
+                    : { backgroundColor: "#FFFFFF", borderColor: "#E5E7EB" }
+                }
+              >
+                <Gamepad2 className="w-3.5 h-3.5" style={{ color: isDark ? "#60A5FA" : "#1D4ED8" }} />
               </div>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (student.status === "Dropped") {
+                  updateStatusMutation.mutate("Active");
+                } else if (confirm("Change student status to Dropped? This removes them from upcoming schedules while preserving history.")) {
+                  updateStatusMutation.mutate("Dropped");
+                }
+              }}
+              disabled={updateStatusMutation.isPending}
+              className="text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-opacity hover:opacity-90 cursor-pointer"
+              style={
+                student.status === "Dropped"
+                  ? isDark
+                    ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.4)", color: "#34D399" }
+                    : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                  : isDark
+                  ? { backgroundColor: "rgba(244, 63, 94, 0.1)", borderColor: "rgba(244, 63, 94, 0.3)", color: "#FB7185" }
+                  : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+              }
+            >
+              {updateStatusMutation.isPending
+                ? "Updating..."
+                : student.status === "Dropped"
+                ? "Activate"
+                : "Mark Dropped"}
+            </button>
+          </div>
+        </div>
 
-            {/* Attendance Overview (Col Span 2) */}
-            <div className="md:col-span-2 space-y-4">
-              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest px-1">
-                <Activity className="w-4 h-4 text-amber-500" />
-                <span>Attendance</span>
-              </div>
-              <div className="bg-neutral-800/40 rounded-2xl p-4 sm:p-5 border border-neutral-800/50 min-h-[160px] flex items-center justify-center relative overflow-hidden">
-                {schedsLoading ? (
-                  <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                ) : !student.batch ? (
-                  <div className="text-center">
-                    <GraduationCap className="w-8 h-8 text-neutral-600 mx-auto mb-2" />
-                    <p className="text-neutral-500 text-xs font-medium">Assign batch to track</p>
+        {/* Right Main Content Panel */}
+        <div className={`flex-1 flex flex-col min-w-0 overflow-hidden ${isDark ? "bg-neutral-900" : "bg-[#F5F6F8]"}`}>
+          {/* Top Navigation Tabs + Close */}
+          <div className={`flex items-center justify-between gap-3 px-4 sm:px-6 py-3.5 border-b shrink-0 ${
+            isDark ? "bg-neutral-900 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+          }`}>
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5">
+              {[
+                { id: "overview" as const, label: "Overview", icon: BarChart3 },
+                { id: "progress" as const, label: "Course Progress", icon: BookOpen },
+                { id: "attendance" as const, label: "Attendance", icon: Calendar },
+                { id: "activity" as const, label: "Activity", icon: Zap },
+              ].map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-xs font-semibold transition-all whitespace-nowrap cursor-pointer ${
+                      isActive
+                        ? "brand-gradient text-black shadow-sm"
+                        : isDark
+                        ? "bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+                        : "hover:bg-[#E5E7EB]"
+                    }`}
+                    style={
+                      isActive
+                        ? { color: "#171717" }
+                        : !isDark
+                        ? { backgroundColor: "#F3F4F6", color: "#4B5563" }
+                        : undefined
+                    }
+                  >
+                    <Icon
+                      className="w-3.5 h-3.5 shrink-0"
+                      style={{ color: isActive ? "#171717" : isDark ? "#D4D4D4" : "#4B5563" }}
+                    />
+                    <span style={{ color: isActive ? "#171717" : isDark ? "#D4D4D4" : "#4B5563" }}>
+                      {tab.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className={`p-2 rounded-full transition-colors shrink-0 ${
+                isDark ? "text-neutral-400 hover:text-white hover:bg-neutral-800" : "text-[#4B5563] hover:text-[#171717] hover:bg-[#F3F4F6]"
+              }`}
+              aria-label="Close student details"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+
+          {/* Scrollable Body */}
+          <div className="p-4 sm:p-5 overflow-y-auto flex-1 custom-scrollbar space-y-4 sm:space-y-5">
+            {activeTab === "overview" && (
+              <>
+                {/* Top Summary Banner Card */}
+                <div
+                  className={`rounded-2xl p-4 sm:px-6 border grid grid-cols-1 sm:grid-cols-3 gap-4 items-center ${
+                    isDark ? "bg-[#1A1A1A] border-[#292929]" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                  }`}
+                  style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                >
+                  {/* Status Column */}
+                  <div className="flex items-center gap-3">
+                    <div
+                      className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: student.status === "Dropped" ? "#EF4444" : "#10B981" }}
+                    >
+                      {student.status === "Dropped" ? (
+                        <UserX className="w-5 h-5" style={{ color: "#FFFFFF" }} />
+                      ) : (
+                        <CheckCircle2 className="w-5 h-5" style={{ color: "#FFFFFF" }} />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                        {student.status === "Dropped" ? "Dropped Student" : "Active Student"}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                        Enrolled in LogicBox
+                      </p>
+                    </div>
                   </div>
-                ) : (
-                  <div className="flex items-center justify-center gap-4 sm:gap-6 w-full max-w-[220px] mx-auto">
-                    {/* SVG Progress Ring */}
-                    <div className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0">
+
+                  {/* Level Column */}
+                  <div className={`flex items-center gap-3 sm:border-l sm:pl-5 ${isDark ? "sm:border-[#292929]" : "sm:border-[#E5E7EB]"}`}>
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+                      style={
+                        isDark
+                          ? { backgroundColor: "#242424", borderColor: "#292929" }
+                          : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+                      }
+                    >
+                      <GraduationCap className="w-5 h-5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold truncate" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                        {currentLevelTag}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                        {student.batch?.subject || "General"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Batch Column */}
+                  <div className={`flex items-center gap-3 sm:border-l sm:pl-5 ${isDark ? "sm:border-[#292929]" : "sm:border-[#E5E7EB]"}`}>
+                    <div
+                      className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+                      style={
+                        isDark
+                          ? { backgroundColor: "#242424", borderColor: "#292929" }
+                          : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB" }
+                      }
+                    >
+                      <Calendar className="w-5 h-5" style={{ color: isDark ? "#FBBF24" : "#1F2937" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold truncate" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                        {batchDisplayLabel}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                        {student.batch?.status || "Ongoing"}
+                        {student.batch?.isRetention ? " · Retention" : ""}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Middle Cards Row: Course Progress & Attendance */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {/* Course Progress Card */}
+                  <div
+                    className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-4 ${
+                      isDark ? "bg-neutral-800/30 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                    }`}
+                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <GraduationCap className="w-5 h-5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                        <h3 className="text-sm sm:text-base font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                          Course Progress
+                        </h3>
+                      </div>
+                      {student.batch && (
+                        <button
+                          type="button"
+                          onClick={handleOpenEditProgressModal}
+                          className={`text-[11px] font-semibold px-2.5 py-1 rounded-lg border transition-colors cursor-pointer ${
+                            isDark
+                              ? "border-neutral-700 text-amber-400 hover:bg-neutral-800"
+                              : "border-[#E5E7EB] text-[#4B5563] hover:bg-[#F3F4F6]"
+                          }`}
+                        >
+                          Edit Progress
+                        </button>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-center sm:justify-start gap-6 py-1">
+                      {/* Circular Progress Ring */}
+                      <div className="relative w-28 h-28 shrink-0">
+                        <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 80 80">
+                          <circle
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            stroke={isDark ? "#262626" : "#E5E7EB"}
+                            strokeWidth="7"
+                            fill="none"
+                          />
+                          <motion.circle
+                            initial={{ strokeDashoffset: ringCircumference }}
+                            animate={{ strokeDashoffset: courseRingOffset }}
+                            transition={{ duration: 0.9, ease: "easeOut" }}
+                            cx="40"
+                            cy="40"
+                            r="36"
+                            stroke="#10B981"
+                            strokeWidth="7"
+                            fill="none"
+                            strokeLinecap="round"
+                            strokeDasharray={ringCircumference}
+                          />
+                        </svg>
+                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                          <span className="text-xl font-extrabold leading-none" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                            {currentProgressPct}%
+                          </span>
+                          <span className="text-[10px] font-medium mt-0.5" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                            Completed
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Stats Stack */}
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: isDark ? "rgba(16, 185, 129, 0.15)" : "#ECFDF5" }}
+                          >
+                            <Play className="w-4 h-4 fill-current" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                          </div>
+                          <div>
+                            <p className="text-lg font-extrabold leading-none" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                              {currentCompletedCount}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                              Classes Attended
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <div
+                            className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: isDark ? "rgba(59, 130, 246, 0.15)" : "#EFF6FF" }}
+                          >
+                            <Calendar className="w-4 h-4" style={{ color: isDark ? "#60A5FA" : "#1D4ED8" }} />
+                          </div>
+                          <div>
+                            <p className="text-lg font-extrabold leading-none" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                              {currentClassesNeeded}
+                            </p>
+                            <p className="text-xs mt-0.5" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                              Total Classes
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bottom Linear Bar & Status */}
+                    <div className="flex items-center gap-3 pt-1">
+                      <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: isDark ? "#262626" : "#E5E7EB" }}>
+                        <div
+                          className="h-full rounded-full transition-all duration-500"
+                          style={{
+                            width: `${currentProgressPct}%`,
+                            backgroundColor: "#10B981",
+                          }}
+                        />
+                      </div>
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-semibold shrink-0"
+                        style={{ color: isDark ? "#34D399" : "#047857" }}
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                        {currentProgressPct >= 100 ? "Completed" : "On Track"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Attendance Card with Monthly Bar Chart */}
+                  <div
+                    className={`rounded-2xl border p-4 sm:p-5 flex flex-col justify-between gap-4 ${
+                      isDark ? "bg-neutral-800/30 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                    }`}
+                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="w-5 h-5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                        <h3 className="text-sm sm:text-base font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                          Attendance
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("attendance")}
+                        className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1 rounded-full border transition-colors cursor-pointer hover:opacity-90"
+                        style={
+                          isDark
+                            ? { backgroundColor: "rgba(59, 130, 246, 0.1)", borderColor: "rgba(59, 130, 246, 0.3)", color: "#60A5FA" }
+                            : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                        }
+                      >
+                        <span>View Details</span>
+                        <ArrowRight className="w-3 h-3" style={{ color: isDark ? "#60A5FA" : "#B45309" }} />
+                      </button>
+                    </div>
+
+                    {/* Monthly Attendance Bar Chart */}
+                    {schedsLoading ? (
+                      <div className="h-36 flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-4 gap-3 items-end h-36 pt-5 pb-1 px-2">
+                        {monthlyAttendanceData.map((m, idx) => {
+                          const barColor = m.pct >= 75 ? "#10B981" : m.pct > 0 ? "#F59E0B" : (isDark ? "#262626" : "#E5E7EB");
+                          const heightPct = Math.max(m.pct > 0 ? 18 : 10, m.pct);
+                          return (
+                            <div key={`${m.label}-${idx}`} className="flex flex-col items-center h-full justify-end gap-1.5">
+                              <span className="text-xs font-bold" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>
+                                {m.pct}%
+                              </span>
+                              <div className="w-full max-w-[44px] flex-1 flex items-end justify-center">
+                                <div
+                                  className="w-full rounded-t-xl transition-all duration-500"
+                                  style={{
+                                    height: `${heightPct}%`,
+                                    backgroundColor: barColor,
+                                  }}
+                                />
+                              </div>
+                              <span className="text-xs font-medium" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                                {m.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Bottom Row: Academic History & Recent Activity + Action Buttons */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                  {/* Left Table Card */}
+                  <div
+                    className={`lg:col-span-8 rounded-2xl border overflow-hidden ${
+                      isDark ? "bg-neutral-800/30 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                    }`}
+                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                  >
+                    <div className={`px-4 py-3.5 border-b flex items-center justify-between ${
+                      isDark ? "border-neutral-800" : "border-[#E5E7EB]"
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        <Clock className="w-4 h-4" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                        <h3 className="text-sm font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                          Academic History &amp; Recent Activity
+                        </h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("activity")}
+                        className="text-[11px] font-semibold hover:underline cursor-pointer"
+                        style={{ color: isDark ? "#FBBF24" : "#B45309" }}
+                      >
+                        See All
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead style={{ backgroundColor: isDark ? "rgba(23, 23, 23, 0.6)" : "#F9FAFB", color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                          <tr>
+                            <th className="py-2.5 px-4 font-semibold">Date</th>
+                            <th className="py-2.5 px-3 font-semibold">Course Level</th>
+                            <th className="py-2.5 px-3 font-semibold">Status</th>
+                            <th className="py-2.5 px-4 font-semibold">Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className={`divide-y ${isDark ? "divide-neutral-800" : "divide-[#E5E7EB]"}`}>
+                          {recentActivityRows.length === 0 ? (
+                            <tr>
+                              <td colSpan={4} className="py-6 text-center text-xs" style={{ color: "#6B7280" }}>
+                                No recent class activity recorded yet.
+                              </td>
+                            </tr>
+                          ) : (
+                            recentActivityRows.map((cls: any, idx: number) => {
+                              const isCompleted = cls.status === "Completed";
+                              const isCancelled = cls.status === "Cancelled";
+                              const sessionNote = cls.notes
+                                || cls.subject
+                                || (cls.sessionNumber ? `Class ${cls.sessionNumber} of ${currentClassesNeeded}` : "Scheduled class");
+                              return (
+                                <tr key={cls._id || idx} className={isDark ? "hover:bg-neutral-800/30" : "hover:bg-[#F9FAFB]"}>
+                                  <td className="py-2.5 px-4 whitespace-nowrap font-medium" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>
+                                    {safeFormatDate(cls.date, "MMM dd, yyyy", "Session")}
+                                  </td>
+                                  <td className="py-2.5 px-3 whitespace-nowrap" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
+                                    {currentLevelTag}
+                                    {cls.batch?.subject ? ` – ${cls.batch.subject}` : (student.batch?.subject ? ` – ${student.batch.subject}` : "")}
+                                  </td>
+                                  <td className="py-2.5 px-3 whitespace-nowrap">
+                                    {isCompleted ? (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border"
+                                        style={
+                                          isDark
+                                            ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                            : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                        }
+                                      >
+                                        <CheckCircle2 className="w-3 h-3" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                                        Completed
+                                      </span>
+                                    ) : isCancelled ? (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border"
+                                        style={
+                                          isDark
+                                            ? { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)", color: "#F87171" }
+                                            : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                                        }
+                                      >
+                                        Cancelled
+                                      </span>
+                                    ) : (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border"
+                                        style={
+                                          isDark
+                                            ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                                            : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                                        }
+                                      >
+                                        <Clock className="w-3 h-3" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                                        Upcoming
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="py-2.5 px-4 max-w-[180px] truncate" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }} title={sessionNote}>
+                                    {sessionNote}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Right Action Buttons Stack */}
+                  <div className="lg:col-span-4 space-y-2.5">
+                    <button
+                      type="button"
+                      onClick={handleOpenNextCourseModal}
+                      className="w-full py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-opacity hover:opacity-90 cursor-pointer brand-gradient"
+                      style={{ color: "#171717" }}
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current" style={{ color: "#171717" }} />
+                      <span style={{ color: "#171717" }}>Move to Next Level</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenReassignModal}
+                      className="w-full py-2.5 px-4 rounded-xl border text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-opacity hover:opacity-90 cursor-pointer"
+                      style={
+                        isDark
+                          ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FCD34D" }
+                          : { backgroundColor: "#FFF7E6", borderColor: "#FCD34D", color: "#B45309" }
+                      }
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                      <span>Reassign Teacher</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handleOpenChangeBatchModal}
+                      className="w-full py-2.5 px-4 rounded-xl border text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-opacity hover:opacity-90 cursor-pointer"
+                      style={
+                        isDark
+                          ? { backgroundColor: "rgba(168, 85, 247, 0.1)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                          : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                      }
+                    >
+                      <Users className="w-3.5 h-3.5" style={{ color: isDark ? "#C084FC" : "#7E22CE" }} />
+                      <span>{isOneToOneBatch ? "Change to Group Batch" : "Change Batch"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("progress")}
+                      className={`w-full py-2.5 px-4 rounded-xl border text-xs sm:text-sm font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer ${
+                        isDark
+                          ? "bg-neutral-800 hover:bg-neutral-700 border-neutral-700 text-neutral-200"
+                          : "bg-[#FFFFFF] hover:bg-[#F3F4F6] border-[#E5E7EB] text-[#171717]"
+                      }`}
+                    >
+                      <FileText className="w-3.5 h-3.5" style={{ color: isDark ? "#E5E5E5" : "#1F2937" }} />
+                      <span>View Full Details</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {activeTab === "attendance" && (
+              <div className="space-y-5">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Attendance Ring Card */}
+                  <div
+                    className={`rounded-2xl border p-5 flex items-center justify-center gap-6 ${
+                      isDark ? "bg-neutral-800/30 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                    }`}
+                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                  >
+                    <div className="relative w-24 h-24 shrink-0">
                       <svg className="w-full h-full -rotate-90 transform" viewBox="0 0 80 80">
-                        {/* Background ring */}
-                        <circle cx="40" cy="40" r="36" className="text-neutral-800" strokeWidth="6" stroke="currentColor" fill="none" />
-                        {/* Progress ring */}
+                        <circle cx="40" cy="40" r="36" stroke={isDark ? "#262626" : "#E5E7EB"} strokeWidth="6" fill="none" />
                         <motion.circle
                           initial={{ strokeDashoffset: ringCircumference }}
                           animate={{ strokeDashoffset: ringOffset }}
-                          transition={{ duration: 1, ease: "easeOut" }}
+                          transition={{ duration: 0.9, ease: "easeOut" }}
                           cx="40" cy="40" r="36"
                           className={ringColor}
                           strokeWidth="6"
@@ -775,39 +1471,175 @@ export function StudentDetailsModal({
                         />
                       </svg>
                       <div className="absolute inset-0 flex flex-col items-center justify-center">
-                        <span className="text-lg sm:text-xl font-bold text-white">{attendancePercentage}%</span>
+                        <span className="text-xl font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{attendancePercentage}%</span>
                       </div>
                     </div>
-
-                    <div className="space-y-2 sm:space-y-3 flex-1 min-w-0">
+                    <div className="space-y-2.5">
                       <div>
-                        <p className="text-xl sm:text-2xl font-bold text-white leading-none">{presentCount}</p>
-                        <p className="text-[10px] uppercase text-neutral-500 font-bold mt-0.5">Attended</p>
+                        <p className="text-2xl font-bold leading-none" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{presentCount}</p>
+                        <p className="text-[10px] uppercase font-bold mt-0.5" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>Classes Attended</p>
                       </div>
                       <div>
-                        <p className="text-lg sm:text-xl font-bold text-neutral-400 leading-none">{totalTrackedClasses}</p>
-                        <p className="text-[10px] uppercase text-neutral-600 font-bold mt-0.5">Total</p>
+                        <p className="text-lg font-bold leading-none" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>{totalTrackedClasses}</p>
+                        <p className="text-[10px] uppercase font-bold mt-0.5" style={{ color: isDark ? "#737373" : "#6B7280" }}>Total Tracked</p>
                       </div>
                     </div>
                   </div>
-                )}
-              </div>
-            </div>
-          </div>
 
-          {/* Academic History & Level Progression */}
-          <div className="space-y-4 pt-4 mt-6 border-t border-neutral-800/50">
-            <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest">
-                <History className="w-4 h-4 text-amber-500" />
-                <span>Academic History & Course Levels</span>
+                  {/* Monthly Breakdown */}
+                  <div
+                    className={`rounded-2xl border p-5 ${
+                      isDark ? "bg-neutral-800/30 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                    }`}
+                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                  >
+                    <h4 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                      Monthly Attendance Trend
+                    </h4>
+                    <div className="grid grid-cols-4 gap-3 items-end h-28 pt-3">
+                      {monthlyAttendanceData.map((m, idx) => {
+                        const barColor = m.pct >= 75 ? "#10B981" : m.pct > 0 ? "#F59E0B" : (isDark ? "#262626" : "#E5E7EB");
+                        const heightPct = Math.max(m.pct > 0 ? 18 : 10, m.pct);
+                        return (
+                          <div key={`att-${m.label}-${idx}`} className="flex flex-col items-center h-full justify-end gap-1">
+                            <span className="text-xs font-bold" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{m.pct}%</span>
+                            <div className="w-full max-w-[40px] flex-1 flex items-end justify-center">
+                              <div className="w-full rounded-t-lg" style={{ height: `${heightPct}%`, backgroundColor: barColor }} />
+                            </div>
+                            <span className="text-[11px] font-medium" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>{m.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Detailed Session Attendance Log */}
+                <div
+                  className={`rounded-2xl border overflow-hidden ${isDark ? "bg-neutral-800/20 border-neutral-800" : "bg-[#FFFFFF] border-[#E5E7EB]"}`}
+                  style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                >
+                  <div
+                    className="px-4 py-3 border-b font-bold text-xs uppercase tracking-wider"
+                    style={{
+                      borderColor: isDark ? "#262626" : "#E5E7EB",
+                      color: isDark ? "#D4D4D4" : "#171717",
+                    }}
+                  >
+                    Session Attendance History ({studentSchedules.length})
+                  </div>
+                  <div className="overflow-x-auto max-h-80 custom-scrollbar">
+                    <table className="w-full text-left text-xs">
+                      <thead style={{ backgroundColor: isDark ? "rgba(23, 23, 23, 0.6)" : "#F9FAFB", color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                        <tr>
+                          <th className="py-2.5 px-4">Date</th>
+                          <th className="py-2.5 px-3">Time</th>
+                          <th className="py-2.5 px-3">Teacher</th>
+                          <th className="py-2.5 px-3">Status</th>
+                          <th className="py-2.5 px-4">Topic / Notes</th>
+                        </tr>
+                      </thead>
+                      <tbody className={`divide-y ${isDark ? "divide-neutral-800" : "divide-[#E5E7EB]"}`}>
+                        {studentSchedules.length === 0 ? (
+                          <tr>
+                            <td colSpan={5} className="py-6 text-center" style={{ color: "#6B7280" }}>No sessions recorded yet.</td>
+                          </tr>
+                        ) : (
+                          studentSchedules.map((cls: any, idx: number) => (
+                            <tr key={cls._id || idx} className={isDark ? "hover:bg-neutral-800/30" : "hover:bg-[#F9FAFB]"}>
+                              <td className="py-2.5 px-4 whitespace-nowrap font-medium" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Session")}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>{cls.startTime || "—"}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap" style={{ color: isDark ? "#D4D4D4" : "#171717" }}>{cls.completedByName || cls.teacher?.name || currentTeacherName}</td>
+                              <td className="py-2.5 px-3 whitespace-nowrap">
+                                <span
+                                  className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+                                  style={
+                                    cls.status === "Completed"
+                                      ? isDark
+                                        ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                        : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                      : cls.status === "Cancelled"
+                                      ? isDark
+                                        ? { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)", color: "#F87171" }
+                                        : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                                      : isDark
+                                      ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                                      : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                                  }
+                                >
+                                  {cls.status || "Scheduled"}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 truncate max-w-[200px]" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>{cls.subject || cls.notes || "—"}</td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
               </div>
-              <span className="text-[11px] text-neutral-500 hidden sm:inline">
-                Previous & Ongoing Level Progress
+            )}
+
+            {activeTab === "progress" && (
+              <>
+                {/* Next Course Banner for Completed Batches */}
+                {(student.batch?.status === "Completed" || attendancePercentage >= 100) && (
+                  <div
+                    className={`border rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 ${
+                      isDark
+                        ? "bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-emerald-500/20 border-emerald-500/40 shadow-lg shadow-emerald-950/20"
+                        : "bg-emerald-50 border-emerald-200"
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border"
+                        style={
+                          isDark
+                            ? { backgroundColor: "rgba(16, 185, 129, 0.2)", borderColor: "rgba(16, 185, 129, 0.3)" }
+                            : { backgroundColor: "#D1FAE5", borderColor: "#A7F3D0" }
+                        }
+                      >
+                        <GraduationCap className="w-5 h-5" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                      </div>
+                      <div>
+                        <h4 className={`font-bold text-sm ${isDark ? "text-white" : "text-emerald-950"}`}>Course Level Completed! 🎉</h4>
+                        <p className={`text-xs ${isDark ? "text-neutral-300" : "text-emerald-800"}`}>
+                          {student.name} finished <strong>{student.batch.name}</strong> ({student.batch.subject}). Move to the next level without duplicating student details.
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleOpenNextCourseModal}
+                      className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shrink-0 cursor-pointer"
+                      style={!isDark ? { backgroundColor: "#059669", color: "#FFFFFF" } : { color: "#000000" }}
+                    >
+                      <Plus className="w-4 h-4" style={!isDark ? { color: "#FFFFFF" } : undefined} /> Move to Next Level
+                    </button>
+                  </div>
+                )}
+
+                {/* Academic History & Level Progression */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between px-1">
+                    <div className={`flex items-center gap-2 font-semibold text-sm uppercase tracking-widest ${isDark ? "text-neutral-400" : "text-[#4B5563]"}`}>
+                      <History className="w-4 h-4" style={{ color: isDark ? "#F59E0B" : "#B45309" }} />
+                      <span>Academic History &amp; Course Levels</span>
+                    </div>
+              <span className={`text-[11px] hidden sm:inline ${isDark ? "text-neutral-500" : "text-[#6B7280]"}`}>
+                Previous &amp; Ongoing Level Progress
               </span>
             </div>
 
-            <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 overflow-hidden divide-y divide-neutral-800/50">
+            <div
+              className={`rounded-2xl border overflow-hidden divide-y ${
+                isDark
+                  ? "bg-neutral-800/20 border-neutral-800/50 divide-neutral-800/50"
+                  : "bg-[#FFFFFF] border-[#E5E7EB] divide-[#E5E7EB]"
+              }`}
+              style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+            >
               {/* Current / Ongoing Level */}
               {student.batch ? (() => {
                 const currentTeacherName =
@@ -816,66 +1648,108 @@ export function StudentDetailsModal({
                   "Assigned Tutor";
 
                 return (
-                  <div className="p-4 sm:p-5 hover:bg-neutral-800/40 transition-colors relative overflow-hidden group">
+                  <div className={`p-4 sm:p-5 transition-colors relative overflow-hidden group ${
+                    isDark ? "hover:bg-neutral-800/40" : "hover:bg-slate-50/50"
+                  }`}>
                     <div className="absolute left-0 top-0 bottom-0 w-1.5 bg-gradient-to-b from-emerald-500 to-teal-400 rounded-r" />
                     <div className="pl-2 space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold uppercase tracking-wider">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-xs font-bold uppercase tracking-wider"
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(16, 185, 129, 0.2)", borderColor: "rgba(16, 185, 129, 0.4)", color: "#6EE7B7" }
+                                : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                            }
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                             Live · {currentLevelTag}
                           </span>
-                          <span className="text-[11px] text-neutral-400 font-medium">Ongoing Level</span>
+                          <span className={`text-[11px] font-medium ${isDark ? "text-neutral-400" : "text-slate-500"}`}>Ongoing Level</span>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <span className="px-2.5 py-1 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-bold">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span
+                            className="px-2.5 py-1 rounded-xl border text-xs font-bold"
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)", color: "#34D399" }
+                                : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                            }
+                          >
                             In Progress
                           </span>
                           <button
                             type="button"
                             onClick={handleOpenReassignModal}
-                            className="px-3 py-1 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 text-amber-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1.5"
+                            className="px-3 py-1 border rounded-xl text-xs font-semibold transition-opacity hover:opacity-90 flex items-center gap-1.5 cursor-pointer"
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                                : { backgroundColor: "#FFF7E6", borderColor: "#FCD34D", color: "#B45309" }
+                            }
                             title="Reassign Teacher for Student"
                           >
-                            <User className="w-3.5 h-3.5" /> Reassign Teacher
+                            <User className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} /> Reassign Teacher
                           </button>
                           <button
                             onClick={handleOpenNextCourseModal}
-                            className="px-3 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-emerald-400 rounded-xl text-xs font-semibold transition-all flex items-center gap-1"
+                            className={`px-3 py-1 border rounded-xl text-xs font-semibold transition-opacity hover:opacity-90 flex items-center gap-1 cursor-pointer ${
+                              !isDark ? "brand-gradient border-amber-400 font-bold" : ""
+                            }`}
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                : { color: "#171717" }
+                            }
                           >
-                            <GraduationCap className="w-3.5 h-3.5" /> Move to Next Level
+                            <GraduationCap className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#171717" }} /> Move to Next Level
                           </button>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="text-base font-bold text-white group-hover:text-emerald-400 transition-colors truncate">
+                        <h4 className="text-base font-bold transition-colors truncate" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                           {student.batch.name}
                         </h4>
-                        <span className="px-2 py-0.5 rounded-lg bg-neutral-800 text-neutral-300 font-semibold text-[11px] border border-neutral-700">
+                        <span
+                          className="px-2 py-0.5 rounded-lg font-semibold text-[11px] border"
+                          style={
+                            isDark
+                              ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#D4D4D4" }
+                              : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                          }
+                        >
                           {((student.batch.name || "").includes("1:1") || (student.batch.studentsCount !== undefined && student.batch.studentsCount <= 1)) ? "1:1" : "Group"}
                         </span>
                         {student.batch.name?.match(/\b(\d+)\b/)?.[1] && (
-                          <span className="px-2 py-0.5 rounded-lg bg-amber-500/10 text-amber-400 font-semibold text-[11px] border border-amber-500/20">
+                          <span
+                            className="px-2 py-0.5 rounded-lg font-semibold text-[11px] border"
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)", color: "#FBBF24" }
+                                : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                            }
+                          >
                             Batch #{student.batch.name.match(/\b(\d+)\b/)?.[1]}
                           </span>
                         )}
                       </div>
 
-                      <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-300">
+                      <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
                         <span className="flex items-center gap-1.5">
-                          <User className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                          <span>Assigned Teacher: <strong className="text-white font-semibold">{currentTeacherName}</strong></span>
+                          <User className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+                          <span>Assigned Teacher: <strong className="font-semibold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{currentTeacherName}</strong></span>
                         </span>
                         {student.batch.timing?.startTime && (
-                          <span className="flex items-center gap-1.5 text-neutral-400">
-                            <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                          <span className="flex items-center gap-1.5" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                            <Clock className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#60A5FA" : "#1D4ED8" }} />
                             <span>{student.batch.timing.startTime} - {student.batch.timing.endTime}</span>
                           </span>
                         )}
                         {student.batch.days && student.batch.days.length > 0 && (
-                          <span className="flex items-center gap-1.5 text-neutral-400">
-                            <Calendar className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                          <span className="flex items-center gap-1.5" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                            <Calendar className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#C084FC" : "#7E22CE" }} />
                             <span>{student.batch.days.join(", ")}</span>
                           </span>
                         )}
@@ -884,31 +1758,39 @@ export function StudentDetailsModal({
                             href={student.batch.meetingLink}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-emerald-400 hover:underline font-semibold"
+                            className="inline-flex items-center gap-1 hover:underline font-semibold"
+                            style={{ color: isDark ? "#34D399" : "#047857" }}
                           >
-                            <Video className="w-3.5 h-3.5" /> Class Link
+                            <Video className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} /> Class Link
                           </a>
                         )}
                       </div>
 
                       {/* Live Progress Bar */}
                       <div className="pt-1.5 w-full max-w-lg">
-                        <div className="flex items-center justify-between text-xs text-neutral-400 mb-1.5">
-                          <span className="font-semibold text-emerald-400">Level Progress: {currentProgressPct}%</span>
+                        <div className="flex items-center justify-between text-xs mb-1.5" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                          <span className="font-semibold" style={{ color: isDark ? "#34D399" : "#047857" }}>Level Progress: {currentProgressPct}%</span>
                           <div className="flex items-center gap-2">
                             <span>{currentCompletedCount} of {currentClassesNeeded} classes completed</span>
                             {currentExtraClassCount > 0 && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                <Sparkles className="w-2.5 h-2.5" />
+                              <span
+                                className="px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1"
+                                style={
+                                  isDark
+                                    ? { backgroundColor: "rgba(168, 85, 247, 0.15)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                                    : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                }
+                              >
+                                <Sparkles className="w-2.5 h-2.5" style={{ color: isDark ? "#D8B4FE" : "#7E22CE" }} />
                                 {currentExtraClassCount} Extra
                               </span>
                             )}
                           </div>
                         </div>
-                        <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
+                        <div className="h-2 w-full rounded-full overflow-hidden" style={{ backgroundColor: isDark ? "#262626" : "#E5E7EB" }}>
                           <div
-                            className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500"
-                            style={{ width: `${currentProgressPct}%` }}
+                            className="h-full rounded-full transition-all duration-500"
+                            style={{ width: `${currentProgressPct}%`, backgroundColor: "#10B981" }}
                           />
                         </div>
                       </div>
@@ -916,14 +1798,25 @@ export function StudentDetailsModal({
                       {/* Live Level Classes list & Extra Class Action */}
                       <div className="pt-2">
                         {student.status === "Dropped" && (
-                          <div className="bg-rose-950/40 border border-rose-500/40 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 text-xs text-rose-200">
+                          <div className={`border rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 mb-4 text-xs ${
+                            isDark
+                              ? "bg-rose-950/40 border-rose-500/40 text-rose-200"
+                              : "bg-[#FEF2F2] border-[#FECACA] text-[#B91C1C]"
+                          }`}>
                             <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center shrink-0 border border-rose-500/30">
-                                <UserX className="w-4 h-4" />
+                              <div
+                                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border"
+                                style={
+                                  isDark
+                                    ? { backgroundColor: "rgba(244, 63, 94, 0.2)", borderColor: "rgba(244, 63, 94, 0.3)" }
+                                    : { backgroundColor: "#FEE2E2", borderColor: "#FECACA" }
+                                }
+                              >
+                                <UserX className="w-4 h-4" style={{ color: isDark ? "#FB7185" : "#B91C1C" }} />
                               </div>
                               <div>
-                                <h4 className="font-bold text-white text-sm">Student Status: Dropped</h4>
-                                <p className="text-neutral-300">
+                                <h4 className="font-bold text-sm" style={{ color: isDark ? "#FFFFFF" : "#991B1B" }}>Student Status: Dropped</h4>
+                                <p style={{ color: isDark ? "#D4D4D4" : "#B91C1C" }}>
                                   This student is currently dropped and hidden from daily/weekly schedules and upcoming class lists. Previous attendance and completed class logs are preserved below for reference.
                                 </p>
                               </div>
@@ -931,7 +1824,12 @@ export function StudentDetailsModal({
                             <button
                               onClick={() => updateStatusMutation.mutate("Active")}
                               disabled={updateStatusMutation.isPending}
-                              className="px-3.5 py-2 bg-emerald-500 hover:bg-emerald-400 text-black font-bold rounded-xl text-xs transition-colors shrink-0 shadow-lg shadow-emerald-500/20 flex items-center gap-1.5 cursor-pointer"
+                              className="px-3.5 py-2 font-bold rounded-xl text-xs transition-opacity hover:opacity-90 shrink-0 flex items-center gap-1.5 cursor-pointer border"
+                              style={
+                                isDark
+                                  ? { backgroundColor: "#10B981", borderColor: "#10B981", color: "#000000" }
+                                  : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                              }
                             >
                               {updateStatusMutation.isPending && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                               Reactivate to Schedule
@@ -942,13 +1840,21 @@ export function StudentDetailsModal({
                           <button
                             type="button"
                             onClick={() => setExpandedLevels(prev => ({ ...prev, current: !prev.current }))}
-                            className="text-xs text-neutral-400 hover:text-white flex items-center gap-1.5 font-medium transition-colors"
+                            className="text-xs flex items-center gap-1.5 font-medium transition-colors cursor-pointer"
+                            style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}
                           >
                             {expandedLevels.current ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                            <span>{expandedLevels.current ? "Hide" : "View"} Class Schedule & Logs ({currentBatchSchedules.length} Sessions)</span>
+                            <span>{expandedLevels.current ? "Hide" : "View"} Class Schedule &amp; Logs ({currentBatchSchedules.length} Sessions)</span>
                             {currentExtraClassCount > 0 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1 ml-1">
-                                <Sparkles className="w-2.5 h-2.5" />
+                              <span
+                                className="px-2 py-0.5 rounded-full text-[10px] font-bold border flex items-center gap-1 ml-1"
+                                style={
+                                  isDark
+                                    ? { backgroundColor: "rgba(168, 85, 247, 0.15)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                                    : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                }
+                              >
+                                <Sparkles className="w-2.5 h-2.5" style={{ color: isDark ? "#D8B4FE" : "#7E22CE" }} />
                                 {currentExtraClassCount} Extra
                               </span>
                             )}
@@ -959,35 +1865,48 @@ export function StudentDetailsModal({
                               <button
                                 type="button"
                                 onClick={handleOpenEditProgressModal}
-                                className="px-2.5 py-1 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-[11px] font-semibold flex items-center gap-1.5 shadow-sm transition-all hover:scale-105 cursor-pointer"
+                                className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer"
+                                style={
+                                  isDark
+                                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FCD34D" }
+                                    : { backgroundColor: "#FFF7E6", borderColor: "#FCD34D", color: "#B45309" }
+                                }
                                 title="Edit class progress and regenerate timetable"
                               >
-                                <Sliders className="w-3 h-3 text-amber-400" />
+                                <Sliders className="w-3 h-3" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
                                 <span>Edit Class Progress</span>
                               </button>
                             )}
                             <button
                               type="button"
                               onClick={handleOpenScheduleExtraClass}
-                              className="px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-semibold flex items-center gap-1.5 shadow-sm shadow-purple-600/30 transition-all hover:scale-105"
+                              className="px-2.5 py-1 rounded-lg border text-[11px] font-semibold flex items-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer"
+                              style={
+                                isDark
+                                  ? { backgroundColor: "#7C3AED", borderColor: "#7C3AED", color: "#FFFFFF" }
+                                  : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                              }
                             >
-                              <Sparkles className="w-3 h-3" />
-                              <span>+ Schedule Extra Class</span>
+                              <Sparkles className="w-3 h-3" style={{ color: isDark ? "#FFFFFF" : "#7E22CE" }} />
+                              <span style={{ color: isDark ? "#FFFFFF" : "#7E22CE" }}>+ Schedule Extra Class</span>
                             </button>
                           </div>
                         </div>
 
                         {expandedLevels.current && (
-                          <div className="mt-2.5 space-y-2 border-t border-neutral-800/80 pt-2.5">
+                          <div className="mt-2.5 space-y-2 border-t pt-2.5" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                             {currentBatchSchedules.length === 0 ? (
-                              <div className="p-3 bg-neutral-900/50 rounded-xl border border-neutral-800 text-xs text-neutral-400 flex items-center justify-between">
+                              <div className={`p-3 rounded-xl border text-xs flex items-center justify-between ${
+                                isDark ? "bg-neutral-900/50 border-neutral-800 text-neutral-400" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
+                              }`}>
                                 <span>No classes scheduled yet for this level.</span>
                                 <button
                                   type="button"
                                   onClick={handleOpenScheduleExtraClass}
-                                  className="text-purple-400 hover:text-purple-300 font-semibold flex items-center gap-1"
+                                  className="font-semibold flex items-center gap-1 cursor-pointer"
+                                  style={{ color: isDark ? "#C084FC" : "#7E22CE" }}
                                 >
-                                  <Sparkles className="w-3 h-3" />
+                                  <Sparkles className="w-3 h-3" style={{ color: isDark ? "#C084FC" : "#7E22CE" }} />
                                   Schedule Extra Class
                                 </button>
                               </div>
@@ -997,21 +1916,34 @@ export function StudentDetailsModal({
                                 <div className="space-y-2">
                                   {/* Student Teacher Transfer Log if available */}
                                   {student.teacherHistory && student.teacherHistory.length > 0 && (
-                                    <div className="p-2.5 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs space-y-1">
-                                      <div className="flex items-center justify-between text-[11px] font-bold text-amber-400">
+                                    <div
+                                      className="p-2.5 rounded-xl border text-xs space-y-1"
+                                      style={
+                                        isDark
+                                          ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)" }
+                                          : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+                                      }
+                                    >
+                                      <div className="flex items-center justify-between text-[11px] font-bold" style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
                                         <span className="flex items-center gap-1">
-                                          <History className="w-3.5 h-3.5" /> Teacher Transfer History ({student.teacherHistory.length})
+                                          <History className="w-3.5 h-3.5" style={{ color: isDark ? "#FBBF24" : "#B45309" }} /> Teacher Transfer History ({student.teacherHistory.length})
                                         </span>
-                                        <span className="text-neutral-400 font-normal">Classes 1..N retain historical conductor</span>
+                                        <span className="font-normal" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>Classes 1..N retain historical conductor</span>
                                       </div>
                                       <div className="space-y-1 pt-0.5">
                                         {student.teacherHistory.map((th: any, idx: number) => (
-                                          <div key={idx} className="flex items-center justify-between text-[11px] text-neutral-300 bg-neutral-900/80 px-2.5 py-1 rounded-lg border border-neutral-800">
+                                          <div
+                                            key={idx}
+                                            className={`flex items-center justify-between text-[11px] px-2.5 py-1 rounded-lg border ${
+                                              isDark ? "text-neutral-300 bg-neutral-900/80 border-neutral-800" : "text-[#171717] bg-[#FFFFFF] border-[#FDE68A]"
+                                            }`}
+                                          >
                                             <span>
-                                              Transferred from <strong className="text-neutral-200">{th.previousTeacherName || "Previous Teacher"}</strong> → <strong className="text-amber-400">{th.teacherName || "New Teacher"}</strong>
-                                              {th.reason ? <span className="text-neutral-400"> ({th.reason})</span> : null}
+                                              Transferred from <strong style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{th.previousTeacherName || "Previous Teacher"}</strong> →{" "}
+                                              <strong style={{ color: isDark ? "#FBBF24" : "#B45309" }}>{th.teacherName || "New Teacher"}</strong>
+                                              {th.reason ? <span style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}> ({th.reason})</span> : null}
                                             </span>
-                                            <span className="text-neutral-500 font-mono text-[10px]">
+                                            <span className="font-mono text-[10px]" style={{ color: "#6B7280" }}>
                                               {safeFormatDate(th.changedAt, "dd MMM yyyy", "")}
                                             </span>
                                           </div>
@@ -1021,9 +1953,14 @@ export function StudentDetailsModal({
                                   )}
 
                                   {/* Table of Class History */}
-                                  <div className="overflow-x-auto rounded-xl border border-neutral-800/80 bg-neutral-900/60">
-                                    <table className="w-full text-left text-xs divide-y divide-neutral-800">
-                                      <thead className="bg-neutral-950/80 text-neutral-400 text-[11px] font-bold uppercase tracking-wider">
+                                  <div className={`overflow-x-auto rounded-xl border ${
+                                    isDark ? "border-neutral-800/80 bg-neutral-900/60" : "border-[#E5E7EB] bg-[#FFFFFF]"
+                                  }`}>
+                                    <table className={`w-full text-left text-xs divide-y ${isDark ? "divide-neutral-800" : "divide-[#E5E7EB]"}`}>
+                                      <thead
+                                        className="text-[11px] font-bold uppercase tracking-wider"
+                                        style={{ backgroundColor: isDark ? "rgba(10, 10, 10, 0.8)" : "#F9FAFB", color: isDark ? "#9CA3AF" : "#4B5563" }}
+                                      >
                                         <tr>
                                           <th className="py-2.5 px-3">Class</th>
                                           <th className="py-2.5 px-3">Date</th>
@@ -1033,7 +1970,7 @@ export function StudentDetailsModal({
                                           <th className="py-2.5 px-3 text-right">Actions</th>
                                         </tr>
                                       </thead>
-                                      <tbody className="divide-y divide-neutral-800/60">
+                                      <tbody className={`divide-y ${isDark ? "divide-neutral-800/60" : "divide-[#E5E7EB]"}`}>
                                         {currentBatchSchedules.map((cls: any, cIdx: number) => {
                                           if (!cls.isExtraClass) regIndex++;
                                           const classLabel = cls.isExtraClass ? "Extra Class" : (cls.sessionNumber ? `Class ${cls.sessionNumber}` : `Class ${regIndex}`);
@@ -1056,56 +1993,98 @@ export function StudentDetailsModal({
 
                                           return (
                                             <React.Fragment key={cls._id || cIdx}>
-                                              <tr className="hover:bg-neutral-800/40 transition-colors">
-                                                <td className="py-2.5 px-3 font-semibold text-white whitespace-nowrap">
+                                              <tr className={`transition-colors ${isDark ? "hover:bg-neutral-800/40" : "hover:bg-[#F9FAFB]"}`}>
+                                                <td className="py-2.5 px-3 font-semibold whitespace-nowrap" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                                                   <div className="flex items-center gap-1.5">
                                                     <span>{classLabel}</span>
                                                     {cls.isExtraClass && (
-                                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                                      <span
+                                                        className="px-1.5 py-0.2 rounded text-[9px] font-bold border"
+                                                        style={
+                                                          isDark
+                                                            ? { backgroundColor: "rgba(168, 85, 247, 0.2)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                                                            : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                                        }
+                                                      >
                                                         Extra
                                                       </span>
                                                     )}
                                                   </div>
                                                 </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-200">
+                                                <td className="py-2.5 px-3 whitespace-nowrap" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>
                                                   <span className="flex items-center gap-1 font-medium">
-                                                    <Calendar className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                                                    <Calendar className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                                                     {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Session")}
                                                   </span>
                                                 </td>
-                                                <td className="py-2.5 px-3 whitespace-nowrap text-neutral-300 font-mono text-[11px]">
+                                                <td className="py-2.5 px-3 whitespace-nowrap font-mono text-[11px]" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
                                                   <span className="flex items-center gap-1">
-                                                    <Clock className="w-3 h-3 text-neutral-500 shrink-0" />
+                                                    <Clock className="w-3 h-3 shrink-0" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                                                     {cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : (cls.startTime || "—")}
                                                   </span>
                                                 </td>
                                                 <td className="py-2.5 px-3 whitespace-nowrap">
                                                   {isCompleted ? (
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                                                      <CheckCircle2 className="w-3 h-3" /> Completed
+                                                    <span
+                                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+                                                      style={
+                                                        isDark
+                                                          ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                                          : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                                      }
+                                                    >
+                                                      <CheckCircle2 className="w-3 h-3" style={{ color: isDark ? "#34D399" : "#047857" }} /> Completed
                                                     </span>
                                                   ) : isCancelled ? (
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-red-500/15 text-red-400 border border-red-500/30">
+                                                    <span
+                                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+                                                      style={
+                                                        isDark
+                                                          ? { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)", color: "#F87171" }
+                                                          : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                                                      }
+                                                    >
                                                       Cancelled
                                                     </span>
                                                   ) : (
-                                                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                                                      <Clock className="w-3 h-3" /> Pending
+                                                    <span
+                                                      className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border"
+                                                      style={
+                                                        isDark
+                                                          ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                                                          : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                                                      }
+                                                    >
+                                                      <Clock className="w-3 h-3" style={{ color: isDark ? "#FBBF24" : "#B45309" }} /> Pending
                                                     </span>
                                                   )}
                                                 </td>
                                                 <td className="py-2.5 px-3 whitespace-nowrap">
                                                   {isCompleted ? (
                                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                                      <span className="font-semibold text-emerald-300">{completedByTeacherName}</span>
-                                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950/80 text-emerald-400 border border-emerald-800/60 font-medium">
+                                                      <span className="font-semibold" style={{ color: isDark ? "#6EE7B7" : "#047857" }}>{completedByTeacherName}</span>
+                                                      <span
+                                                        className="text-[9px] px-1.5 py-0.2 rounded border font-medium"
+                                                        style={
+                                                          isDark
+                                                            ? { backgroundColor: "rgba(6, 78, 59, 0.8)", borderColor: "rgba(6, 95, 70, 0.6)", color: "#34D399" }
+                                                            : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                                        }
+                                                      >
                                                         Conducted
                                                       </span>
                                                     </div>
                                                   ) : (
                                                     <div className="flex items-center gap-1.5 flex-wrap">
-                                                      <span className="font-semibold text-blue-300">{upcomingTeacherName}</span>
-                                                      <span className="text-[9px] px-1.5 py-0.2 rounded bg-blue-950/80 text-blue-400 border border-blue-800/60 font-medium">
+                                                      <span className="font-semibold" style={{ color: isDark ? "#93C5FD" : "#1D4ED8" }}>{upcomingTeacherName}</span>
+                                                      <span
+                                                        className="text-[9px] px-1.5 py-0.2 rounded border font-medium"
+                                                        style={
+                                                          isDark
+                                                            ? { backgroundColor: "rgba(23, 37, 84, 0.8)", borderColor: "rgba(30, 64, 175, 0.6)", color: "#60A5FA" }
+                                                            : { backgroundColor: "#EFF6FF", borderColor: "#BFDBFE", color: "#1D4ED8" }
+                                                        }
+                                                      >
                                                         Assigned
                                                       </span>
                                                     </div>
@@ -1125,15 +2104,21 @@ export function StudentDetailsModal({
                                                           extraClassReason: !cls.isExtraClass ? "Extra class for student" : "",
                                                         });
                                                       }}
-                                                      className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all flex items-center gap-1 ${cls.isExtraClass
-                                                          ? "bg-purple-950/60 text-purple-300 border-purple-500/40 hover:bg-purple-900/60"
-                                                          : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-purple-300 hover:border-purple-500/40"
-                                                        }`}
+                                                      className="px-2 py-0.5 rounded text-[10px] font-semibold border transition-opacity hover:opacity-90 flex items-center gap-1 cursor-pointer"
+                                                      style={
+                                                        cls.isExtraClass
+                                                          ? isDark
+                                                            ? { backgroundColor: "rgba(59, 7, 100, 0.6)", borderColor: "rgba(168, 85, 247, 0.4)", color: "#D8B4FE" }
+                                                            : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                                          : isDark
+                                                          ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#A3A3A3" }
+                                                          : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                                                      }
                                                     >
                                                       {togglingScheduleId === cls._id ? (
                                                         <div className="w-2.5 h-2.5 border-2 border-purple-400 border-t-transparent rounded-full animate-spin" />
                                                       ) : (
-                                                        <Sparkles className="w-2.5 h-2.5" />
+                                                        <Sparkles className="w-2.5 h-2.5" style={{ color: cls.isExtraClass ? (isDark ? "#D8B4FE" : "#7E22CE") : (isDark ? "#A3A3A3" : "#4B5563") }} />
                                                       )}
                                                       <span>{cls.isExtraClass ? "Extra ✓" : "+ Extra"}</span>
                                                     </button>
@@ -1141,7 +2126,9 @@ export function StudentDetailsModal({
                                                       <button
                                                         type="button"
                                                         onClick={() => setExpandedScheduleRowId(isExpandedRow ? null : (cls._id || String(cIdx)))}
-                                                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded transition-colors"
+                                                        className={`p-1 rounded transition-colors cursor-pointer ${
+                                                          isDark ? "text-neutral-400 hover:text-white hover:bg-neutral-800" : "text-[#4B5563] hover:text-[#171717] hover:bg-[#F3F4F6]"
+                                                        }`}
                                                         title="View topic & notes"
                                                       >
                                                         {isExpandedRow ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
@@ -1151,30 +2138,30 @@ export function StudentDetailsModal({
                                                 </td>
                                               </tr>
                                               {isExpandedRow && (cls.subject || cls.notes || cls.extraClassReason || cls.meetingLink) && (
-                                                <tr className="bg-neutral-950/60">
+                                                <tr style={{ backgroundColor: isDark ? "rgba(10, 10, 10, 0.6)" : "#F9FAFB" }}>
                                                   <td colSpan={6} className="px-3 py-2 text-xs space-y-1">
                                                     {cls.subject && (
                                                       <div className="flex items-start gap-1.5">
-                                                        <span className="text-emerald-400 font-semibold shrink-0">Topic Covered:</span>
-                                                        <span className="text-white">{cls.subject}</span>
+                                                        <span className="font-semibold shrink-0" style={{ color: isDark ? "#34D399" : "#047857" }}>Topic Covered:</span>
+                                                        <span style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{cls.subject}</span>
                                                       </div>
                                                     )}
                                                     {cls.notes && (
-                                                      <div className="flex items-start gap-1.5 text-neutral-400 text-[11px]">
-                                                        <span className="text-neutral-500 font-semibold shrink-0">Notes:</span>
+                                                      <div className="flex items-start gap-1.5 text-[11px]" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                                                        <span className="font-semibold shrink-0" style={{ color: isDark ? "#737373" : "#6B7280" }}>Notes:</span>
                                                         <span>{cls.notes}</span>
                                                       </div>
                                                     )}
                                                     {cls.extraClassReason && (
-                                                      <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
-                                                        <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
+                                                      <div className="flex items-start gap-1.5 text-[11px]" style={{ color: isDark ? "#D8B4FE" : "#7E22CE" }}>
+                                                        <span className="font-semibold shrink-0">Extra Reason:</span>
                                                         <span>{cls.extraClassReason}</span>
                                                       </div>
                                                     )}
                                                     {cls.meetingLink && (
                                                       <div className="flex items-center gap-1.5 text-[11px] pt-0.5">
-                                                        <span className="text-neutral-500 font-semibold">Link:</span>
-                                                        <a href={cls.meetingLink} target="_blank" rel="noreferrer" className="text-emerald-400 hover:underline truncate">
+                                                        <span className="font-semibold" style={{ color: "#6B7280" }}>Link:</span>
+                                                        <a href={cls.meetingLink} target="_blank" rel="noreferrer" className="hover:underline truncate" style={{ color: isDark ? "#34D399" : "#047857" }}>
                                                           {cls.meetingLink}
                                                         </a>
                                                       </div>
@@ -1196,7 +2183,7 @@ export function StudentDetailsModal({
                       </div>
 
                       {/* Project Submissions Section (Automatic milestones every 5 completed classes) */}
-                      <div className="pt-3 border-t border-neutral-800/80">
+                      <div className="pt-3 border-t" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                         <ProjectSubmissionsSection
                           student={student}
                           batchId={currentBatchId}
@@ -1248,51 +2235,65 @@ export function StudentDetailsModal({
                   }
 
                   return (
-                    <div key={pbKey} className="p-4 sm:p-5 hover:bg-neutral-800/30 transition-colors relative group">
+                    <div key={pbKey} className={`p-4 sm:p-5 transition-colors relative group ${isDark ? "hover:bg-neutral-800/30" : "hover:bg-slate-50/70"}`}>
                       <div className="pl-2 space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="px-2.5 py-0.5 rounded-full bg-neutral-800 border border-neutral-700 text-neutral-300 text-xs font-bold uppercase tracking-wider">
+                            <span
+                              className="px-2.5 py-0.5 rounded-full border text-xs font-bold uppercase tracking-wider"
+                              style={
+                                isDark
+                                  ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#D4D4D4" }
+                                  : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                              }
+                            >
                               Previous Level · {pbLevel}
                             </span>
-                            <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
-                              <CheckCircle2 className="w-3 h-3" /> Completed
+                            <span className="text-[11px] font-semibold flex items-center gap-1" style={{ color: isDark ? "#34D399" : "#047857" }}>
+                              <CheckCircle2 className="w-3 h-3" style={{ color: isDark ? "#34D399" : "#047857" }} /> Completed
                             </span>
                             {completedDateStr && (
-                              <span className="text-[11px] text-neutral-500">
+                              <span className="text-[11px]" style={{ color: "#6B7280" }}>
                                 Finished in {completedDateStr}
                               </span>
                             )}
                           </div>
-                          <span className="px-3 py-1 rounded-xl bg-neutral-800 text-neutral-400 border border-neutral-700 text-xs font-bold uppercase tracking-wider self-start sm:self-auto">
+                          <span
+                            className="px-3 py-1 rounded-xl border text-xs font-bold uppercase tracking-wider self-start sm:self-auto"
+                            style={
+                              isDark
+                                ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#9CA3AF" }
+                                : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                            }
+                          >
                             Completed Level
                           </span>
                         </div>
 
-                        <h4 className="text-sm sm:text-base font-bold text-neutral-300 group-hover:text-white transition-colors truncate">
+                        <h4 className="text-sm sm:text-base font-bold transition-colors truncate" style={{ color: isDark ? "#D4D4D4" : "#171717" }}>
                           {batchName}
                         </h4>
 
-                        <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs text-neutral-400">
-                          <span className="flex items-center gap-1.5 text-neutral-300">
-                            <User className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
-                            <span>Taught by: <strong className="text-white font-medium">{pbTeacher}</strong></span>
+                        <div className="flex flex-wrap items-center gap-y-1.5 gap-x-4 text-xs" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                          <span className="flex items-center gap-1.5" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
+                            <User className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#737373" : "#6B7280" }} />
+                            <span>Taught by: <strong className="font-medium" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{pbTeacher}</strong></span>
                           </span>
                           <span className="flex items-center gap-1.5">
-                            <BookOpen className="w-3.5 h-3.5 text-neutral-500 shrink-0" />
+                            <BookOpen className="w-3.5 h-3.5 shrink-0" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                             <span>{pbClasses} Classes Completed</span>
                           </span>
-                          <span className="text-neutral-500">Subject: {batchSubject}</span>
+                          <span style={{ color: "#6B7280" }}>Subject: {batchSubject}</span>
                         </div>
 
                         {/* Completed Progress Bar */}
                         <div className="pt-1.5 w-full max-w-lg">
-                          <div className="flex items-center justify-between text-xs text-neutral-400 mb-1">
-                            <span className="font-semibold text-emerald-400">100% Completed</span>
+                          <div className="flex items-center justify-between text-xs mb-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                            <span className="font-semibold" style={{ color: isDark ? "#34D399" : "#047857" }}>100% Completed</span>
                             <span>{pbClasses} of {pbClasses} classes completed</span>
                           </div>
-                          <div className="h-2 w-full bg-neutral-800 rounded-full overflow-hidden">
-                            <div className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full w-full" />
+                          <div className="h-2 w-full rounded-full overflow-hidden" style={{ backgroundColor: isDark ? "#262626" : "#E5E7EB" }}>
+                            <div className="h-full rounded-full w-full" style={{ backgroundColor: "#10B981" }} />
                           </div>
                         </div>
 
@@ -1301,63 +2302,87 @@ export function StudentDetailsModal({
                           <button
                             type="button"
                             onClick={() => setExpandedLevels(prev => ({ ...prev, [pbKey]: !prev[pbKey] }))}
-                            className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1.5 font-semibold transition-colors bg-neutral-800/60 hover:bg-neutral-800 px-3 py-1.5 rounded-lg border border-neutral-700/60"
+                            className="text-xs flex items-center gap-1.5 font-semibold transition-opacity hover:opacity-90 px-3 py-1.5 rounded-lg border cursor-pointer"
+                            style={
+                              isDark
+                                ? { backgroundColor: "rgba(38, 38, 38, 0.6)", borderColor: "rgba(63, 63, 70, 0.6)", color: "#34D399" }
+                                : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                            }
                           >
-                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} /> : <ChevronDown className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />}
                             <span>{isExpanded ? "Hide" : "View"} Completed Classes Record ({pbSchedules.length > 0 ? pbSchedules.length : pbClasses} Classes)</span>
                           </button>
 
                           {isExpanded && (
-                            <div className="mt-3 space-y-2 border-t border-neutral-800/80 pt-3">
+                            <div className="mt-3 space-y-2 border-t pt-3" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                               {pbSchedules.length > 0 ? (
                                 pbSchedules.map((cls: any, cIdx: number) => (
                                   <div
                                     key={cls._id || cIdx}
-                                    className="p-3 rounded-xl bg-neutral-900/80 border border-neutral-800 text-xs space-y-1.5 hover:border-neutral-700 transition-colors"
+                                    className={`p-3 rounded-xl border text-xs space-y-1.5 transition-colors ${
+                                      isDark ? "bg-neutral-900/80 border-neutral-800 hover:border-neutral-700" : "bg-[#F9FAFB] border-[#E5E7EB]"
+                                    }`}
                                   >
                                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5">
                                       <div className="flex items-center gap-2 flex-wrap">
-                                        <span className={`px-2 py-0.5 rounded font-bold text-[11px] ${cls.isExtraClass
-                                            ? "bg-purple-500/15 text-purple-300 border border-purple-500/30"
-                                            : "bg-emerald-500/10 text-emerald-400 border border-emerald-500/20"
-                                          }`}>
+                                        <span
+                                          className="px-2 py-0.5 rounded font-bold text-[11px] border"
+                                          style={
+                                            cls.isExtraClass
+                                              ? isDark
+                                                ? { backgroundColor: "rgba(168, 85, 247, 0.15)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                                                : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                              : isDark
+                                              ? { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)", color: "#34D399" }
+                                              : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                          }
+                                        >
                                           {cls.isExtraClass ? "Extra Class" : `Class ${pbSchedules.length - cIdx}`}
                                         </span>
                                         {cls.isExtraClass && (
-                                          <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
-                                            <Sparkles className="w-2.5 h-2.5" />
+                                          <span
+                                            className="px-1.5 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1"
+                                            style={
+                                              isDark
+                                                ? { backgroundColor: "rgba(168, 85, 247, 0.2)", borderColor: "rgba(168, 85, 247, 0.3)", color: "#D8B4FE" }
+                                                : { backgroundColor: "#F5F3FF", borderColor: "#DDD6FE", color: "#7E22CE" }
+                                            }
+                                          >
+                                            <Sparkles className="w-2.5 h-2.5" style={{ color: isDark ? "#D8B4FE" : "#7E22CE" }} />
                                             Extra
                                           </span>
                                         )}
-                                        <span className="font-bold text-white flex items-center gap-1">
-                                          <Calendar className="w-3 h-3 text-neutral-500" />
+                                        <span className="font-bold flex items-center gap-1" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                                          <Calendar className="w-3 h-3" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                                           {safeFormatDate(cls.date, "dd MMM yyyy, EEE", "Completed Session")}
                                         </span>
-                                        <span className="text-neutral-400 font-mono text-[11px] flex items-center gap-1">
-                                          <Clock className="w-3 h-3 text-neutral-500" />
+                                        <span className="font-mono text-[11px] flex items-center gap-1" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+                                          <Clock className="w-3 h-3" style={{ color: isDark ? "#737373" : "#6B7280" }} />
                                           {cls.startTime && cls.endTime ? `${cls.startTime} - ${cls.endTime}` : "Completed Class"}
                                         </span>
                                       </div>
-                                      <span className="text-neutral-400 text-[11px]">
-                                        Taught by: <strong className="text-neutral-200">{cls.teacher?.name || cls.replacementTeacher?.name || pbTeacher}</strong>
+                                      <span className="text-[11px]" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                                        Taught by: <strong style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{cls.teacher?.name || cls.replacementTeacher?.name || pbTeacher}</strong>
                                       </span>
                                     </div>
 
                                     {/* Topic covered & notes */}
-                                    <div className="bg-neutral-950/60 rounded-lg p-2.5 border border-neutral-800/60 space-y-1">
+                                    <div className={`rounded-lg p-2.5 border space-y-1 ${
+                                      isDark ? "bg-neutral-950/60 border-neutral-800/60" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                                    }`}>
                                       {cls.isExtraClass && cls.extraClassReason && (
-                                        <div className="flex items-start gap-1.5 text-purple-300 text-[11px]">
-                                          <span className="text-purple-400 font-semibold shrink-0">Extra Reason:</span>
+                                        <div className="flex items-start gap-1.5 text-[11px]" style={{ color: isDark ? "#D8B4FE" : "#7E22CE" }}>
+                                          <span className="font-semibold shrink-0">Extra Reason:</span>
                                           <span>{cls.extraClassReason}</span>
                                         </div>
                                       )}
                                       <div className="flex items-start gap-1.5">
-                                        <span className="text-emerald-400 font-semibold shrink-0">Topic Covered:</span>
-                                        <span className="text-white font-medium">{cls.subject || "Topic Covered / Curriculum Session"}</span>
+                                        <span className="font-semibold shrink-0" style={{ color: isDark ? "#34D399" : "#047857" }}>Topic Covered:</span>
+                                        <span className="font-medium" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>{cls.subject || "Topic Covered / Curriculum Session"}</span>
                                       </div>
                                       {cls.notes && (
-                                        <div className="flex items-start gap-1.5 text-neutral-300 text-[11px] pt-0.5">
-                                          <span className="text-neutral-500 font-semibold shrink-0">Notes / Remarks:</span>
+                                        <div className="flex items-start gap-1.5 text-[11px] pt-0.5" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
+                                          <span className="font-semibold shrink-0" style={{ color: "#6B7280" }}>Notes / Remarks:</span>
                                           <span>{cls.notes}</span>
                                         </div>
                                       )}
@@ -1365,11 +2390,13 @@ export function StudentDetailsModal({
                                   </div>
                                 ))
                               ) : (
-                                <div className="p-3.5 bg-neutral-900/40 rounded-xl border border-neutral-800 text-xs text-neutral-400 space-y-1">
-                                  <p className="font-semibold text-neutral-300">
+                                <div className={`p-3.5 rounded-xl border text-xs space-y-1 ${
+                                  isDark ? "bg-neutral-900/40 border-neutral-800 text-neutral-400" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
+                                }`}>
+                                  <p className="font-semibold" style={{ color: isDark ? "#D4D4D4" : "#171717" }}>
                                     ✨ {pbClasses} Sessions Completed under {pbTeacher}
                                   </p>
-                                  <p className="text-[11px] text-neutral-500">
+                                  <p className="text-[11px]" style={{ color: "#6B7280" }}>
                                     All session records, attendance, and coursework for {pbLevel} were successfully completed and archived.
                                   </p>
                                 </div>
@@ -1379,7 +2406,7 @@ export function StudentDetailsModal({
                         </div>
 
                         {/* Past Level Project Submissions History */}
-                        <div className="pt-3 border-t border-neutral-800/80">
+                        <div className="pt-3 border-t" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                           <ProjectSubmissionsSection
                             student={student}
                             batchId={pbBatchId ? pbBatchId.toString() : pbKey}
@@ -1401,58 +2428,112 @@ export function StudentDetailsModal({
 
               {!student.batch && (!student.pastBatches || student.pastBatches.length === 0) ? (
                 <div className="p-6 sm:p-8 text-center flex flex-col items-center justify-center">
-                  <div className="w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center mb-3">
-                    <History className="w-5 h-5 text-neutral-600" />
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${isDark ? "bg-neutral-800" : "bg-[#F3F4F6]"}`}>
+                    <History className="w-5 h-5" style={{ color: isDark ? "#525252" : "#6B7280" }} />
                   </div>
-                  <p className="text-sm font-medium text-neutral-400">No academic history recorded yet</p>
-                  <p className="text-xs text-neutral-600 mt-1">Assign a batch to begin tracking course levels and progress.</p>
+                  <p className="text-sm font-medium" style={{ color: isDark ? "#9CA3AF" : "#171717" }}>No academic history recorded yet</p>
+                  <p className="text-xs mt-1" style={{ color: "#6B7280" }}>Assign a batch to begin tracking course levels and progress.</p>
                 </div>
               ) : null}
-            </div>
-          </div>
+                </div>
+              </div>
+              </>
+            )}
 
-          {/* Fees & Payment Summary Section */}
-          <div className="space-y-4 pt-4 mt-6 border-t border-neutral-800/50">
+            {activeTab === "activity" && (
+              <div className="space-y-6">
+                {/* Teacher Transfer History */}
+                {student.teacherHistory && student.teacherHistory.length > 0 && (
+                  <div className="space-y-3">
+                    <div className={`flex items-center gap-2 font-semibold text-sm uppercase tracking-widest px-1 ${isDark ? "text-neutral-400" : "text-[#4B5563]"}`}>
+                      <History className="w-4 h-4" style={{ color: isDark ? "#F59E0B" : "#B45309" }} />
+                      <span>Teacher Transfer History ({student.teacherHistory.length})</span>
+                    </div>
+                    <div className="space-y-2">
+                      {student.teacherHistory.map((th: any, idx: number) => (
+                        <div
+                          key={idx}
+                          className={`flex items-center justify-between text-xs px-4 py-3 rounded-xl border ${
+                            isDark
+                              ? "text-neutral-300 bg-neutral-800/40 border-neutral-800"
+                              : "text-[#4B5563] bg-[#FFFFFF] border-[#E5E7EB]"
+                          }`}
+                          style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+                        >
+                          <span>
+                            Transferred from <strong style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{th.previousTeacherName || "Previous Teacher"}</strong> →{" "}
+                            <strong style={{ color: isDark ? "#FBBF24" : "#B45309" }}>{th.teacherName || "New Teacher"}</strong>
+                            {th.reason ? <span style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}> ({th.reason})</span> : null}
+                          </span>
+                          <span className="font-mono text-[11px]" style={{ color: "#6B7280" }}>
+                            {safeFormatDate(th.changedAt, "dd MMM yyyy", "")}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Fees & Payment Summary Section */}
+                <div className="space-y-4">
             <div className="flex items-center justify-between px-1">
-              <div className="flex items-center gap-2 text-neutral-400 font-semibold text-sm uppercase tracking-widest">
-                <CreditCard className="w-4 h-4 text-amber-500" />
-                <span>Fees & Payment Summary</span>
+              <div className={`flex items-center gap-2 font-semibold text-sm uppercase tracking-widest ${isDark ? "text-neutral-400" : "text-[#4B5563]"}`}>
+                <CreditCard className="w-4 h-4" style={{ color: isDark ? "#F59E0B" : "#B45309" }} />
+                <span>Fees &amp; Payment Summary</span>
               </div>
               {paymentData?.hasPayment && paymentData.payment.remainingAmount > 0 && (
                 <button
                   onClick={() => setShowRecordPaymentModal(true)}
-                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                  className="px-3 py-1.5 brand-gradient font-bold text-xs rounded-xl flex items-center gap-1.5 transition-opacity hover:opacity-90 shadow-sm cursor-pointer"
+                  style={{ color: "#171717" }}
                 >
-                  <Receipt className="w-3.5 h-3.5" />
-                  Record Payment
+                  <Receipt className="w-3.5 h-3.5" style={{ color: "#171717" }} />
+                  <span style={{ color: "#171717" }}>Record Payment</span>
                 </button>
               )}
             </div>
 
             {paymentData?.hasPayment ? (
-              <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 p-4 sm:p-5 space-y-4">
+              <div
+                className={`rounded-2xl border p-4 sm:p-5 space-y-4 ${
+                  isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                }`}
+                style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+              >
                 {/* Status & Key Stats */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800/60">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
                   <div>
-                    <span className="text-[10px] text-neutral-500 uppercase font-bold block">Payment Status</span>
+                    <span className="text-[10px] uppercase font-bold block" style={{ color: "#6B7280" }}>Payment Status</span>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className={`px-2.5 py-1 rounded-md text-xs font-bold border inline-flex items-center gap-1.5 ${paymentData.payment.paymentStatus === "Paid"
-                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                          : paymentData.payment.paymentStatus === "Due" || paymentData.payment.paymentStatus === "Overdue"
-                            ? "bg-red-500/10 text-red-400 border-red-500/20"
-                            : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                        }`}>
-                        <span className={`w-1.5 h-1.5 rounded-full ${paymentData.payment.paymentStatus === "Paid" ? "bg-emerald-400" : paymentData.payment.paymentStatus === "Due" ? "bg-red-400" : "bg-amber-400"
-                          }`} />
-                        {paymentData.payment.paymentStatus === "Due" ? "🔴 Payment Due" : paymentData.payment.paymentStatus === "Paid" ? "🟢 Paid" : paymentData.payment.paymentStatus === "Upcoming" ? "🟡 Upcoming Reminder" : `🔵 ${paymentData.payment.paymentStatus}`}
+                      <span
+                        className="px-2.5 py-1 rounded-md text-xs font-bold border inline-flex items-center gap-1.5"
+                        style={
+                          paymentData.payment.paymentStatus === "Paid"
+                            ? isDark
+                              ? { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)", color: "#34D399" }
+                              : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                            : paymentData.payment.paymentStatus === "Due" || paymentData.payment.paymentStatus === "Overdue"
+                            ? isDark
+                              ? { backgroundColor: "rgba(239, 68, 68, 0.1)", borderColor: "rgba(239, 68, 68, 0.2)", color: "#F87171" }
+                              : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                            : isDark
+                            ? { backgroundColor: "rgba(245, 158, 11, 0.1)", borderColor: "rgba(245, 158, 11, 0.2)", color: "#FBBF24" }
+                            : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                        }
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${paymentData.payment.paymentStatus === "Paid" ? "bg-emerald-500" : paymentData.payment.paymentStatus === "Due" ? "bg-red-500" : "bg-amber-500"}`} />
+                        {paymentData.payment.paymentStatus === "Due" ? "Payment Due" : paymentData.payment.paymentStatus === "Paid" ? "Paid" : paymentData.payment.paymentStatus === "Upcoming" ? "Upcoming Reminder" : paymentData.payment.paymentStatus}
                       </span>
-                      <span className="text-xs text-neutral-400 font-medium">({paymentData.payment.paymentType})</span>
+                      <span className="text-xs font-medium" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>({paymentData.payment.paymentType})</span>
                     </div>
                   </div>
 
                   <div className="text-left sm:text-right">
-                    <span className="text-[10px] text-neutral-500 uppercase font-bold block">Outstanding Balance</span>
-                    <span className={`text-base sm:text-lg font-black block mt-0.5 ${paymentData.payment.remainingAmount === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+                    <span className="text-[10px] uppercase font-bold block" style={{ color: "#6B7280" }}>Outstanding Balance</span>
+                    <span
+                      className="text-base sm:text-lg font-black block mt-0.5"
+                      style={{ color: paymentData.payment.remainingAmount === 0 ? (isDark ? "#34D399" : "#047857") : (isDark ? "#FBBF24" : "#B45309") }}
+                    >
                       ₹{Number(paymentData.payment.remainingAmount).toLocaleString("en-IN")}
                     </span>
                   </div>
@@ -1460,48 +2541,63 @@ export function StudentDetailsModal({
 
                 {/* 4 Metrics Cards */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-center text-xs">
-                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
-                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Total Fee</span>
-                    <span className="text-white font-bold text-sm mt-0.5 block">
+                  <div className={`p-3 rounded-xl border ${isDark ? "bg-neutral-900/80 border-neutral-800/80" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+                    <span className="block text-[10px] uppercase font-semibold" style={{ color: "#6B7280" }}>Total Fee</span>
+                    <span className="font-bold text-sm mt-0.5 block" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                       ₹{Number(paymentData.payment.totalFee).toLocaleString("en-IN")}
                     </span>
                   </div>
-                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
-                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Amount Paid</span>
-                    <span className="text-emerald-400 font-bold text-sm mt-0.5 block">
+                  <div
+                    className="p-3 rounded-xl border"
+                    style={
+                      isDark
+                        ? { backgroundColor: "rgba(23, 23, 23, 0.8)", borderColor: "rgba(38, 38, 38, 0.8)" }
+                        : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" }
+                    }
+                  >
+                    <span className="block text-[10px] uppercase font-semibold" style={{ color: isDark ? "#6B7280" : "#047857" }}>Amount Paid</span>
+                    <span className="font-bold text-sm mt-0.5 block" style={{ color: isDark ? "#34D399" : "#047857" }}>
                       ₹{Number(paymentData.payment.amountPaid).toLocaleString("en-IN")}
                     </span>
                   </div>
-                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
-                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Classes Completed</span>
-                    <span className="text-white font-bold text-sm mt-0.5 block">
+                  <div className={`p-3 rounded-xl border ${isDark ? "bg-neutral-900/80 border-neutral-800/80" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+                    <span className="block text-[10px] uppercase font-semibold" style={{ color: "#6B7280" }}>Classes Completed</span>
+                    <span className="font-bold text-sm mt-0.5 block" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
                       {paymentData.payment.completedClasses} / {paymentData.payment.assignedClasses}
                     </span>
                   </div>
-                  <div className="p-3 bg-neutral-900/80 rounded-xl border border-neutral-800/80">
-                    <span className="text-neutral-500 block text-[10px] uppercase font-semibold">Due After</span>
-                    <span className="text-amber-400 font-bold text-sm mt-0.5 block">
+                  <div
+                    className="p-3 rounded-xl border"
+                    style={
+                      isDark
+                        ? { backgroundColor: "rgba(23, 23, 23, 0.8)", borderColor: "rgba(38, 38, 38, 0.8)" }
+                        : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+                    }
+                  >
+                    <span className="block text-[10px] uppercase font-semibold" style={{ color: isDark ? "#6B7280" : "#B45309" }}>Due After</span>
+                    <span className="font-bold text-sm mt-0.5 block" style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
                       {paymentData.payment.dueAfterClasses} Classes
                     </span>
                   </div>
                 </div>
 
                 {/* Due Progress Bar */}
-                <div className="p-3.5 bg-neutral-950/60 rounded-xl border border-neutral-800/80 space-y-2">
+                <div className={`p-3.5 rounded-xl border space-y-2 ${isDark ? "bg-neutral-950/60 border-neutral-800/80" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
                   <div className="flex justify-between text-xs">
-                    <span className="text-neutral-300 font-semibold">
+                    <span className="font-semibold" style={{ color: isDark ? "#D4D4D4" : "#171717" }}>
                       Class Due Trigger Progress:
                     </span>
-                    <span className="text-amber-400 font-bold">
+                    <span className="font-bold" style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
                       {paymentData.payment.completedClasses >= paymentData.payment.dueAfterClasses
                         ? "Trigger Met (Payment Due)"
                         : `${paymentData.payment.dueAfterClasses - paymentData.payment.completedClasses} classes remaining until due`}
                     </span>
                   </div>
-                  <div className="relative w-full h-2.5 bg-neutral-800 rounded-full overflow-hidden">
+                  <div className="relative w-full h-2.5 rounded-full overflow-hidden" style={{ backgroundColor: isDark ? "#262626" : "#E5E7EB" }}>
                     <div
-                      className="h-full bg-emerald-500 rounded-full transition-all"
+                      className="h-full rounded-full transition-all"
                       style={{
+                        backgroundColor: "#10B981",
                         width: `${Math.min(
                           100,
                           Math.round((paymentData.payment.completedClasses / paymentData.payment.assignedClasses) * 100)
@@ -1509,8 +2605,9 @@ export function StudentDetailsModal({
                       }}
                     />
                     <div
-                      className="absolute top-0 bottom-0 w-1.5 bg-amber-400 z-10"
+                      className="absolute top-0 bottom-0 w-1.5 z-10"
                       style={{
+                        backgroundColor: "#F59E0B",
                         left: `${Math.min(
                           100,
                           Math.round((paymentData.payment.dueAfterClasses / paymentData.payment.assignedClasses) * 100)
@@ -1523,32 +2620,41 @@ export function StudentDetailsModal({
 
                 {/* Payment History Accordion */}
                 {paymentData.payment.paymentHistory && paymentData.payment.paymentHistory.length > 0 && (
-                  <div className="space-y-2 pt-2 border-t border-neutral-800/60">
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider block">
+                  <div className="space-y-2 pt-2 border-t" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
+                    <span className="text-xs font-bold uppercase tracking-wider block" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
                       Payment History ({paymentData.payment.paymentHistory.length})
                     </span>
                     <div className="space-y-2">
                       {paymentData.payment.paymentHistory.map((tx: any, idx: number) => (
                         <div
                           key={tx.id || idx}
-                          className="p-3 bg-neutral-900/60 border border-neutral-800/80 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                          className={`p-3 border rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs ${
+                            isDark ? "bg-neutral-900/60 border-neutral-800/80" : "bg-[#F9FAFB] border-[#E5E7EB]"
+                          }`}
                         >
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="font-bold text-white">Payment #{paymentData.payment.paymentHistory.length - idx}</span>
-                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-neutral-800 text-neutral-400">
+                              <span className="font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>Payment #{paymentData.payment.paymentHistory.length - idx}</span>
+                              <span
+                                className="text-[10px] px-2 py-0.5 rounded-full border"
+                                style={
+                                  isDark
+                                    ? { backgroundColor: "#262626", borderColor: "#262626", color: "#9CA3AF" }
+                                    : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                                }
+                              >
                                 {tx.paymentType || "Payment"}
                               </span>
                             </div>
-                            <p className="text-[11px] text-neutral-400 mt-0.5">
+                            <p className="text-[11px] mt-0.5" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
                               {tx.paymentDate ? format(new Date(tx.paymentDate), "dd MMM yyyy") : "-"} · {tx.paymentMethod} {tx.transactionId ? `· Ref: ${tx.transactionId}` : ""}
                             </p>
                           </div>
                           <div className="text-left sm:text-right">
-                            <span className="font-extrabold text-sm text-emerald-400">
+                            <span className="font-extrabold text-sm" style={{ color: isDark ? "#34D399" : "#047857" }}>
                               ₹{Number(tx.amount).toLocaleString("en-IN")}
                             </span>
-                            <span className="text-[11px] text-neutral-500 block">
+                            <span className="text-[11px] block" style={{ color: "#6B7280" }}>
                               Balance: ₹{Number(tx.remainingBalance || 0).toLocaleString("en-IN")}
                             </span>
                           </div>
@@ -1559,22 +2665,32 @@ export function StudentDetailsModal({
                 )}
               </div>
             ) : (
-              <div className="bg-neutral-800/20 rounded-2xl border border-neutral-800/50 p-6 text-center space-y-3">
-                <div className="w-10 h-10 rounded-full bg-neutral-800 flex items-center justify-center mx-auto text-neutral-500">
-                  <CreditCard className="w-5 h-5" />
+              <div
+                className={`rounded-2xl border p-6 text-center space-y-3 ${
+                  isDark ? "bg-neutral-800/20 border-neutral-800/50" : "bg-[#FFFFFF] border-[#E5E7EB]"
+                }`}
+                style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+              >
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center mx-auto ${isDark ? "bg-neutral-800 text-neutral-500" : "bg-[#F3F4F6] text-[#6B7280]"}`}>
+                  <CreditCard className="w-5 h-5" style={{ color: isDark ? "#737373" : "#4B5563" }} />
                 </div>
                 <div>
-                  <p className="text-sm font-semibold text-white">No payment record found</p>
-                  <p className="text-xs text-neutral-500 mt-0.5">
+                  <p className="text-sm font-semibold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>No payment record found</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#6B7280" }}>
                     Admission fee has not been recorded yet for this student.
                   </p>
                 </div>
                 <button
                   onClick={() => setShowAdmissionPaymentModal(true)}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs rounded-xl inline-flex items-center gap-1.5 transition-colors shadow-sm"
+                  className="px-4 py-2 brand-gradient font-bold text-xs rounded-xl inline-flex items-center gap-1.5 transition-opacity hover:opacity-90 shadow-sm cursor-pointer"
+                  style={{ color: "#171717" }}
                 >
-                  <Plus className="w-4 h-4" /> Collect Admission Fee
+                  <Plus className="w-4 h-4" style={{ color: "#171717" }} />
+                  <span style={{ color: "#171717" }}>Collect Admission Fee</span>
                 </button>
+              </div>
+            )}
+                </div>
               </div>
             )}
           </div>
@@ -2661,6 +3777,95 @@ export function StudentDetailsModal({
                       Apply Progress Correction
                     </>
                   )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Change Batch Modal (e.g. Change to Group Batch / Switch Batch) */}
+        {showChangeBatchModal && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0, y: 10 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 10 }}
+              className="bg-neutral-900 border border-purple-500/30 rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl relative space-y-4"
+            >
+              <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-purple-500/20 text-purple-400 border border-purple-500/30 flex items-center justify-center">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-white">
+                      {isOneToOneBatch ? "Change to Group Batch" : "Change Batch"}
+                    </h3>
+                    <p className="text-xs text-neutral-400">Move {student.name} to another batch</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowChangeBatchModal(false)}
+                  className="p-1.5 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {changeBatchError && (
+                <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-xl flex items-center gap-2 text-xs text-red-400">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{changeBatchError}</span>
+                </div>
+              )}
+
+              <div className="space-y-3 text-xs">
+                <div className="p-2.5 rounded-xl bg-neutral-800/60 border border-neutral-700/60 flex items-center justify-between">
+                  <span className="text-neutral-400">Current Batch:</span>
+                  <span className="font-semibold text-white">{student.batch?.name || "Unassigned"}</span>
+                </div>
+
+                <div>
+                  <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5">
+                    Select Target Batch <span className="text-purple-400">*</span>
+                  </label>
+                  <select
+                    value={changeBatchId}
+                    onChange={(e) => setChangeBatchId(e.target.value)}
+                    className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-purple-500 transition-colors"
+                  >
+                    <option value="">Choose a batch...</option>
+                    {allBatches
+                      .filter((b: any) => b.status !== "Dropped" && b.status !== "Cancelled")
+                      .map((b: any) => {
+                        const formatLabel = (b.name || "").includes("1:1") || (b.studentsCount !== undefined && b.studentsCount <= 1) ? "1:1" : "Group";
+                        return (
+                          <option key={b._id} value={b._id}>
+                            [{formatLabel}] {b.name} — {b.subject || "General"}
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-neutral-800 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangeBatchModal(false)}
+                  disabled={changeBatchMutation.isPending}
+                  className="px-3.5 py-2 text-xs font-semibold text-neutral-400 hover:text-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={!changeBatchId || changeBatchId === currentBatchId || changeBatchMutation.isPending}
+                  onClick={() => changeBatchMutation.mutate(changeBatchId)}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white keep-white text-xs font-bold rounded-xl disabled:opacity-50 flex items-center gap-1.5 shadow-md"
+                >
+                  {changeBatchMutation.isPending ? "Updating..." : "Confirm Batch Change"}
                 </button>
               </div>
             </motion.div>
