@@ -6,7 +6,7 @@ import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import DemoSession from '../models/DemoSession';
 import RecycleBin from '../models/RecycleBin';
-import { escapeRegex } from './studentController';
+import { escapeRegex, extractLevelNumber } from './studentController';
 import { checkIntervalConflict, getKolkataNow } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
@@ -320,16 +320,31 @@ export const getBatches = async (req: any, res: Response) => {
 
     // Fetch schedules count and student retention info in parallel (no N+1)
     const batchIds = Array.from(new Set(batches.map((b: any) => b._id)));
+    const batchMetaMap = new Map<string, any>();
+    batches.forEach((b: any) => {
+      batchMetaMap.set(b._id.toString(), b);
+    });
+
     const [allSchedules, allStudentsForRetention] = await Promise.all([
       Schedule.find({ batch: { $in: batchIds } }),
-      Student.find({}).select('batch pastBatches'),
+      Student.find({}).select('batch currentLevel level status'),
     ]);
 
-    const retentionBatchIds = new Set<string>();
+    const batchHasActiveStudent = new Set<string>();
+    const level2PlusBatchIds = new Set<string>();
     allStudentsForRetention.forEach((st: any) => {
-      if (Array.isArray(st.pastBatches) && st.pastBatches.length > 0 && st.batch) {
-        const bId = st.batch?._id ? st.batch._id.toString() : st.batch.toString();
-        if (bId) retentionBatchIds.add(bId);
+      if (!st.batch || st.status === 'Dropped') return;
+      const bId = st.batch?._id ? st.batch._id.toString() : st.batch.toString();
+      if (!bId) return;
+
+      batchHasActiveStudent.add(bId);
+      const batchMeta = batchMetaMap.get(bId);
+      const batchLvl = extractLevelNumber(batchMeta?.retentionLevel || batchMeta?.name || batchMeta?.subject);
+      const studentLvl = extractLevelNumber(st.currentLevel || st.level);
+
+      // Only Level 2+ students qualify a batch as Retention (never Level 1 batch-switches)
+      if (batchLvl !== 1 && ((studentLvl !== null && studentLvl >= 2) || (studentLvl === null && batchLvl !== null && batchLvl >= 2))) {
+        level2PlusBatchIds.add(bId);
       }
     });
 
@@ -383,10 +398,19 @@ export const getBatches = async (req: any, res: Response) => {
         ? 'Completed'
         : batchObj.status;
 
+      const batchLvl = extractLevelNumber(batchObj.retentionLevel || batchObj.name || batchObj.subject);
+      const hasStudents = batchHasActiveStudent.has(bId);
+      const computedIsRetention =
+        batchLvl === 1
+          ? false
+          : hasStudents
+          ? level2PlusBatchIds.has(bId)
+          : Boolean(batchObj.isRetention || (batchLvl !== null && batchLvl >= 2));
+
       return {
         ...batchObj,
         status: effectiveStatus,
-        isRetention: Boolean(batchObj.isRetention || retentionBatchIds.has(bId)),
+        isRetention: computedIsRetention,
         completedClassesCount: completedCount,
         cancelledClassesCount: cancelledCountMap[bId] || 0,
         upcomingClassesCount: upcomingCountMap[bId] || 0,
@@ -480,6 +504,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       }
     }
 
+    const createBatchLvl = extractLevelNumber(trimmedName) ?? extractLevelNumber(subject);
     const batch = await Batch.create({
       _id: deterministicBatchId,
       name: trimmedName,
@@ -494,7 +519,7 @@ export const createBatch = async (req: Request, res: Response): Promise<void> =>
       startDate: normalizeDateOnlyToUtc(startDate),
       durationType: durationType || 'Custom',
       status: status || 'Upcoming',
-      isRetention: Boolean(isRetention),
+      isRetention: createBatchLvl === 1 ? false : Boolean(isRetention || (createBatchLvl !== null && createBatchLvl >= 2)),
       numberOfSessions: numberOfSessions || null,
       preCompletedClasses: validatedPreCompleted,
     });
@@ -592,8 +617,11 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     batch.meetingLink = req.body.meetingLink ?? batch.meetingLink;
     batch.durationType = req.body.durationType ?? batch.durationType;
     batch.status = req.body.status ?? batch.status;
+    const updatedBatchLvl = extractLevelNumber(batch.retentionLevel || batch.name || batch.subject);
     if (req.body.isRetention !== undefined) {
-      batch.isRetention = Boolean(req.body.isRetention);
+      batch.isRetention = updatedBatchLvl === 1 ? false : Boolean(req.body.isRetention);
+    } else if (updatedBatchLvl === 1) {
+      batch.isRetention = false;
     }
     batch.numberOfSessions = req.body.numberOfSessions !== undefined ? req.body.numberOfSessions : batch.numberOfSessions;
 

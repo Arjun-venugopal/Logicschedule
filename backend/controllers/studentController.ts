@@ -20,6 +20,14 @@ export function extractLevel(text?: string, fallback = 'Level 1'): string {
   return match ? `Level ${match[1]}` : fallback;
 }
 
+export function extractLevelNumber(text?: string): number | null {
+  if (!text) return null;
+  const match = text.match(/level\s*[-]?\s*(\d+)/i) || text.match(/lvl\s*[-]?\s*(\d+)/i);
+  if (!match) return null;
+  const parsed = parseInt(match[1], 10);
+  return isNaN(parsed) ? null : parsed;
+}
+
 export const uploadStudents = async (req: Request, res: Response): Promise<void> => {
   try {
     if (!req.file) {
@@ -586,7 +594,15 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
 
       const updatedStudent = await existingStudent.save();
       if (newBatchId) {
-        await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
+        const finalLvlNum = extractLevelNumber(updatedStudent.currentLevel || updatedStudent.level);
+        if (finalLvlNum !== null && finalLvlNum >= 2) {
+          await Batch.findByIdAndUpdate(newBatchId, {
+            $inc: { studentsCount: 1 },
+            $set: { isRetention: true, retentionLevel: `Level ${finalLvlNum}` },
+          });
+        } else {
+          await Batch.findByIdAndUpdate(newBatchId, { $inc: { studentsCount: 1 } });
+        }
       }
 
       await syncStudentBatchSchedules(updatedStudent._id.toString(), newBatchId, oldBatchId);
@@ -599,12 +615,14 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
     // 3. New child registration
     let initialLevel = currentLevel || level;
     let batchAssignedTeacher: any = undefined;
+    let batchDoc: any = null;
     if (batch) {
       try {
-        const batchDoc = await Batch.findById(batch);
+        batchDoc = await Batch.findById(batch);
         if (batchDoc) {
-          if (!initialLevel && batchDoc.name) {
-            initialLevel = extractLevel(batchDoc.name, 'Level 1');
+          if (!initialLevel) {
+            const batchLvlNum = extractLevelNumber(batchDoc.retentionLevel || batchDoc.name || batchDoc.subject);
+            initialLevel = batchLvlNum ? `Level ${batchLvlNum}` : 'Level 1';
           }
           if (batchDoc.assignedTeacher) {
             batchAssignedTeacher = batchDoc.assignedTeacher;
@@ -631,7 +649,15 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
     });
 
     if (batch) {
-      await Batch.findByIdAndUpdate(batch, { $inc: { studentsCount: 1 } });
+      const initialLvlNum = extractLevelNumber(initialLevel);
+      if (initialLvlNum !== null && initialLvlNum >= 2 && extractLevelNumber(batchDoc?.name) !== 1) {
+        await Batch.findByIdAndUpdate(batch, {
+          $inc: { studentsCount: 1 },
+          $set: { isRetention: true, retentionLevel: `Level ${initialLvlNum}` },
+        });
+      } else {
+        await Batch.findByIdAndUpdate(batch, { $inc: { studentsCount: 1 } });
+      }
       await syncStudentBatchSchedules(newStudent._id.toString(), batch);
     }
 
@@ -732,6 +758,32 @@ const oldStatus = student.status || 'Active';
       try {
         targetBatchDoc = await Batch.findById(targetBatchId);
       } catch {}
+    }
+
+    if (newBatchId && newBatchId !== oldBatchId && currentLevel === undefined && level === undefined && targetBatchDoc) {
+      const targetBatchLvl = extractLevelNumber(targetBatchDoc.retentionLevel || targetBatchDoc.name || targetBatchDoc.subject);
+      if (targetBatchLvl !== null && targetBatchLvl >= 2) {
+        const nextTag = `Level ${targetBatchLvl}`;
+        student.currentLevel = nextTag;
+        student.level = nextTag;
+      }
+    }
+
+    if (targetBatchDoc) {
+      const finalStudentLvl = extractLevelNumber(student.currentLevel || student.level);
+      const targetBatchLvl = extractLevelNumber(targetBatchDoc.retentionLevel || targetBatchDoc.name || targetBatchDoc.subject);
+      if (targetBatchLvl === 1) {
+        if (targetBatchDoc.isRetention) {
+          targetBatchDoc.isRetention = false;
+          await targetBatchDoc.save();
+        }
+      } else if (finalStudentLvl !== null && finalStudentLvl >= 2) {
+        if (!targetBatchDoc.isRetention || !targetBatchDoc.retentionLevel) {
+          targetBatchDoc.isRetention = true;
+          targetBatchDoc.retentionLevel = `Level ${finalStudentLvl}`;
+          await targetBatchDoc.save();
+        }
+      }
     }
 
     const currentTutorId = student.assignedTutor?._id
