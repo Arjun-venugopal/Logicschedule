@@ -11,7 +11,7 @@ interface ThemeToggleProps {
 }
 
 export function ThemeToggle({ className = "", showLabel = false }: ThemeToggleProps) {
-  const { theme, toggleTheme, isDark } = useTheme();
+  const { toggleTheme, isDark } = useTheme();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
@@ -22,7 +22,7 @@ export function ThemeToggle({ className = "", showLabel = false }: ThemeTogglePr
   if (!mounted) {
     return (
       <div
-        className={`w-9 h-9 rounded-lg animate-pulse ${className}`}
+        className={`${showLabel ? "h-9 w-28" : "w-9 h-9"} rounded-lg animate-pulse ${className}`}
       />
     );
   }
@@ -31,7 +31,7 @@ export function ThemeToggle({ className = "", showLabel = false }: ThemeTogglePr
     <button
       type="button"
       onClick={toggleTheme}
-      className={`relative p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200/50 dark:hover:bg-neutral-800 transition-colors cursor-pointer flex items-center justify-center select-none ${className}`}
+      className={`relative p-2 rounded-lg text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200/50 dark:hover:bg-neutral-800 transition-colors cursor-pointer flex items-center justify-center gap-2 select-none ${className}`}
       aria-label={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
       title={isDark ? "Switch to ☀️ Light Mode" : "Switch to 🌙 Dark Mode"}
     >

@@ -328,6 +328,7 @@ export default function PwaProvider({ children }: { children: React.ReactNode })
           >
             <div className="flex items-start gap-3.5">
               <div className="w-12 h-12 rounded-xl bg-neutral-800 border border-neutral-700 p-1 flex items-center justify-center shrink-0 shadow-inner">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/icons/icon-96x96.png" alt="Schedulix" className="w-10 h-10 rounded-lg object-contain" />
               </div>
               <div className="flex-1 min-w-0 pr-6">
@@ -377,6 +378,7 @@ export default function PwaProvider({ children }: { children: React.ReactNode })
           >
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 rounded-xl bg-neutral-800 border border-neutral-700 p-1 flex items-center justify-center shrink-0">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/icons/icon-96x96.png" alt="Schedulix" className="w-8 h-8 rounded-lg object-contain" />
               </div>
               <div className="flex-1 min-w-0 pr-6">

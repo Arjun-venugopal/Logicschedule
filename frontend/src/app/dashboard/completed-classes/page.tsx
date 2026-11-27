@@ -22,7 +22,7 @@ export default function CompletedClassesPage() {
   const { searchQuery: globalSearch, setSearchQuery: setGlobalSearch } = useSearchStore();
 
   useEffect(() => {
-    if (globalSearch !== undefined && globalSearch !== searchQuery) {
+    if (globalSearch !== undefined) {
       setSearchQuery(globalSearch);
     }
   }, [globalSearch]);
@@ -68,7 +68,7 @@ export default function CompletedClassesPage() {
   });
 
   const { data: students = [] } = useQuery({
-    queryKey: ["all-students"],
+    queryKey: ["students-all"],
     queryFn: async () => (await api.get("/students")).data,
     enabled: !!hasAccess,
     staleTime: 5 * 60 * 1000,

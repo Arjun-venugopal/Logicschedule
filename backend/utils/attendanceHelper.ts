@@ -1,7 +1,7 @@
 import Schedule from '../models/Schedule';
 import Student from '../models/Student';
 import Batch from '../models/Batch';
-import { getKolkataNow, formatDateToYYYYMMDD, timeToMinutes } from './scheduleHelper';
+import { getKolkataNow, formatDateToYYYYMMDD } from './scheduleHelper';
 import { serverCache, deleteDiskCache } from './cache';
 
 /**

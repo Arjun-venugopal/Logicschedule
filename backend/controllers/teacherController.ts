@@ -31,11 +31,15 @@ export function getTeacherStatusForDate(teacher: any, dateVal: Date | string): {
 // @desc    Get all teachers
 // @route   GET /teachers
 // @access  Private
-export const getTeachers = async (_req: Request, res: Response) => {
+export const getTeachers = async (req: AuthRequest, res: Response) => {
   try {
-    const cached = serverCache.get('teachers_all');
+    const isAdminOrSuper = req.user?.role === 'Admin' || req.user?.role === 'Super Admin';
+    const cached = serverCache.get<any[]>('teachers_all');
     if (cached) {
-      res.json(cached);
+      const dto = isAdminOrSuper
+        ? cached
+        : cached.map(({ tempPassword: _tp, ...rest }: any) => rest);
+      res.json(dto);
       return;
     }
 
@@ -143,7 +147,10 @@ export const getTeachers = async (_req: Request, res: Response) => {
     });
 
     serverCache.set('teachers_all', result, 60_000);
-    res.json(result);
+    const dto = isAdminOrSuper
+      ? result
+      : result.map(({ tempPassword: _tp, ...rest }: any) => rest);
+    res.json(dto);
   } catch (error: any) {
     console.error('Get teachers error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
@@ -363,7 +370,9 @@ export const getTeacherProfile = async (req: any, res: Response): Promise<void> 
       res.status(404).json({ message: 'Teacher profile not found' });
       return;
     }
-    res.json(teacher);
+    const teacherObj = teacher.toObject ? teacher.toObject() : { ...teacher };
+    delete teacherObj.tempPassword;
+    res.json(teacherObj);
   } catch (error: any) {
     console.error('Get teacher profile error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

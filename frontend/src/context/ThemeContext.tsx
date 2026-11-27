@@ -22,7 +22,6 @@ const ThemeContext = createContext<ThemeContextType>({
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
 
   const applyThemeToDOM = useCallback((targetTheme: Theme) => {
     if (typeof window === "undefined") return;
@@ -40,7 +39,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setMounted(true);
     try {
       const stored = localStorage.getItem(THEME_STORAGE_KEY) as Theme | null;
       if (stored === "light" || stored === "dark") {

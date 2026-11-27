@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2, ChevronDown, ChevronUp, Sparkles, Info } from "lucide-react";
+import { Plus, X, Edit2, Trash2, BookOpen, Users, Link as LinkIcon, AlertTriangle, Check, Calendar, Clock, Clock3, Sliders, CheckCircle2, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { useAuthStore } from "@/store/authStore";
 import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";

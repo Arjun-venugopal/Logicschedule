@@ -108,6 +108,9 @@ const User = {
 
     const id = data._id || crypto.randomUUID();
     const now = new Date().toISOString();
+    const jsonbData: any = { ...data, _id: id, createdAt: now, updatedAt: now };
+    delete jsonbData.password;
+
     const payload: any = {
       _id: id,
       name: data.name,
@@ -121,11 +124,13 @@ const User = {
       lockUntil: data.lockUntil ?? null,
       createdAt: now,
       updatedAt: now,
-      data: { ...data, _id: id, createdAt: now, updatedAt: now },
+      data: jsonbData,
     };
     const { error } = await getSupabase().from('users').insert(payload);
     if (error) throw new Error(`Supabase create user error: ${error.message}`);
-    return { ...data, _id: id } as IUser;
+    const resultObj: any = { ...data, _id: id };
+    delete resultObj.password;
+    return resultObj as IUser;
   },
 
   async update(id: string, updateData: Partial<IUser>): Promise<void> {
@@ -139,7 +144,9 @@ const User = {
     delete cleanUpdate._id;
     const existing = await User.findById(id);
     if (existing) {
-      cleanUpdate.data = { ...(existing as any), ...cleanUpdate };
+      const mergedData: any = { ...(existing as any), ...cleanUpdate };
+      delete mergedData.password;
+      cleanUpdate.data = mergedData;
     }
     await getSupabase().from('users').update(cleanUpdate).eq('_id', id);
     serverCache.delete(`auth_user_${id}`);

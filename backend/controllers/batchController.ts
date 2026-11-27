@@ -111,7 +111,6 @@ export async function generateSchedulesForBatch(
   const selectedDayIndexes = new Set((days as string[]).map((d) => DAY_INDEX[d]).filter(d => d !== undefined));
 
   const kolkata = getKolkataNow();
-  const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
   const todayUtc = normalizeDateOnlyToUtc(kolkata.todayStr)!;
 
   // Pre-fetch all schedules for this batch (ignore archived/paused slots when creating active slots)
@@ -1004,7 +1003,7 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       }
 
       const allBatchSchedules = await Schedule.find({ batch: updated._id });
-      let syncedCount = 0;
+      const schedulesToUpdate: any[] = [];
       for (const s of allBatchSchedules) {
         if (s.isArchived || s.status !== 'Scheduled') continue;
         const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
@@ -1031,9 +1030,14 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
           endTime: s.endTime,
         });
 
-        await s.save();
-        syncedCount++;
+        schedulesToUpdate.push(s);
       }
+
+      const CHUNK_SIZE = 10;
+      for (let i = 0; i < schedulesToUpdate.length; i += CHUNK_SIZE) {
+        await Promise.all(schedulesToUpdate.slice(i, i + CHUNK_SIZE).map((s: any) => s.save()));
+      }
+      const syncedCount = schedulesToUpdate.length;
       console.log(`⏱️ Automatically synced new timing to ${syncedCount} upcoming session(s) for batch "${updated.name}"`);
 
       // If there were no upcoming schedules at all, auto-generate remaining needed
@@ -1067,12 +1071,15 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     if (teacherChanged) {
       // Surgically ensure all upcoming non-archived scheduled slots reflect the new assigned teacher
       const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });
-      for (const fs of futureScheds) {
-        if (fs.isArchived) continue;
-        if (fs.teacher?.toString() !== targetTeacherStr) {
-          fs.teacher = targetTeacher;
-          await fs.save();
-        }
+      const dirtyScheds = futureScheds.filter((fs: any) => !fs.isArchived && fs.teacher?.toString() !== targetTeacherStr);
+      const CHUNK_SIZE = 10;
+      for (let i = 0; i < dirtyScheds.length; i += CHUNK_SIZE) {
+        await Promise.all(
+          dirtyScheds.slice(i, i + CHUNK_SIZE).map((fs: any) => {
+            fs.teacher = targetTeacher;
+            return fs.save();
+          })
+        );
       }
     }
 
@@ -1217,12 +1224,6 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     const upcomingClasses = schedules.filter((s: any) => !s.isArchived && s.status === 'Scheduled');
 
     const isGroupContinuation = Boolean(batch.restartedFromBatch);
-    const isRestartedBatch = Boolean(
-      batch.isRestarted ||
-      batch.lastRestartDate ||
-      isGroupContinuation ||
-      batchSchedules.some((s: any) => Boolean(s.isArchived) || s.status === 'Archived' || s.status === 'Paused')
-    );
 
     const preCompleted = Math.max(0, Number(batch.preCompletedClasses) || 0);
     const preRestartBase = isGroupContinuation

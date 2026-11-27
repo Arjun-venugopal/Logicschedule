@@ -4,7 +4,7 @@ import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Student from '../models/Student';
 import RecycleBin from '../models/RecycleBin';
-import { checkIntervalConflict, checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
+import { checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, saveDiskCache, readDiskCache, deleteDiskCache } from '../utils/cache';
 import { normalizeDateOnlyToUtc, computeEndTime, getSlotTimingForDay } from './batchController';
 import { resolveScheduleAttendance } from '../utils/attendanceHelper';
@@ -666,23 +666,33 @@ export const getSchedulesByStudent = async (req: Request, res: Response): Promis
       return;
     }
 
-    const batchIds: string[] = [];
-    if (student.batch) {
-      const bId = typeof student.batch === 'object' ? student.batch._id : student.batch;
-      if (bId) batchIds.push(bId.toString());
-    }
+    const batchIdSet = new Set<string>();
+    const addBatchId = (val: any) => {
+      const id = typeof val === 'object' ? (val?._id || val)?.toString() : val?.toString();
+      if (id) batchIdSet.add(id);
+    };
+
+    addBatchId(student.batch);
     if (student.pastBatches && Array.isArray(student.pastBatches)) {
-      student.pastBatches.forEach((pb: any) => {
-        const pbId = typeof pb.batch === 'object' ? pb.batch?._id : pb.batch;
-        if (pbId) batchIds.push(pbId.toString());
-      });
+      student.pastBatches.forEach((pb: any) => addBatchId(pb.batch));
     }
     if (student.restartHistory && Array.isArray(student.restartHistory)) {
       student.restartHistory.forEach((rh: any) => {
-        if (rh.previousBatchId) batchIds.push(rh.previousBatchId.toString());
-        if (rh.newBatchId) batchIds.push(rh.newBatchId.toString());
+        addBatchId(rh.previousBatchId);
+        addBatchId(rh.newBatchId);
       });
     }
+
+    // Include restartedFromBatch if the student's current batch continued from another batch
+    const primaryBatchId = typeof student.batch === 'object' ? student.batch?._id?.toString() : student.batch?.toString();
+    if (primaryBatchId) {
+      const currentBatchDoc: any = await Batch.findById(primaryBatchId).select('restartedFromBatch');
+      if (currentBatchDoc?.restartedFromBatch) {
+        addBatchId(currentBatchDoc.restartedFromBatch);
+      }
+    }
+
+    const batchIds = Array.from(batchIdSet);
 
     let matchingSchedules: any[] = [];
     if (batchIds.length > 0) {

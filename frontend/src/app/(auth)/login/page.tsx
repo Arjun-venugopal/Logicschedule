@@ -16,12 +16,18 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
 
   const router = useRouter();
-  const { setAuth, token } = useAuthStore();
+  const { setAuth, token, user } = useAuthStore();
 
   useEffect(() => {
     setMounted(true);
-    if (token) router.push("/dashboard");
-  }, [token, router]);
+    if (token) {
+      if (user?.role === "Sales Person") {
+        router.push("/dashboard/demo-sessions");
+      } else {
+        router.push("/dashboard");
+      }
+    }
+  }, [token, user, router]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +37,11 @@ export default function LoginPage() {
     try {
       const { data } = await api.post("/auth/login", { email, password });
       setAuth(data, data.token);
-      router.push("/dashboard");
+      if (data?.role === "Sales Person") {
+        router.push("/dashboard/demo-sessions");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       setError(
         err.response?.data?.message || "Login failed. Check your credentials."

@@ -13,6 +13,7 @@ import { useTheme } from "@/context/ThemeContext";
 export default function TeacherPerformancePage() {
   const { user } = useAuthStore();
   const router = useRouter();
+  const { isDark } = useTheme();
 
   useEffect(() => {
     if (user && user.role !== "Teacher") {
@@ -52,7 +53,6 @@ export default function TeacherPerformancePage() {
   }
 
   const { teacher, stats, extraClassRecords = [] } = performance;
-  const { isDark } = useTheme();
 
   const pieChartData = [
     { name: "Completed", value: stats.completedClasses },

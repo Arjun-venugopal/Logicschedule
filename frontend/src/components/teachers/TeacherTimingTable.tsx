@@ -18,6 +18,7 @@ import {
   Timer
 } from "lucide-react";
 import { usePermissions } from "@/hooks/usePermissions";
+import { formatTime12h as formatTime } from "@/lib/utils";
 
 interface TeacherTimingData {
   _id: string;
@@ -179,18 +180,6 @@ export function TeacherTimingTable() {
       Boolean(t.nextClass?.title?.toLowerCase().includes(q))
     );
   });
-
-  const formatTime = (time24?: string) => {
-    if (!time24) return "—";
-    if (time24.includes("AM") || time24.includes("PM")) return time24;
-    const parts = time24.split(":");
-    const h = parseInt(parts[0], 10);
-    const m = parseInt(parts[1], 10);
-    if (isNaN(h) || isNaN(m)) return time24;
-    const period = h >= 12 ? "PM" : "AM";
-    const displayH = h % 12 || 12;
-    return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
-  };
 
   const formatMinutes = (mins: number | null) => {
     if (mins === null || mins === undefined) return "—";

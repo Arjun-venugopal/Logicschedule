@@ -25,7 +25,7 @@ export default function AttendancePage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { data: teachers = [], isLoading: loadingTeachers } = useQuery({
-    queryKey: ["all-teachers"],
+    queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
     enabled: !isTeacher,
     staleTime: 5 * 60 * 1000,
@@ -34,7 +34,7 @@ export default function AttendancePage() {
 
   // 1. Fetch Students
   const { data: students = [], isLoading: loadingStudents } = useQuery({
-    queryKey: ["all-students"],
+    queryKey: ["students-all"],
     queryFn: async () => (await api.get("/students")).data,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -42,13 +42,12 @@ export default function AttendancePage() {
 
   // 2. Fetch All Completed, Cancelled & Attended Schedules with Attendance
   const { data: schedules = [], isLoading: loadingSchedules } = useQuery({
-    queryKey: ["all-completed-schedules"],
-    queryFn: async () => {
-      const res = await api.get("/schedules");
-      return res.data
+    queryKey: ["schedules"],
+    queryFn: async () => (await api.get("/schedules")).data,
+    select: (data: any[]) =>
+      data
         .filter((s: any) => s.status === "Completed" || s.status === "Cancelled" || (s.attendance && s.attendance.length > 0))
-        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    },
+        .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     staleTime: 60_000,
     refetchOnWindowFocus: false,
   });
@@ -56,7 +55,7 @@ export default function AttendancePage() {
   const updateSchedule = useMutation({
     mutationFn: (data: any) => api.put(`/schedules/${data._id}`, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
+      queryClient.invalidateQueries({ queryKey: ["schedules"] });
       setTimeout(() => setSavingScheduleId(null), 500); // clear loading state after a brief delay
     },
     onError: () => {

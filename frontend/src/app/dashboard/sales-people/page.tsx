@@ -11,11 +11,7 @@ import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 import { SuccessToast } from "@/components/common/SuccessToast";
-
-function generatePassword(length = 10) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
+import { generateTempPassword } from "@/lib/utils";
 
 export default function SalesPeoplePage() {
   const queryClient = useQueryClient();
@@ -41,11 +37,11 @@ export default function SalesPeoplePage() {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
-    tempPassword: generatePassword(),
+    tempPassword: generateTempPassword(),
   });
 
   const { data: salesPeople, isLoading } = useQuery({
-    queryKey: ["salesPeople"],
+    queryKey: ["sales-people"],
     queryFn: async () => (await api.get("/sales-people")).data,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -70,10 +66,10 @@ export default function SalesPeoplePage() {
         password: data.tempPassword,
       })).data,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["salesPeople"] });
+      queryClient.invalidateQueries({ queryKey: ["sales-people"] });
       setCreatedCreds({ email: formData.email, tempPassword: formData.tempPassword });
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", tempPassword: generatePassword() });
+      setFormData({ name: "", email: "", tempPassword: generateTempPassword() });
     },
   });
 
@@ -85,17 +81,17 @@ export default function SalesPeoplePage() {
       return api.put(`/sales-people/${id}`, payload);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["salesPeople"] });
+      queryClient.invalidateQueries({ queryKey: ["sales-people"] });
       setEditSalesPerson(null);
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", tempPassword: generatePassword() });
+      setFormData({ name: "", email: "", tempPassword: generateTempPassword() });
     },
   });
 
   const deleteSalesPersonMutation = useMutation({
     mutationFn: async (id: string) => api.delete(`/sales-people/${id}`),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["salesPeople"] });
+      queryClient.invalidateQueries({ queryKey: ["sales-people"] });
       setDeleteConfirm(null);
       setSuccessMessage("Sales person deleted successfully");
       setTimeout(() => setSuccessMessage(null), 4000);
@@ -121,6 +117,12 @@ export default function SalesPeoplePage() {
     setIsModalOpen(true);
   };
 
+  const handleAddClick = () => {
+    setEditSalesPerson(null);
+    setFormData({ name: "", email: "", tempPassword: generateTempPassword() });
+    setIsModalOpen(true);
+  };
+
   if (user && user.role === "Teacher") {
     return null;
   }
@@ -134,11 +136,7 @@ export default function SalesPeoplePage() {
         </div>
         {hasWriteAccess && (
           <button
-            onClick={() => {
-              setEditSalesPerson(null);
-              setFormData({ name: "", email: "", tempPassword: generatePassword() });
-              setIsModalOpen(true);
-            }}
+            onClick={handleAddClick}
             className="flex items-center gap-2 px-3 sm:px-4 py-2 sm:py-2.5 brand-gradient text-black font-semibold rounded-xl hover:opacity-90 transition-opacity text-xs sm:text-sm shadow-lg shadow-amber-500/20"
           >
             <UserPlus className="w-4 h-4" /> Add Sales Person
@@ -205,11 +203,7 @@ export default function SalesPeoplePage() {
             <p className="text-neutral-600 text-sm mt-1">Try adjusting your search criteria</p>
             {!searchQuery && hasWriteAccess && (
               <button
-                onClick={() => {
-                  setEditSalesPerson(null);
-                  setFormData({ name: "", email: "", tempPassword: generatePassword() });
-                  setIsModalOpen(true);
-                }}
+                onClick={handleAddClick}
                 className="mt-4 px-4 py-2 brand-gradient text-black font-semibold rounded-lg text-sm hover:opacity-90"
               >
                 Add Sales Person
@@ -355,7 +349,7 @@ export default function SalesPeoplePage() {
                       </label>
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, tempPassword: generatePassword() })}
+                        onClick={() => setFormData({ ...formData, tempPassword: generateTempPassword() })}
                         className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
                       >
                         <RefreshCw className="w-3 h-3" /> Regenerate

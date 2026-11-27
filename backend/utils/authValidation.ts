@@ -22,7 +22,6 @@ export const registerSchema = z.object({
   name: z.string().trim().min(2, 'Name must be at least 2 characters long').max(70, 'Name cannot exceed 70 characters'),
   email: z.string().trim().email('Invalid email address format').toLowerCase(),
   password: passwordSchema,
-  role: z.enum(['Admin', 'Super Admin', 'Sub Admin', 'Teacher', 'Sales Person']).optional().default('Admin'),
 });
 
 export const loginSchema = z.object({

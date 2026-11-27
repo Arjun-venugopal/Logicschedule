@@ -2,6 +2,7 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Calendar, Clock, BookOpen, Video, ExternalLink, UserCheck } from "lucide-react";
+import { formatTime12h as formatTime } from "@/lib/utils";
 
 interface TimelineItem {
   id: string;
@@ -35,14 +36,6 @@ export function TeacherDayTimelineModal({ isOpen, onClose, teacher, selectedDate
   if (!isOpen || !teacher) return null;
 
   const items = teacher.todayScheduleItems || [];
-
-  const formatTime = (time24: string) => {
-    if (!time24) return "";
-    const [h, m] = time24.split(":").map(Number);
-    const period = h >= 12 ? "PM" : "AM";
-    const displayH = h % 12 || 12;
-    return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
-  };
 
   const formattedDate = new Date(selectedDate).toLocaleDateString("en-US", {
     weekday: "long",

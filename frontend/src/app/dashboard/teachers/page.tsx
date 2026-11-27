@@ -27,11 +27,7 @@ import { useRouter } from "next/navigation";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useDebounce } from "@/hooks/useDebounce";
-
-function generatePassword(length = 10) {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
-}
+import { generateTempPassword } from "@/lib/utils";
 
 export default function TeachersPage() {
   const queryClient = useQueryClient();
@@ -65,7 +61,7 @@ export default function TeachersPage() {
     address: "",
     employmentType: "Full Time",
     hourlyRate: "",
-    tempPassword: generatePassword(),
+    tempPassword: generateTempPassword(),
     experience: 0,
     status: "Available",
     dutyStatusSchedule: [] as any[],
@@ -119,7 +115,7 @@ export default function TeachersPage() {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       setCreatedCreds({ email: formData.email, tempPassword: formData.tempPassword });
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generateTempPassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
     },
   });
 
@@ -133,7 +129,7 @@ export default function TeachersPage() {
       queryClient.invalidateQueries({ queryKey: ["teachers"] });
       setEditTeacher(null);
       setIsModalOpen(false);
-      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generatePassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
+      setFormData({ name: "", email: "", phone: "", address: "", employmentType: "Full Time", hourlyRate: "", tempPassword: generateTempPassword(), experience: 0, status: "Available", dutyStatusSchedule: [], subjectExpertise: [] });
     },
   });
 
@@ -704,7 +700,7 @@ export default function TeachersPage() {
                       </label>
                       <button
                         type="button"
-                        onClick={() => setFormData({ ...formData, tempPassword: generatePassword() })}
+                        onClick={() => setFormData({ ...formData, tempPassword: generateTempPassword() })}
                         className="flex items-center gap-1 text-xs text-amber-400 hover:text-amber-300 transition-colors"
                       >
                         <RefreshCw className="w-3 h-3" /> {editTeacher ? "Generate New" : "Regenerate"}

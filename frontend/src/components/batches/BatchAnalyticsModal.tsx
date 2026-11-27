@@ -46,7 +46,7 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
 
   if (!data) return null;
 
-  const { batch, studentsCount, totalSchedules, completedSchedules, cancelledSchedules = 0, attendanceStats, schedules } = data;
+  const { batch, totalSchedules, completedSchedules, cancelledSchedules = 0, attendanceStats, schedules } = data;
   const targetClasses = (batch?.numberOfSessions && Number(batch.numberOfSessions) > 0)
     ? Number(batch.numberOfSessions)
     : totalSchedules;

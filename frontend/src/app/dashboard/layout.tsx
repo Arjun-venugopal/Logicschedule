@@ -11,6 +11,7 @@ import { usePwa } from "@/components/pwa/PwaProvider";
 import { NotificationDropdown } from "@/components/notifications/NotificationPanel";
 import { SessionMenuDropdown } from "@/components/dashboard/SessionMenuDropdown";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -44,17 +45,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.push("/login");
   };
 
-  const isTeacher = user?.role === "Teacher";
-  const isSubAdmin = user?.role === "Sub Admin";
-  const isSalesPerson = user?.role === "Sales Person";
-  const permissions = user?.permissions || {};
-
-  const canAccess = (module: string) => {
-    if (isTeacher) return true; // Handled separately
-    if (isSalesPerson) return module === "demoSessions" || module === "settings";
-    if (!isSubAdmin && !isSalesPerson) return true; // Admin/Super Admin
-    return permissions[module]?.read === true;
-  };
+  const { isTeacher, isAdmin, isSalesPerson, canRead: canAccess } = usePermissions();
+  const canSeePaymentNotifications = !isTeacher && (isAdmin || isSalesPerson || canAccess("payments") || canAccess("demoSessions"));
 
   const sessionSubItems = [
     {
@@ -531,7 +523,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             {/* Dual Theme Switcher (Dark Mode + Light Mode) */}
             <ThemeToggle />
 
-            <NotificationDropdown />
+            {canSeePaymentNotifications && <NotificationDropdown />}
           </div>
 
           {/* Expandable Mobile Search Dropdown */}

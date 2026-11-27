@@ -61,3 +61,22 @@ export function computeEndTime(startTime?: string, durationMinutes = 60): string
   const endMin = totalMin % 60;
   return `${String(endHours).padStart(2, "0")}:${String(endMin).padStart(2, "0")}`;
 }
+
+/**
+ * Generates a temporary readable credential password for newly created staff accounts.
+ */
+export function generateTempPassword(length = 10): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#";
+  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+/**
+ * Computes class count milestone after which remaining balance fee becomes due.
+ */
+export function calculateDueAfterClasses(classes: number): number {
+  const num = Number(classes) || 15;
+  if (num === 15) return 5;
+  if (num === 25) return 12;
+  if (num <= 15) return Math.max(1, Math.round(num * (5 / 15)));
+  return Math.max(1, Math.round(num * (12 / 25)));
+}

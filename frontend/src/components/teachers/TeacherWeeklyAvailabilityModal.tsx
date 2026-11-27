@@ -6,6 +6,7 @@ import { X, Calendar, Clock, CheckCircle2, AlertCircle, Edit3, Save, Plus, Trash
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
+import { formatTime12h as formatTime } from "@/lib/utils";
 
 interface Slot {
   startTime: string;
@@ -116,14 +117,6 @@ export function TeacherWeeklyAvailabilityModal({
           slots: existing ? existing.slots.map((s) => ({ startTime: s.startTime, endTime: s.endTime })) : [],
         };
       });
-
-  const formatTime = (time24: string) => {
-    if (!time24) return "";
-    const [h, m] = time24.split(":").map(Number);
-    const period = h >= 12 ? "PM" : "AM";
-    const displayH = h % 12 || 12;
-    return `${displayH}:${m.toString().padStart(2, "0")} ${period}`;
-  };
 
   const getSlotMinutes = (slot: Slot): number => {
     if (!slot.startTime || !slot.endTime) return 0;

@@ -12,7 +12,7 @@ export const usePermissions = () => {
   const canRead = (module: string) => {
     if (isTeacher) return true;
     if (isAdmin) return true;
-    if (isSalesPerson) return module === "demoSessions";
+    if (isSalesPerson) return module === "demoSessions" || module === "settings";
     if (isSubAdmin) return permissions[module]?.read === true;
     return false;
   };

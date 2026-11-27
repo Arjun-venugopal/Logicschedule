@@ -10,7 +10,7 @@ import { protect, permissionCheck } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
-router.post('/check-duplicate', protect, checkDuplicateDemoSession);
+router.post('/check-duplicate', protect, permissionCheck('demoSessions', 'write'), checkDuplicateDemoSession);
 
 router.route('/')
   .get(protect, getDemoSessions)

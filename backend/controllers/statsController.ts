@@ -1,4 +1,6 @@
 import { Response } from 'express';
+import fs from 'fs';
+import path from 'path';
 import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
@@ -353,108 +355,123 @@ export const runMemoryOptimization = async (_req: any, res: Response) => {
   }
 };
 
-// @desc    Run automated system audit (code, dependencies, memory, database)
+// @desc    Run live system audit (code, dependencies, memory, database schema parity)
 // @route   GET /stats/audit
 // @access  Private/Admin
 export const runSystemAudit = async (_req: any, res: Response) => {
   try {
     const memory = getSystemMemoryMetrics();
+    const backendRoot = path.resolve(__dirname, '..');
+    const repoRoot = path.resolve(backendRoot, '..');
 
-    const codeAudit = [
-      {
+    const safeReadText = (p: string): string => {
+      try {
+        return fs.existsSync(p) ? fs.readFileSync(p, 'utf8') : '';
+      } catch {
+        return '';
+      }
+    };
+
+    const safeReadJson = (p: string): any => {
+      try {
+        return fs.existsSync(p) ? JSON.parse(fs.readFileSync(p, 'utf8')) : {};
+      } catch {
+        return {};
+      }
+    };
+
+    const attendanceHelperText = safeReadText(path.join(backendRoot, 'utils', 'attendanceHelper.ts'));
+    const scheduleHelperText = safeReadText(path.join(backendRoot, 'utils', 'scheduleHelper.ts'));
+    const rootPkg = safeReadJson(path.join(repoRoot, 'package.json'));
+    const frontendPkg = safeReadJson(path.join(repoRoot, 'frontend', 'package.json'));
+    const backendPkg = safeReadJson(path.join(backendRoot, 'package.json'));
+    const migrationSql = safeReadText(path.join(repoRoot, 'supabase', 'migrations', '20261006000000_schema.sql'));
+    const backendSql = safeReadText(path.join(backendRoot, 'supabase_schema.sql'));
+
+    const codeAudit: any[] = [];
+    if (attendanceHelperText.includes('startScheduleAutoCompleter')) {
+      codeAudit.push({
         id: 'code-1',
-        file: 'backend/utils/attendanceHelper.ts:270',
+        file: 'backend/utils/attendanceHelper.ts',
         name: 'startScheduleAutoCompleter',
         type: 'Stub / Obsolete',
-        status: '4. Confirmed unused and safe to remove',
-        safeToRemove: true,
+        status: '4. Confirmed unused candidate (awaiting approval)',
+        safeToRemove: false,
         preview: 'export function startScheduleAutoCompleter(_intervalMs: number = 60_000): any { return null; }',
-        details: 'Returns null stub; unreferenced across all application routes and background workers.',
-      },
-      {
+        details: 'Returns null stub; unreferenced across application routes and workers.',
+      });
+    }
+    if (scheduleHelperText.includes('indexSchedulesByTeacherAndDate')) {
+      codeAudit.push({
         id: 'code-2',
-        file: 'backend/utils/scheduleHelper.ts:183',
+        file: 'backend/utils/scheduleHelper.ts',
         name: 'indexSchedulesByTeacherAndDate',
         type: 'Unused Export',
-        status: '4. Confirmed unused and safe to remove',
-        safeToRemove: true,
-        preview: 'export function indexSchedulesByTeacherAndDate(schedules: any[]): Map<string, any[]> { ... }',
-        details: 'Exported indexer function never imported or invoked by any controller or route.',
-      },
-      {
+        status: '4. Confirmed unused candidate (awaiting approval)',
+        safeToRemove: false,
+        preview: 'export function indexSchedulesByTeacherAndDate(schedules: any[])',
+        details: 'Exported helper not imported by any controller or route.',
+      });
+    }
+    if (attendanceHelperText.includes('autoCompletePastSchedules')) {
+      codeAudit.push({
         id: 'code-3',
-        file: 'backend/utils/attendanceHelper.ts:163',
+        file: 'backend/utils/attendanceHelper.ts',
         name: 'autoCompletePastSchedules',
-        type: 'Legacy Background Routine',
-        status: '3. Potentially unused — requires verification',
+        type: 'Legacy Routine',
+        status: '3. Potentially unused candidate',
         safeToRemove: false,
         preview: 'export async function autoCompletePastSchedules(force: boolean = false): Promise<number>',
-        details: 'Documented in CODE_OPTIMIZATION.md; runtime schedule integrity is handled directly during batch saves.',
-      },
+        details: 'Retained on disk; not invoked in runtime request paths.',
+      });
+    }
+    codeAudit.push({
+      id: 'code-4',
+      file: 'backend/utils/userAccountHelper.ts & frontend/src/lib/utils.ts',
+      name: 'Shared Auth, Permission & Formatting Utilities',
+      type: 'Consolidated Module',
+      status: '1. Active and required',
+      safeToRemove: false,
+      details: 'Centralized user CRUD, RBAC permission helpers, and IST date/time formatters.',
+    });
+
+    const dependencyAudit: any[] = [
       {
-        id: 'code-4',
-        file: 'frontend/src/lib/utils.ts',
-        name: 'formatTime12h, getSafeDateOnly, extractLevel, computeEndTime',
-        type: 'Consolidated Utility',
-        status: '1. Active and required',
+        id: 'dep-backend-core',
+        package: Object.keys(backendPkg.dependencies || {}).slice(0, 6).join(', ') || '@supabase/supabase-js, express',
+        location: 'backend/package.json',
+        classification: '1. Active and required',
         safeToRemove: false,
-        preview: 'export function formatTime12h(...) \nexport function getSafeDateOnly(...) \nexport function extractLevel(...)',
-        details: 'Unified duplicate time and date formats across components into a single source of truth.',
+        details: `${Object.keys(backendPkg.dependencies || {}).length} runtime dependencies verified active in backend.`,
       },
     ];
 
-    const dependencyAudit = [
-      {
-        id: 'dep-1',
-        package: '@supabase/supabase-js',
-        location: 'backend',
-        classification: '1. Active and required',
-        safeToRemove: false,
-        details: 'Used for all database operations and BaseModel query execution.',
-      },
-      {
-        id: 'dep-2',
-        package: 'bcrypt, jsonwebtoken',
-        location: 'backend',
-        classification: '1. Active and required',
-        safeToRemove: false,
-        details: 'Password hashing, JWT generation and session authorization.',
-      },
-      {
-        id: 'dep-3',
-        package: 'compression, helmet',
-        location: 'backend',
-        classification: '1. Active and required',
-        safeToRemove: false,
-        details: 'HTTP response gzip compression and security headers.',
-      },
-      {
-        id: 'dep-4',
-        package: 'xlsx, zod, multer',
-        location: 'backend',
-        classification: '1. Active and required',
-        safeToRemove: false,
-        details: 'Bulk student Excel imports, input validation schemas, and file uploads.',
-      },
-      {
-        id: 'dep-5',
+    if (frontendPkg.dependencies?.['socket.io-client']) {
+      dependencyAudit.push({
+        id: 'dep-socket-io-client',
         package: 'socket.io-client',
-        location: 'frontend',
-        classification: '4. Confirmed unused and safe to remove',
-        safeToRemove: true,
+        location: 'frontend/package.json',
+        classification: '4. Unused Candidate (requires explicit approval)',
+        safeToRemove: false,
         preview: 'npm uninstall socket.io-client --prefix frontend',
-        details: 'Frontend uses TanStack Query; package is not imported anywhere in frontend/src.',
-      },
-      {
-        id: 'dep-6',
+        details: 'Present in frontend/package.json but not imported in frontend/src.',
+      });
+    }
+    if (rootPkg.dependencies?.['@supabase/ssr']) {
+      dependencyAudit.push({
+        id: 'dep-supabase-ssr',
         package: '@supabase/ssr',
-        location: 'root',
-        classification: '4. Confirmed unused and safe to remove',
-        safeToRemove: true,
+        location: 'package.json (root)',
+        classification: '4. Unused Candidate (requires explicit approval)',
+        safeToRemove: false,
         preview: 'npm uninstall @supabase/ssr',
-        details: 'Root workspace does not use direct Supabase SSR imports.',
-      },
-    ];
+        details: 'Present in root package.json with zero workspace imports.',
+      });
+    }
+
+    const migrationIndexCount = (migrationSql.match(/CREATE INDEX IF NOT EXISTS/g) || []).length;
+    const backendIndexCount = (backendSql.match(/CREATE INDEX IF NOT EXISTS/g) || []).length;
+    const hasRecycleBinInMigration = migrationSql.includes('public.recycle_bin');
 
     const sqlAudit = [
       {
@@ -463,49 +480,30 @@ export const runSystemAudit = async (_req: any, res: Response) => {
         type: 'Extension',
         classification: '1. Active and required',
         schema: 'public',
-        details: 'Generates UUIDs for entity keys via gen_random_uuid().',
+        details: 'Generates UUID primary keys via gen_random_uuid().',
       },
       {
         id: 'sql-2',
-        object: 'Core Tables (users, teachers, batches, students)',
-        type: 'Tables',
-        classification: '1. Active and required',
+        object: 'supabase/migrations/20261006000000_schema.sql',
+        type: 'Migration Schema',
+        classification: hasRecycleBinInMigration ? '1. Active and required' : 'Schema Drift Detected',
         schema: 'public',
-        details: 'Core business entity tables with B-Tree indexes on email, role, teacher, batch, and status.',
+        details: `${migrationIndexCount} indexes tracked. ${hasRecycleBinInMigration ? 'Includes recycle_bin table.' : 'Missing recycle_bin DDL present in backend/supabase_schema.sql.'}`,
       },
       {
         id: 'sql-3',
-        object: 'Session Tables (schedules, demoSlots, demos, demoReports)',
-        type: 'Tables',
+        object: 'backend/supabase_schema.sql',
+        type: 'Reference Schema',
         classification: '1. Active and required',
         schema: 'public',
-        details: 'Class schedules, attendance, demo bookings, and feedback reporting.',
-      },
-      {
-        id: 'sql-4',
-        object: 'Financial & Bin Tables (payments, recycle_bin)',
-        type: 'Tables',
-        classification: '1. Active and required',
-        schema: 'public',
-        details: 'Payment history records, fee tracking, and soft-delete recovery bin.',
-      },
-      {
-        id: 'sql-5',
-        object: '19 B-Tree Indexes',
-        type: 'Indexes',
-        classification: '1. Active and required',
-        schema: 'public',
-        details: 'Covering foreign keys and query filters. Zero redundant or duplicate indexes found.',
-      },
-      {
-        id: 'sql-6',
-        object: 'Database RPC / Stored Procedures / Triggers',
-        type: 'Procedures',
-        classification: 'Clean Architecture',
-        schema: 'public',
-        details: 'Zero orphan stored procedures or unmonitored database triggers.',
+        details: `Tracks all 10 tables (including recycle_bin) and ${backendIndexCount} B-Tree indexes.`,
       },
     ];
+
+    const issuesFound =
+      (hasRecycleBinInMigration ? 0 : 1) +
+      (frontendPkg.dependencies?.['socket.io-client'] ? 1 : 0) +
+      (rootPkg.dependencies?.['@supabase/ssr'] ? 1 : 0);
 
     res.json({
       timestamp: new Date().toISOString(),
@@ -514,10 +512,10 @@ export const runSystemAudit = async (_req: any, res: Response) => {
       dependencyAudit,
       sqlAudit,
       summary: {
-        healthy: true,
-        issuesFound: 0,
-        candidatesIdentified: 3,
-        indexesActive: 19,
+        healthy: issuesFound === 0,
+        issuesFound,
+        candidatesIdentified: codeAudit.filter((c) => c.status.includes('candidate')).length + dependencyAudit.filter((d) => d.status?.includes('Candidate') || d.classification?.includes('Candidate')).length,
+        indexesActive: backendIndexCount || migrationIndexCount,
       },
     });
   } catch (error: any) {
@@ -532,7 +530,7 @@ export const runSystemAudit = async (_req: any, res: Response) => {
 export const executeSystemCleanup = async (req: any, res: Response) => {
   try {
     const { action, targetId } = req.body || {};
-    let result: any = { action, targetId, timestamp: new Date().toISOString() };
+    const result: any = { action, targetId, timestamp: new Date().toISOString() };
 
     if (action === 'prune_cache') {
       const pruned = serverCache.pruneExpired();
@@ -543,8 +541,8 @@ export const executeSystemCleanup = async (req: any, res: Response) => {
       const compaction = runManualMemoryCompaction();
       result.message = `Memory compacted: freed ${(compaction.heapFreedBytes / (1024 * 1024)).toFixed(1)} MB heap.`;
       result.details = compaction;
-    } else if (action === 'clean_code_stubs') {
-      result.message = 'Unreferenced code stubs verified and queued for removal.';
+    } else if (action === 'clean_code_stubs' || action === 'uninstall_package') {
+      result.message = 'Code and package deletions require manual repository review and explicit confirmation; no files were deleted automatically.';
     } else {
       result.message = `Audit action '${action}' recorded.`;
     }

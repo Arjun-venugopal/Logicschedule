@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
@@ -27,6 +28,14 @@ const WeeklyClassesChart = dynamic(
 );
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (user?.role === "Sales Person") {
+      router.replace("/dashboard/demo-sessions");
+    }
+  }, [user, router]);
+
   const isAdmin = user?.role === "Admin" || user?.role === "Super Admin";
   const [showAllLiveTeachers, setShowAllLiveTeachers] = useState(false);
   const [showActiveAnalyticsModal, setShowActiveAnalyticsModal] = useState(false);

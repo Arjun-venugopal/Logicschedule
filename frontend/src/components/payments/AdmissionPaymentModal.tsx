@@ -15,6 +15,7 @@ import {
   Percent,
 } from "lucide-react";
 import { format } from "date-fns";
+import { calculateDueAfterClasses } from "@/lib/utils";
 
 interface AdmissionPaymentModalProps {
   isOpen: boolean;
@@ -44,22 +45,22 @@ export function AdmissionPaymentModal({
   const queryClient = useQueryClient();
 
   // Parse initial values
-  const cleanInitialFee = () => {
-    if (!initialFee) return 15000;
-    const num = Number(String(initialFee).replace(/[^\d.]/g, ""));
+  const parseInitialFee = (val?: number | string) => {
+    if (!val) return 15000;
+    const num = Number(String(val).replace(/[^\d.]/g, ""));
     return isNaN(num) || num <= 0 ? 15000 : num;
   };
 
-  const cleanInitialSessions = () => {
-    if (!initialSessions) return 15;
-    const num = Number(initialSessions);
+  const parseInitialSessions = (val?: number | string) => {
+    if (!val) return 15;
+    const num = Number(val);
     return isNaN(num) || num <= 0 ? 15 : num;
   };
 
-  const [totalFee, setTotalFee] = useState<number>(cleanInitialFee());
-  const [assignedClasses, setAssignedClasses] = useState<number>(cleanInitialSessions());
+  const [totalFee, setTotalFee] = useState<number>(() => parseInitialFee(initialFee));
+  const [assignedClasses, setAssignedClasses] = useState<number>(() => parseInitialSessions(initialSessions));
   const [paymentType, setPaymentType] = useState<"Full Payment" | "Half Payment" | "Custom Payment">("Half Payment");
-  const [customAmount, setCustomAmount] = useState<number>(Math.round(cleanInitialFee() * 0.5));
+  const [customAmount, setCustomAmount] = useState<number>(() => Math.round(parseInitialFee(initialFee) * 0.5));
   const [paymentMethod, setPaymentMethod] = useState<string>("Bank Transfer");
   const [transactionId, setTransactionId] = useState<string>("");
   const [paymentDate, setPaymentDate] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -68,26 +69,14 @@ export function AdmissionPaymentModal({
 
   useEffect(() => {
     if (isOpen) {
-      const parsedFee = cleanInitialFee();
-      const parsedSessions = cleanInitialSessions();
+      const parsedFee = parseInitialFee(initialFee);
+      const parsedSessions = parseInitialSessions(initialSessions);
       setTotalFee(parsedFee);
       setAssignedClasses(parsedSessions);
       setCustomAmount(Math.round(parsedFee * 0.5));
       setErrorMsg("");
     }
   }, [isOpen, initialFee, initialSessions]);
-
-  // Dynamic Due Classes Rule:
-  // 15 Classes -> 5 Classes
-  // 25 Classes -> 12 Classes
-  // Others -> Math.round(assignedClasses * (5/15))
-  const calculateDueAfterClasses = (classes: number) => {
-    const num = Number(classes) || 15;
-    if (num === 15) return 5;
-    if (num === 25) return 12;
-    if (num <= 15) return Math.max(1, Math.round(num * (5 / 15)));
-    return Math.max(1, Math.round(num * (12 / 25)));
-  };
 
   const dueAfterClasses = calculateDueAfterClasses(assignedClasses);
 
@@ -112,7 +101,7 @@ export function AdmissionPaymentModal({
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      queryClient.invalidateQueries({ queryKey: ["all-students"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["payment-notifications"] });
       if (studentId) {
         queryClient.invalidateQueries({ queryKey: ["student", studentId] });

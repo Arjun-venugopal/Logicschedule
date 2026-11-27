@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { motion } from "framer-motion";
 import { CheckCircle, FileText, Users, GraduationCap } from "lucide-react";
-import { useAuthStore } from "@/store/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 
 interface SessionNavTabsProps {
   className?: string;
@@ -12,17 +12,7 @@ interface SessionNavTabsProps {
 
 export function SessionNavTabs({ className = "" }: SessionNavTabsProps) {
   const pathname = usePathname();
-  const { user } = useAuthStore();
-
-  const isTeacher = user?.role === "Teacher";
-  const isSubAdmin = user?.role === "Sub Admin";
-  const permissions = user?.permissions || {};
-
-  const canAccess = (module: string) => {
-    if (isTeacher) return true;
-    if (!isSubAdmin) return true;
-    return permissions[module]?.read === true;
-  };
+  const { isTeacher, canRead: canAccess } = usePermissions();
 
   const tabs = [
     {

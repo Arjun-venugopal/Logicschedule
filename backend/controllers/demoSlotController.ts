@@ -113,6 +113,11 @@ export const createDemoSlot = async (req: any, res: Response): Promise<void> => 
 
     const dateObj = new Date(date);
 
+    if (req.user && req.user.role === 'Sub Admin' && !req.user.permissions?.demoSessions?.write) {
+      res.status(403).json({ message: 'Forbidden: Insufficient permissions to manage demo slots' });
+      return;
+    }
+
     if (req.user && req.user.role === 'Teacher') {
       const teacherProfile = await Teacher.findOne({ user: req.user._id });
       const teacherIdStr = (typeof teacher === 'object' && teacher?._id) ? teacher._id.toString() : teacher?.toString();
@@ -146,6 +151,11 @@ export const deleteDemoSlot = async (req: any, res: Response): Promise<void> => 
 
     if (!demoSlot) {
       res.status(404).json({ message: 'Demo slot not found' });
+      return;
+    }
+
+    if (req.user && req.user.role === 'Sub Admin' && !req.user.permissions?.demoSessions?.write) {
+      res.status(403).json({ message: 'Forbidden: Insufficient permissions to delete demo slots' });
       return;
     }
 

@@ -6,7 +6,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import {
-  X, User, Users, UserX, Loader2, Phone, BookOpen, Mail, Activity, CheckCircle2,
+  X, User, Users, UserX, Loader2, Phone, BookOpen, Mail, CheckCircle2,
   History, MessageCircle, GraduationCap, Plus, CreditCard, AlertCircle, Clock,
   Receipt, Calendar, Video, ChevronDown, ChevronUp, Sparkles, Sliders,
   BarChart3, Zap, Play, RefreshCw, FileText, ArrowRight, Laptop, Code2, Gamepad2,
@@ -19,6 +19,7 @@ import { ProjectSubmissionsSection } from "./ProjectSubmissionsSection";
 import { SuccessToast } from "@/components/common/SuccessToast";
 import { extractLevel, formatTime12h, computeEndTime, getSafeDateOnly } from "@/lib/utils";
 import { useTheme } from "@/context/ThemeContext";
+import { usePermissions } from "@/hooks/usePermissions";
 
 function safeFormatDate(dateVal: any, formatStr = "dd MMM yyyy, EEE", fallback = "Session"): string {
   if (!dateVal) return fallback;
@@ -48,6 +49,8 @@ export function StudentDetailsModal({
   const [startTime, setStartTime] = useState("09:00");
   const [endTime, setEndTime] = useState("10:00");
   const [selectedDays, setSelectedDays] = useState<string[]>(["Monday", "Wednesday", "Friday"]);
+  const [nextLevelTimeMode, setNextLevelTimeMode] = useState<"same" | "different">("same");
+  const [nextLevelDayTimings, setNextLevelDayTimings] = useState<Record<string, { startTime: string; endTime: string }>>({});
   const [meetingLink, setMeetingLink] = useState("");
   const [startDate, setStartDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [expandedLevels, setExpandedLevels] = useState<Record<string, boolean>>({ current: true });
@@ -91,6 +94,8 @@ export function StudentDetailsModal({
   const [progressError, setProgressError] = useState<string>("");
   const [successToastMessage, setSuccessToastMessage] = useState<string | null>(null);
   const { isDark } = useTheme();
+  const { isTeacher, isAdmin, isSalesPerson, canRead } = usePermissions();
+  const canViewPayments = !isTeacher && (isAdmin || isSalesPerson || canRead("payments") || canRead("demoSessions"));
   const [activeTab, setActiveTab] = useState<"overview" | "progress" | "attendance" | "activity">("overview");
   const [showChangeBatchModal, setShowChangeBatchModal] = useState(false);
   const [changeBatchId, setChangeBatchId] = useState("");
@@ -173,10 +178,37 @@ export function StudentDetailsModal({
       (typeof student?.batch?.assignedTeacher === 'string' ? student?.batch?.assignedTeacher : '') ||
       (typeof student?.assignedTutor === 'string' ? student?.assignedTutor : student?.assignedTutor?._id) || '';
     setSelectedTeacher(currentTeacherId);
-    setStartTime(student?.batch?.timing?.startTime || "09:00");
-    setEndTime(student?.batch?.timing?.endTime || "10:00");
-    setSelectedDays(student?.batch?.days && student.batch.days.length > 0 ? student.batch.days : ["Monday", "Wednesday", "Friday"]);
-    setMeetingLink(student?.batch?.meetingLink || "");
+
+    const b = student?.batch;
+    const baseStart = b?.timing?.startTime || "09:00";
+    const baseEnd = b?.timing?.endTime || computeEndTime(baseStart, b?.durationMinutes || 60);
+    const initialDays: string[] = b?.days && b.days.length > 0 ? b.days : ["Monday", "Wednesday", "Friday"];
+    const orderedInitialDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].filter((d) =>
+      initialDays.includes(d)
+    );
+    const finalDays = orderedInitialDays.length > 0 ? orderedInitialDays : ["Monday", "Wednesday", "Friday"];
+    const existingDT = (b?.dayTimings && typeof b.dayTimings === "object" && Object.keys(b.dayTimings).length > 0)
+      ? b.dayTimings
+      : (student?.restartDetails?.dayTimings && typeof student.restartDetails.dayTimings === "object" ? student.restartDetails.dayTimings : {});
+
+    const populatedDT: Record<string, { startTime: string; endTime: string }> = {};
+    finalDays.forEach((day) => {
+      const entry = existingDT[day] || existingDT[day.toLowerCase()];
+      const dStart = entry?.startTime || baseStart;
+      const dEnd = entry?.endTime || (entry?.startTime ? computeEndTime(entry.startTime, b?.durationMinutes || 60) : baseEnd);
+      populatedDT[day] = { startTime: dStart, endTime: dEnd };
+    });
+
+    const distinctTimes = new Set(finalDays.map((d) => `${populatedDT[d].startTime}-${populatedDT[d].endTime}`));
+    const inferredMode: "same" | "different" =
+      b?.timeMode === "different" || distinctTimes.size > 1 ? "different" : "same";
+
+    setStartTime(baseStart);
+    setEndTime(baseEnd);
+    setSelectedDays(finalDays);
+    setNextLevelDayTimings(populatedDT);
+    setNextLevelTimeMode(inferredMode);
+    setMeetingLink(b?.meetingLink || "");
     setStartDate(format(new Date(), "yyyy-MM-dd"));
 
     // Pre-populate next level payment details from previous payment or defaults
@@ -196,6 +228,7 @@ export function StudentDetailsModal({
     if (initialOpenAdvance && student && !showNextCourseModal) {
       handleOpenNextCourseModal();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialOpenAdvance, student?._id]);
 
   const advanceLevelMutation = useMutation({
@@ -204,6 +237,8 @@ export function StudentDetailsModal({
       numberOfClasses,
       teacherId,
       timing,
+      timeMode,
+      dayTimings,
       days,
       meetingLink,
       startDate,
@@ -213,6 +248,8 @@ export function StudentDetailsModal({
       numberOfClasses: number;
       teacherId?: string | null;
       timing?: { startTime: string; endTime: string };
+      timeMode?: "same" | "different";
+      dayTimings?: Record<string, { startTime: string; endTime: string }>;
       days?: string[];
       meetingLink?: string;
       startDate?: string;
@@ -223,6 +260,8 @@ export function StudentDetailsModal({
         numberOfClasses,
         teacherId: teacherId === null ? null : (teacherId || undefined),
         timing,
+        timeMode,
+        dayTimings,
         days,
         meetingLink,
         startDate,
@@ -541,7 +580,7 @@ export function StudentDetailsModal({
   const { data: paymentData } = useQuery({
     queryKey: ["student-payment", studentId],
     queryFn: async () => (await api.get(`/payments/student/${studentId}`)).data,
-    enabled: !!studentId,
+    enabled: !!studentId && canViewPayments,
   });
 
   // Active & historical Completed schedules (excludes uncompleted Archived/Paused slots from active views,
@@ -700,22 +739,90 @@ export function StudentDetailsModal({
   const currentBatchSchedules = currentBatchAllSchedules.filter(
     (s: any) => s.status === "Completed" || (!s.isArchived && s.status !== "Archived" && s.status !== "Paused")
   );
-  const completedInCurrentBatch = currentBatchAllSchedules.filter((s: any) => {
+  const isCompletedForStudent = (s: any) => {
     if (s.status !== "Completed") return false;
     if (Array.isArray(s.attendance) && s.attendance.length > 0) {
       const rec = s.attendance.find((a: any) => (a.studentId?._id || a.studentId || '').toString() === student._id);
       if (rec && rec.isPresent === false) return false;
     }
     return true;
+  };
+  const completedInCurrentBatch = currentBatchAllSchedules.filter(isCompletedForStudent).length;
+  const completedInLatestBatchOnly = currentBatchAllSchedules.filter((s: any) => {
+    const sBId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+    return sBId === currentBatchId && isCompletedForStudent(s);
   }).length;
   const currentCompletedCount = Math.max(
     completedInCurrentBatch,
-    Number(student.batch?.preCompletedClasses) || 0
+    Number(student.batch?.preCompletedClasses) || 0,
+    student.batch?.restartedFromBatch
+      ? (Number(student.batch?.preRestartCompletedClasses) || 0) + completedInLatestBatchOnly
+      : 0
   );
   const currentClassesNeeded = student.classesNeeded || student.batch?.numberOfSessions || 15;
   const currentRemainingCount = Math.max(0, currentClassesNeeded - currentCompletedCount);
   const currentProgressPct = Math.min(100, currentClassesNeeded > 0 ? Math.round((currentCompletedCount / currentClassesNeeded) * 100) : 0);
   const currentExtraClassCount = currentBatchSchedules.filter((s: any) => s.isExtraClass).length;
+
+  // Already-marked records across current level schedules (including same-level pre-restart batches & archived marked rows)
+  const { alreadyMarkedRecords, markedCompletedListCount, verifiedPreCompletedGap } = (() => {
+    const recordMap = new Map<string, any>();
+    const addMarkedCandidate = (s: any, sourceLabel?: string) => {
+      const idKey = (s._id || s.scheduleId || `${s.date || ""}_${s.startTime || ""}_${s.sessionNumber || ""}`).toString();
+      const status = s.status || "Scheduled";
+      const rec = Array.isArray(s.attendance)
+        ? s.attendance.find((a: any) => (a.studentId?._id || a.studentId || "").toString() === student._id)
+        : null;
+      const isMarkedPresent = rec && rec.isPresent === true;
+      const isExplicitAbsentInCompleted = status === "Completed" && rec && rec.isPresent === false;
+      const isMarked =
+        status === "Completed" ||
+        status === "Cancelled" ||
+        status === "Rescheduled" ||
+        isMarkedPresent;
+      if (!isMarked || recordMap.has(idKey)) return;
+      recordMap.set(idKey, {
+        ...s,
+        _id: idKey,
+        _markedAttendance: rec ? (rec.isPresent ? "Present" : "Absent") : (status === "Completed" ? "Present" : status === "Cancelled" ? "Absent" : "Marked"),
+        _isExplicitAbsent: isExplicitAbsentInCompleted,
+        _countsAsCompleted: status === "Completed" && !isExplicitAbsentInCompleted,
+        _sourceLabel: sourceLabel || "",
+      });
+    };
+
+    (studentSchedules || []).forEach((s: any) => {
+      const sBId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : "");
+      if (sBId === currentBatchId || sameLevelPrevBatchIds.has(sBId)) {
+        addMarkedCandidate(s, sBId !== currentBatchId ? "Prior Level Batch" : "");
+      }
+    });
+
+    (student.restartHistory || []).forEach((rh: any) => {
+      const prevBId = rh.previousBatchId?.toString();
+      if (prevBId && pastBatchIdSet.has(prevBId)) return;
+      if (Array.isArray(rh.archivedSchedules)) {
+        rh.archivedSchedules.forEach((ar: any) => {
+          if (ar.status === "Completed" || ar.status === "Cancelled" || ar.status === "Rescheduled") {
+            addMarkedCandidate(ar, "Archived History");
+          }
+        });
+      }
+    });
+
+    const sortedList = Array.from(recordMap.values()).sort((a: any, b: any) => {
+      const tA = a.date ? new Date(a.date).getTime() : 0;
+      const tB = b.date ? new Date(b.date).getTime() : 0;
+      if (tA !== tB) return tA - tB;
+      return (Number(a.sessionNumber) || 0) - (Number(b.sessionNumber) || 0);
+    });
+    const completedRows = sortedList.filter((r: any) => r._countsAsCompleted).length;
+    return {
+      alreadyMarkedRecords: sortedList,
+      markedCompletedListCount: completedRows,
+      verifiedPreCompletedGap: Math.max(0, currentCompletedCount - completedRows),
+    };
+  })();
 
   // Progress Ring Configuration
   const ringCircumference = 2 * Math.PI * 36;
@@ -849,10 +956,11 @@ export function StudentDetailsModal({
 
   const openRestartModalWithConfig = (mode: "restart" | "edit") => {
     const b = student?.batch;
-    const source = mode === "edit" && savedRestartSummary ? savedRestartSummary : null;
-    const initialDate = source?.restartDate
-      ? (getSafeDateOnly(source.restartDate) || format(new Date(), "yyyy-MM-dd"))
-      : (mode === "edit" && b?.startDate ? getSafeDateOnly(b.startDate) : format(new Date(), "yyyy-MM-dd"));
+    const source = savedRestartSummary || null;
+    const initialDate =
+      mode === "edit" && source?.restartDate
+        ? (getSafeDateOnly(source.restartDate) || format(new Date(), "yyyy-MM-dd"))
+        : (mode === "edit" && b?.startDate ? getSafeDateOnly(b.startDate) : format(new Date(), "yyyy-MM-dd"));
 
     const rawDays: string[] = source?.days?.length
       ? source.days
@@ -882,7 +990,7 @@ export function StudentDetailsModal({
       "__unassigned__";
 
     setRestartModalMode(mode);
-    setEditingRestartEntryId(source?.historyEntryId || null);
+    setEditingRestartEntryId(mode === "edit" ? (source?.historyEntryId || null) : null);
     setRestartDateInput(initialDate);
     setRestartDaysInput(finalDays);
     setRestartDayTimings(nextDayTimings);
@@ -894,6 +1002,316 @@ export function StudentDetailsModal({
 
   const handleOpenRestartModal = () => openRestartModalWithConfig("restart");
   const handleOpenEditRestartModal = () => openRestartModalWithConfig("edit");
+
+  const latestPauseOrRestartEntry =
+    Array.isArray(student?.restartHistory) && student.restartHistory.length > 0
+      ? student.restartHistory[student.restartHistory.length - 1]
+      : null;
+
+  const renderRestartDetailsCard = (context: "overview" | "progress") => {
+    const b = student?.batch;
+    const isPausedState = student?.status === "Paused" || Boolean(student?.isPaused);
+    const hasRestartRecord = Boolean(savedRestartSummary);
+
+    // Only visible if the student class is paused or restarted
+    if (!hasRestartRecord && !isPausedState) {
+      return null;
+    }
+
+    const displayDays: string[] = hasRestartRecord
+      ? savedRestartSummary!.days
+      : WEEKDAY_ORDER.filter((d) =>
+          (Array.isArray(b?.days) && b.days.length > 0
+            ? b.days
+            : Array.isArray(latestPauseOrRestartEntry?.previousSchedule?.days)
+            ? latestPauseOrRestartEntry.previousSchedule.days
+            : []
+          ).includes(d)
+        );
+    const baseStart = b?.timing?.startTime || latestPauseOrRestartEntry?.previousSchedule?.timing?.startTime || "09:00";
+    const baseEnd = b?.timing?.endTime || latestPauseOrRestartEntry?.previousSchedule?.timing?.endTime || "10:00";
+    const displayDuration = hasRestartRecord
+      ? savedRestartSummary!.durationMinutes
+      : inferDurationMins(baseStart, baseEnd, b?.durationMinutes);
+    const rawDisplayDT = hasRestartRecord
+      ? savedRestartSummary!.dayTimings
+      : (b?.dayTimings && typeof b.dayTimings === "object"
+          ? b.dayTimings
+          : latestPauseOrRestartEntry?.previousSchedule?.dayTimings || {});
+    const displayTeacher = hasRestartRecord
+      ? savedRestartSummary!.teacherName
+      : (getTeacherName(student?.assignedTutor) ||
+          getTeacherName(b?.assignedTeacher) ||
+          latestPauseOrRestartEntry?.previousTeacherName ||
+          "Tutor is Unassigned");
+    const statusLabel = hasRestartRecord
+      ? savedRestartSummary!.restartStatus
+      : isPausedState
+      ? "Paused"
+      : "Not Restarted";
+
+    return (
+      <div
+        className={`rounded-2xl border p-4 sm:p-5 space-y-3.5 ${
+          isDark
+            ? isPausedState
+              ? "bg-neutral-800/30 border-amber-500/30"
+              : "bg-neutral-800/30 border-emerald-500/25"
+            : isPausedState
+            ? "bg-[#FFFFFF] border-[#FDE68A]"
+            : "bg-[#FFFFFF] border-[#A7F3D0]"
+        }`}
+        style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <div
+              className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
+              style={
+                isPausedState
+                  ? isDark
+                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)" }
+                    : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A" }
+                  : isDark
+                  ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }
+                  : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" }
+              }
+            >
+              {isPausedState ? (
+                <PauseCircle className="w-4 h-4" style={{ color: isDark ? "#FBBF24" : "#B45309" }} />
+              ) : (
+                <RotateCcw className="w-4 h-4" style={{ color: isDark ? "#34D399" : "#047857" }} />
+              )}
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-sm font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                  Restart Details
+                </h3>
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                  style={
+                    statusLabel === "Paused"
+                      ? isDark
+                        ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                        : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                      : statusLabel === "Active"
+                      ? isDark
+                        ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                        : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                      : isDark
+                      ? { backgroundColor: "#262626", borderColor: "#3F3F46", color: "#D4D4D4" }
+                      : { backgroundColor: "#F3F4F6", borderColor: "#E5E7EB", color: "#4B5563" }
+                  }
+                >
+                  {statusLabel}
+                </span>
+                <span
+                  className="px-2 py-0.5 rounded-full text-[10px] font-semibold border"
+                  style={
+                    isDark
+                      ? { backgroundColor: "rgba(16, 185, 129, 0.1)", borderColor: "rgba(16, 185, 129, 0.2)", color: "#6EE7B7" }
+                      : { backgroundColor: "#F0FDF4", borderColor: "#BBF7D0", color: "#15803D" }
+                  }
+                >
+                  {currentCompletedCount}/{currentClassesNeeded} Marked Complete ({currentRemainingCount} Left)
+                </span>
+              </div>
+              <p className="text-[11px]" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                {hasRestartRecord
+                  ? "Active continuation schedule, per-day timings & preserved records"
+                  : isPausedState
+                  ? "Student classes are paused — review marked progress and restart when ready"
+                  : "Current schedule & continuation settings (preserved marked records stay intact on restart)"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {hasRestartRecord && savedRestartSummary!.editHistory.length > 0 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setExpandedRestartEdits((prev) => ({
+                    ...prev,
+                    [context]: !prev[context],
+                  }))
+                }
+                className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
+                  isDark
+                    ? "bg-neutral-900/70 border-neutral-700 text-neutral-300 hover:bg-neutral-800"
+                    : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563] hover:bg-[#F3F4F6]"
+                }`}
+              >
+                <History className="w-3 h-3" />
+                <span>Edits ({savedRestartSummary!.editHistory.length})</span>
+              </button>
+            )}
+            {hasRestartRecord && (
+              <button
+                type="button"
+                onClick={handleOpenEditRestartModal}
+                className="px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer"
+                style={
+                  isDark
+                    ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.35)", color: "#34D399" }
+                    : { backgroundColor: "#ECFDF5", borderColor: "#6EE7B7", color: "#047857" }
+                }
+              >
+                <Edit2 className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                <span>Edit</span>
+              </button>
+            )}
+            {student.status !== "Dropped" && (
+              <button
+                type="button"
+                onClick={handleOpenRestartModal}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer"
+                style={{ backgroundColor: "#10B981", color: "#FFFFFF" }}
+              >
+                <RotateCcw className="w-3.5 h-3.5" style={{ color: "#FFFFFF" }} />
+                <span style={{ color: "#FFFFFF" }}>{hasRestartRecord ? "New Restart" : "Restart Classes"}</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
+          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>
+              {hasRestartRecord ? "Restart Date" : isPausedState ? "Pause Date" : "Schedule Start"}
+            </span>
+            <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+              {hasRestartRecord
+                ? safeFormatDate(savedRestartSummary!.restartDate, "dd MMM yyyy", "—")
+                : isPausedState
+                ? safeFormatDate(student.pauseDate || latestPauseOrRestartEntry?.pauseDate, "dd MMM yyyy", "—")
+                : safeFormatDate(b?.startDate, "dd MMM yyyy", "—")}
+            </span>
+          </div>
+          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Class Duration</span>
+            <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
+              {displayDuration} mins
+            </span>
+          </div>
+          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Teacher</span>
+            <span className="font-bold mt-0.5 block truncate" style={{ color: isDark ? "#FFFFFF" : "#171717" }} title={displayTeacher}>
+              {displayTeacher}
+            </span>
+          </div>
+          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>
+              {hasRestartRecord ? "Previous Schedule" : "Marked Records"}
+            </span>
+            <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
+              {hasRestartRecord
+                ? savedRestartSummary!.previousScheduleStatus
+                : `${alreadyMarkedRecords.length} session(s)`}
+            </span>
+          </div>
+          <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Restart Status</span>
+            <span
+              className="font-bold mt-0.5 block"
+              style={{
+                color: statusLabel === "Paused"
+                  ? (isDark ? "#FBBF24" : "#B45309")
+                  : statusLabel === "Active"
+                  ? (isDark ? "#34D399" : "#047857")
+                  : (isDark ? "#D4D4D4" : "#4B5563"),
+              }}
+            >
+              {statusLabel}
+            </span>
+          </div>
+        </div>
+
+        {isPausedState && (student.pauseReason || latestPauseOrRestartEntry?.reason) && (
+          <div
+            className={`px-3 py-2 rounded-xl border text-xs ${
+              isDark ? "bg-neutral-900/50 border-neutral-800" : "bg-[#FFF7E6] border-[#FDE68A]"
+            }`}
+          >
+            <strong style={{ color: isDark ? "#FBBF24" : "#B45309" }}>Reason for Pausing:</strong>{" "}
+            <span style={{ color: isDark ? "#E5E7EB" : "#171717" }}>
+              {student.pauseReason || latestPauseOrRestartEntry?.reason}
+            </span>
+          </div>
+        )}
+
+        {/* Class Days & Independent Start Times */}
+        {displayDays.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-[10px] uppercase font-semibold tracking-wider block" style={{ color: "#6B7280" }}>
+              {hasRestartRecord ? "New Class Days" : "Class Days"} &amp; Individual Start Times ({displayDays.length} days)
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+              {displayDays.map((day) => {
+                const slot = rawDisplayDT[day] || rawDisplayDT[day.toLowerCase()];
+                const sTime = slot?.startTime || baseStart;
+                return (
+                  <div
+                    key={day}
+                    className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 text-xs ${
+                      isDark ? "bg-neutral-900/70 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"
+                    }`}
+                  >
+                    <span className="font-bold" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{day}</span>
+                    <span className="font-mono text-[11px] font-semibold" style={{ color: isDark ? "#34D399" : "#047857" }}>
+                      {formatTime12h(sTime)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {hasRestartRecord && expandedRestartEdits[context] && savedRestartSummary!.editHistory.length > 0 && (
+          <div className={`pt-2.5 border-t space-y-2 ${isDark ? "border-neutral-800" : "border-[#E5E7EB]"}`}>
+            <span className="text-[10px] uppercase font-bold block" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
+              Restart Edit History
+            </span>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
+              {savedRestartSummary!.editHistory.slice().reverse().map((ed: any, eIdx: number) => (
+                <div
+                  key={ed.id || eIdx}
+                  className={`p-2.5 rounded-xl border text-[11px] space-y-1 ${
+                    isDark ? "bg-neutral-900/70 border-neutral-800 text-neutral-300" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                      Edited by {ed.editedByName || "Admin"}
+                    </span>
+                    <span className="font-mono text-[10px]" style={{ color: "#6B7280" }}>
+                      {safeFormatDate(ed.editedAt, "dd MMM yyyy, HH:mm", "")}
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
+                    <span>
+                      Restart: <strong>{safeFormatDate(ed.newValues?.restartDate, "dd MMM yyyy", "—")}</strong>
+                    </span>
+                    <span>
+                      Duration: <strong>{ed.newValues?.durationMinutes || 60}m</strong>
+                    </span>
+                    <span>
+                      Teacher: <strong>{ed.newValues?.teacherName || "Unassigned"}</strong>
+                    </span>
+                    <span>
+                      Days: <strong>{Array.isArray(ed.newValues?.days) ? ed.newValues.days.map((d: string) => `${d.slice(0, 3)} ${formatTime12h(ed.newValues?.dayTimings?.[d]?.startTime || ed.newValues?.timing?.startTime)}`).join(", ") : "—"}</strong>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   const handleToggleRestartDay = (day: string) => {
     setRestartDaysInput((prev) => {
@@ -1089,6 +1507,7 @@ export function StudentDetailsModal({
           <div>
             {/* Brand Header */}
             <div className="flex items-center gap-2.5 mb-6">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logicbox-logo.png"
                 alt="LogicBox"
@@ -1499,6 +1918,9 @@ export function StudentDetailsModal({
                   </div>
                 </div>
 
+                {/* Restart Details & Schedule Continuation Card (Always visible in Student Details) */}
+                {renderRestartDetailsCard("overview")}
+
                 {/* Middle Cards Row: Course Progress & Attendance */}
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                   {/* Course Progress Card */}
@@ -1688,196 +2110,6 @@ export function StudentDetailsModal({
                     )}
                   </div>
                 </div>
-
-                {/* Restart Details & Individual Class-Day Schedule Card */}
-                {savedRestartSummary && (
-                  <div
-                    className={`rounded-2xl border p-4 sm:p-5 space-y-3.5 ${
-                      isDark ? "bg-neutral-800/30 border-emerald-500/25" : "bg-[#FFFFFF] border-[#A7F3D0]"
-                    }`}
-                    style={!isDark ? { boxShadow: "0 1px 4px rgba(23, 23, 23, 0.04)" } : undefined}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b" style={{ borderColor: isDark ? "#262626" : "#E5E7EB" }}>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div
-                          className="w-8 h-8 rounded-lg border flex items-center justify-center shrink-0"
-                          style={
-                            isDark
-                              ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)" }
-                              : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0" }
-                          }
-                        >
-                          <RotateCcw className="w-4 h-4" style={{ color: isDark ? "#34D399" : "#047857" }} />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h3 className="text-sm font-bold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
-                              Restart Details
-                            </h3>
-                            <span
-                              className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
-                              style={
-                                savedRestartSummary.restartStatus === "Paused"
-                                  ? isDark
-                                    ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
-                                    : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
-                                  : isDark
-                                  ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
-                                  : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
-                              }
-                            >
-                              {savedRestartSummary.restartStatus}
-                            </span>
-                          </div>
-                          <p className="text-[11px]" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
-                            Active continuation schedule &amp; per-day start timings
-                          </p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {savedRestartSummary.editHistory.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setExpandedRestartEdits((prev) => ({
-                                ...prev,
-                                overview: !prev.overview,
-                              }))
-                            }
-                            className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-semibold flex items-center gap-1 cursor-pointer ${
-                              isDark
-                                ? "bg-neutral-900/70 border-neutral-700 text-neutral-300 hover:bg-neutral-800"
-                                : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563] hover:bg-[#F3F4F6]"
-                            }`}
-                          >
-                            <History className="w-3 h-3" />
-                            <span>Edits ({savedRestartSummary.editHistory.length})</span>
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={handleOpenEditRestartModal}
-                          className="px-3 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-opacity hover:opacity-90 cursor-pointer"
-                          style={
-                            isDark
-                              ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.35)", color: "#34D399" }
-                              : { backgroundColor: "#ECFDF5", borderColor: "#6EE7B7", color: "#047857" }
-                          }
-                        >
-                          <Edit2 className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
-                          <span>Edit</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 text-xs">
-                      <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Restart Date</span>
-                        <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
-                          {safeFormatDate(savedRestartSummary.restartDate, "dd MMM yyyy", "—")}
-                        </span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Class Duration</span>
-                        <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#FBBF24" : "#B45309" }}>
-                          {savedRestartSummary.durationMinutes} mins
-                        </span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Teacher</span>
-                        <span className="font-bold mt-0.5 block truncate" style={{ color: isDark ? "#FFFFFF" : "#171717" }} title={savedRestartSummary.teacherName}>
-                          {savedRestartSummary.teacherName}
-                        </span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Previous Schedule</span>
-                        <span className="font-bold mt-0.5 block" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }}>
-                          {savedRestartSummary.previousScheduleStatus}
-                        </span>
-                      </div>
-                      <div className={`p-2.5 rounded-xl border ${isDark ? "bg-neutral-900/60 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-semibold block" style={{ color: "#6B7280" }}>Restart Status</span>
-                        <span
-                          className="font-bold mt-0.5 block"
-                          style={{
-                            color: savedRestartSummary.restartStatus === "Paused"
-                              ? (isDark ? "#FBBF24" : "#B45309")
-                              : (isDark ? "#34D399" : "#047857"),
-                          }}
-                        >
-                          {savedRestartSummary.restartStatus}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* New Class Days & Independent Start Times */}
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] uppercase font-semibold tracking-wider block" style={{ color: "#6B7280" }}>
-                        New Class Days &amp; Individual Start Times ({savedRestartSummary.days.length} days)
-                      </span>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-                        {savedRestartSummary.days.map((day) => {
-                          const slot = savedRestartSummary.dayTimings[day];
-                          return (
-                            <div
-                              key={day}
-                              className={`px-3 py-2 rounded-xl border flex items-center justify-between gap-2 text-xs ${
-                                isDark ? "bg-neutral-900/70 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"
-                              }`}
-                            >
-                              <span className="font-bold" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>{day}</span>
-                              <span className="font-mono text-[11px] font-semibold" style={{ color: isDark ? "#34D399" : "#047857" }}>
-                                {slot ? `${formatTime12h(slot.startTime)}` : "—"}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-
-                    {expandedRestartEdits.overview && savedRestartSummary.editHistory.length > 0 && (
-                      <div className={`pt-2.5 border-t space-y-2 ${isDark ? "border-neutral-800" : "border-[#E5E7EB]"}`}>
-                        <span className="text-[10px] uppercase font-bold block" style={{ color: isDark ? "#9CA3AF" : "#4B5563" }}>
-                          Restart Edit History
-                        </span>
-                        <div className="space-y-1.5 max-h-40 overflow-y-auto custom-scrollbar">
-                          {savedRestartSummary.editHistory.slice().reverse().map((ed: any, eIdx: number) => (
-                            <div
-                              key={ed.id || eIdx}
-                              className={`p-2.5 rounded-xl border text-[11px] space-y-1 ${
-                                isDark ? "bg-neutral-900/70 border-neutral-800 text-neutral-300" : "bg-[#F9FAFB] border-[#E5E7EB] text-[#4B5563]"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
-                                  Edited by {ed.editedByName || "Admin"}
-                                </span>
-                                <span className="font-mono text-[10px]" style={{ color: "#6B7280" }}>
-                                  {safeFormatDate(ed.editedAt, "dd MMM yyyy, HH:mm", "")}
-                                </span>
-                              </div>
-                              <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[10px]">
-                                <span>
-                                  Restart: <strong>{safeFormatDate(ed.newValues?.restartDate, "dd MMM yyyy", "—")}</strong>
-                                </span>
-                                <span>
-                                  Duration: <strong>{ed.newValues?.durationMinutes || 60}m</strong>
-                                </span>
-                                <span>
-                                  Teacher: <strong>{ed.newValues?.teacherName || "Unassigned"}</strong>
-                                </span>
-                                <span>
-                                  Days: <strong>{Array.isArray(ed.newValues?.days) ? ed.newValues.days.map((d: string) => `${d.slice(0, 3)} ${formatTime12h(ed.newValues?.dayTimings?.[d]?.startTime || ed.newValues?.timing?.startTime)}`).join(", ") : "—"}</strong>
-                                </span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
 
                 {/* Bottom Row: Academic History & Recent Activity + Action Buttons */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
@@ -2490,6 +2722,9 @@ export function StudentDetailsModal({
                           />
                         </div>
                       </div>
+
+                      {/* Restart Details & Continuation Schedule Card inside Course Progress */}
+                      {renderRestartDetailsCard("progress")}
 
                       {/* Live Level Classes list & Extra Class Action */}
                       <div className="pt-2">
@@ -3400,6 +3635,7 @@ export function StudentDetailsModal({
                 )}
 
                 {/* Fees & Payment Summary Section */}
+                {canViewPayments && (
                 <div className="space-y-4">
             <div className="flex items-center justify-between px-1">
               <div className={`flex items-center gap-2 font-semibold text-sm uppercase tracking-widest ${isDark ? "text-neutral-400" : "text-[#4B5563]"}`}>
@@ -3616,6 +3852,7 @@ export function StudentDetailsModal({
               </div>
             )}
                 </div>
+                )}
               </div>
             )}
           </div>
@@ -3741,37 +3978,6 @@ export function StudentDetailsModal({
                 </select>
               </div>
 
-              {/* Class Timings */}
-              <div>
-                <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>Class Timings</span>
-                  </span>
-                  <span className="text-[10px] text-emerald-400 font-medium">Start & End</span>
-                </label>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <span className="text-[10px] text-neutral-400 block mb-1">Start Time</span>
-                    <input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                    />
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-neutral-400 block mb-1">End Time</span>
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
-                    />
-                  </div>
-                </div>
-              </div>
-
               {/* Days of the Week */}
               <div>
                 <label className="block text-[11px] font-semibold text-neutral-300 uppercase tracking-wider mb-1.5 flex items-center justify-between">
@@ -3784,7 +3990,7 @@ export function StudentDetailsModal({
                   </span>
                 </label>
                 <div className="flex flex-wrap gap-1.5">
-                  {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map((day) => {
+                  {WEEKDAY_ORDER.map((day) => {
                     const isSelected = selectedDays.includes(day);
                     return (
                       <button
@@ -3793,11 +3999,23 @@ export function StudentDetailsModal({
                         onClick={() => {
                           if (isSelected) {
                             setSelectedDays(selectedDays.filter((d) => d !== day));
+                            setNextLevelDayTimings((prev) => {
+                              const next = { ...prev };
+                              delete next[day];
+                              return next;
+                            });
                           } else {
-                            setSelectedDays([...selectedDays, day]);
+                            setSelectedDays(WEEKDAY_ORDER.filter((d) => d === day || selectedDays.includes(d)));
+                            setNextLevelDayTimings((prev) => ({
+                              ...prev,
+                              [day]: prev[day] || {
+                                startTime: startTime || "09:00",
+                                endTime: endTime || computeEndTime(startTime || "09:00", 60),
+                              },
+                            }));
                           }
                         }}
-                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all ${isSelected
+                        className={`text-[11px] px-2.5 py-1 rounded-lg border transition-all cursor-pointer ${isSelected
                             ? "bg-emerald-500 text-black border-emerald-400 font-bold shadow-sm"
                             : "bg-neutral-800/80 text-neutral-400 border-neutral-700 hover:text-white"
                           }`}
@@ -3807,6 +4025,190 @@ export function StudentDetailsModal({
                     );
                   })}
                 </div>
+              </div>
+
+              {/* Class Timings (Same or Different Per Day) */}
+              <div className="space-y-2.5 bg-neutral-800/40 border border-neutral-800 rounded-xl p-3.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-1.5">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Class Schedule Timing</span>
+                  </label>
+                  <span className="text-[10px] text-emerald-400 font-medium">
+                    {nextLevelTimeMode === "different" ? "Different Per Day" : "Same Every Day"}
+                  </span>
+                </div>
+
+                {/* Mode Switcher */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 p-1 bg-neutral-900/80 rounded-xl border border-neutral-700/70">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fallbackEnd = endTime || computeEndTime(startTime || "09:00", 60);
+                      const synced: Record<string, { startTime: string; endTime: string }> = {};
+                      selectedDays.forEach((d) => {
+                        synced[d] = { startTime: startTime || "09:00", endTime: fallbackEnd };
+                      });
+                      setNextLevelDayTimings(synced);
+                      setNextLevelTimeMode("same");
+                    }}
+                    className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      nextLevelTimeMode === "same"
+                        ? "bg-emerald-500 text-black font-bold shadow-sm"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    <Clock className="w-3.5 h-3.5" />
+                    <span>Same time for all days</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setNextLevelDayTimings((prev) => {
+                        const updated = { ...prev };
+                        selectedDays.forEach((d) => {
+                          if (!updated[d]?.startTime) {
+                            updated[d] = {
+                              startTime: startTime || "09:00",
+                              endTime: endTime || computeEndTime(startTime || "09:00", 60),
+                            };
+                          }
+                        });
+                        return updated;
+                      });
+                      setNextLevelTimeMode("different");
+                    }}
+                    className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      nextLevelTimeMode === "different"
+                        ? "bg-emerald-500 text-black font-bold shadow-sm"
+                        : "text-neutral-400 hover:text-white"
+                    }`}
+                  >
+                    <Sliders className="w-3.5 h-3.5" />
+                    <span>Different time for each day</span>
+                  </button>
+                </div>
+
+                {nextLevelTimeMode === "same" ? (
+                  <div className="space-y-1.5">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[10px] text-neutral-400 flex items-center justify-between mb-1">
+                          <span>Start Time</span>
+                          <span className="text-emerald-400 font-semibold">{formatTime12h(startTime)}</span>
+                        </span>
+                        <input
+                          type="time"
+                          value={startTime}
+                          onChange={(e) => {
+                            const newStart = e.target.value;
+                            const durMins = inferDurationMins(startTime, endTime);
+                            const newEnd = computeEndTime(newStart, durMins);
+                            setStartTime(newStart);
+                            setEndTime(newEnd);
+                            const synced: Record<string, { startTime: string; endTime: string }> = {};
+                            selectedDays.forEach((d) => {
+                              synced[d] = { startTime: newStart, endTime: newEnd };
+                            });
+                            setNextLevelDayTimings(synced);
+                          }}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                        />
+                      </div>
+                      <div>
+                        <span className="text-[10px] text-neutral-400 flex items-center justify-between mb-1">
+                          <span>End Time</span>
+                          <span className="text-neutral-300 font-semibold">{formatTime12h(endTime)}</span>
+                        </span>
+                        <input
+                          type="time"
+                          value={endTime}
+                          onChange={(e) => {
+                            const newEnd = e.target.value;
+                            setEndTime(newEnd);
+                            const synced: Record<string, { startTime: string; endTime: string }> = {};
+                            selectedDays.forEach((d) => {
+                              synced[d] = { startTime: startTime || "09:00", endTime: newEnd };
+                            });
+                            setNextLevelDayTimings(synced);
+                          }}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2 text-xs text-white outline-none focus:border-emerald-500 transition-all font-mono"
+                        />
+                      </div>
+                    </div>
+                    {selectedDays.length > 0 && (
+                      <p className="text-[10px] text-neutral-400">
+                        Applies to: <span className="text-white font-medium">{selectedDays.join(", ")}</span> at{" "}
+                        <span className="text-emerald-400 font-semibold">{formatTime12h(startTime)} – {formatTime12h(endTime)}</span>
+                      </p>
+                    )}
+                  </div>
+                ) : selectedDays.length === 0 ? (
+                  <p className="text-[11px] text-neutral-400 text-center py-2">
+                    Select one or more Days of Week above to configure different timings per day.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-52 overflow-y-auto pr-1 custom-scrollbar">
+                    {WEEKDAY_ORDER.filter((day) => selectedDays.includes(day)).map((day) => {
+                      const dTiming = nextLevelDayTimings[day] || {
+                        startTime: startTime || "09:00",
+                        endTime: endTime || computeEndTime(startTime || "09:00", 60),
+                      };
+                      return (
+                        <div
+                          key={day}
+                          className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 rounded-xl bg-neutral-900/80 border border-neutral-700/70"
+                        >
+                          <div className="flex items-center gap-2 min-w-[100px]">
+                            <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[11px] font-bold min-w-[82px] text-center">
+                              {day}
+                            </span>
+                            <span className="text-[10px] text-neutral-400 whitespace-nowrap sm:hidden">
+                              {formatTime12h(dTiming.startTime)} – {formatTime12h(dTiming.endTime)}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+                            <input
+                              type="time"
+                              value={dTiming.startTime || "09:00"}
+                              aria-label={`${day} next level start time`}
+                              onChange={(e) => {
+                                const newStart = e.target.value;
+                                const durMins = inferDurationMins(dTiming.startTime, dTiming.endTime);
+                                const newEnd = computeEndTime(newStart, durMins);
+                                setNextLevelDayTimings((prev) => ({
+                                  ...prev,
+                                  [day]: { startTime: newStart, endTime: newEnd },
+                                }));
+                              }}
+                              className="bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-emerald-500 font-mono"
+                            />
+                            <span className="text-[10px] text-neutral-500">to</span>
+                            <input
+                              type="time"
+                              value={dTiming.endTime || computeEndTime(dTiming.startTime || "09:00", 60)}
+                              aria-label={`${day} next level end time`}
+                              onChange={(e) => {
+                                const newEnd = e.target.value;
+                                setNextLevelDayTimings((prev) => ({
+                                  ...prev,
+                                  [day]: {
+                                    startTime: dTiming.startTime || startTime || "09:00",
+                                    endTime: newEnd,
+                                  },
+                                }));
+                              }}
+                              className="bg-neutral-800 border border-neutral-700 rounded-lg px-2 py-1 text-[11px] text-white outline-none focus:border-emerald-500 font-mono"
+                            />
+                            <span className="hidden sm:inline text-[10px] text-emerald-400 font-medium whitespace-nowrap ml-1">
+                              {formatTime12h(dTiming.startTime)}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Classroom / Meeting Link */}
@@ -4152,15 +4554,27 @@ export function StudentDetailsModal({
                   type="button"
                   onClick={() => {
                     const finalLevel = selectedLevel || getNextLevelSuggestion();
+                    const orderedSelected = WEEKDAY_ORDER.filter((d) => selectedDays.includes(d));
+                    const finalDays = orderedSelected.length > 0 ? orderedSelected : ["Monday", "Wednesday", "Friday"];
+                    const fallbackStart = startTime || "09:00";
+                    const fallbackEnd = endTime || computeEndTime(fallbackStart, 60);
+                    const preparedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+                    finalDays.forEach((day) => {
+                      const entry = nextLevelTimeMode === "different" ? nextLevelDayTimings[day] : undefined;
+                      const dStart = entry?.startTime || fallbackStart;
+                      const dEnd = entry?.endTime || (entry?.startTime ? computeEndTime(entry.startTime, inferDurationMins(fallbackStart, fallbackEnd)) : fallbackEnd);
+                      preparedDayTimings[day] = { startTime: dStart, endTime: dEnd };
+                    });
+                    const primaryTiming = preparedDayTimings[finalDays[0]] || { startTime: fallbackStart, endTime: fallbackEnd };
+
                     advanceLevelMutation.mutate({
                       level: finalLevel,
                       numberOfClasses: Math.max(1, Number(numberOfClasses) || 15),
                       teacherId: selectedTeacher === "__unassigned__" ? null : (selectedTeacher || undefined),
-                      timing: {
-                        startTime: startTime || "09:00",
-                        endTime: endTime || "10:00",
-                      },
-                      days: selectedDays.length > 0 ? selectedDays : ["Monday", "Wednesday", "Friday"],
+                      timing: primaryTiming,
+                      timeMode: nextLevelTimeMode,
+                      dayTimings: preparedDayTimings,
+                      days: finalDays,
                       meetingLink: meetingLink || undefined,
                       startDate: startDate || format(new Date(), "yyyy-MM-dd"),
                       paymentDetails: recordNextLevelPayment ? {
@@ -4935,7 +5349,7 @@ export function StudentDetailsModal({
               initial={{ scale: 0.95, opacity: 0, y: 10 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.95, opacity: 0, y: 10 }}
-              className={`border rounded-2xl p-5 sm:p-6 w-full max-w-lg shadow-2xl relative space-y-4 max-h-[92vh] overflow-y-auto ${
+              className={`border rounded-2xl p-5 sm:p-6 w-full max-w-xl shadow-2xl relative space-y-4 max-h-[92vh] overflow-y-auto ${
                 isDark ? "bg-neutral-900 border-emerald-500/30" : "bg-[#FFFFFF] border-[#E5E7EB]"
               }`}
             >
@@ -4998,6 +5412,134 @@ export function StudentDetailsModal({
                       ? "Only affected upcoming regular sessions are updated or recalculated. Completed class records stay untouched."
                       : `Previous schedules move to Archived History (never deleted) and ${currentRemainingCount} remaining class(es) will be scheduled from your selected restart date.`}
                   </p>
+                </div>
+
+                {/* Already Marked Class Records Summary */}
+                <div
+                  className={`rounded-xl border overflow-hidden ${
+                    isDark ? "bg-neutral-900/70 border-neutral-800" : "bg-[#F9FAFB] border-[#E5E7EB]"
+                  }`}
+                >
+                  <div
+                    className={`px-3 py-2 border-b flex flex-wrap items-center justify-between gap-2 ${
+                      isDark ? "border-neutral-800 bg-neutral-800/40" : "border-[#E5E7EB] bg-[#FFFFFF]"
+                    }`}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" style={{ color: isDark ? "#34D399" : "#047857" }} />
+                      <span className="text-[11px] font-bold uppercase tracking-wider" style={{ color: isDark ? "#E5E7EB" : "#171717" }}>
+                        Already Marked Class Records ({alreadyMarkedRecords.length})
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span
+                        className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                        style={
+                          isDark
+                            ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                            : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                        }
+                      >
+                        {markedCompletedListCount} Completed
+                      </span>
+                      {verifiedPreCompletedGap > 0 && (
+                        <span
+                          className="px-2 py-0.5 rounded-full text-[10px] font-bold border"
+                          style={
+                            isDark
+                              ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                              : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                          }
+                        >
+                          +{verifiedPreCompletedGap} Verified Pre-Completed
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {alreadyMarkedRecords.length > 0 ? (
+                    <div className="max-h-44 overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-left text-[11px]">
+                        <thead
+                          style={{
+                            backgroundColor: isDark ? "rgba(23, 23, 23, 0.7)" : "#F3F4F6",
+                            color: isDark ? "#9CA3AF" : "#4B5563",
+                          }}
+                        >
+                          <tr>
+                            <th className="py-1.5 px-2.5 font-semibold">Class</th>
+                            <th className="py-1.5 px-2.5 font-semibold">Date</th>
+                            <th className="py-1.5 px-2 font-semibold">Status</th>
+                            <th className="py-1.5 px-2.5 font-semibold">Teacher</th>
+                            <th className="py-1.5 px-2.5 font-semibold">Topic / Notes</th>
+                          </tr>
+                        </thead>
+                        <tbody className={`divide-y ${isDark ? "divide-neutral-800" : "divide-[#E5E7EB]"}`}>
+                          {alreadyMarkedRecords.map((rec: any, rIdx: number) => {
+                            const rowTeacher =
+                              rec.completedByName ||
+                              rec.teacherName ||
+                              getTeacherName(rec.completedBy) ||
+                              getTeacherName(rec.replacementTeacher) ||
+                              getTeacherName(rec.teacher) ||
+                              currentTeacherName;
+                            const classTag = rec.isExtraClass
+                              ? "Extra"
+                              : rec.sessionNumber
+                              ? `Class ${rec.sessionNumber}`
+                              : `Class ${rIdx + 1}`;
+                            return (
+                              <tr key={rec._id || rIdx} className={isDark ? "hover:bg-neutral-800/30" : "hover:bg-[#FFFFFF]"}>
+                                <td className="py-1.5 px-2.5 whitespace-nowrap font-semibold" style={{ color: isDark ? "#FFFFFF" : "#171717" }}>
+                                  {classTag}
+                                </td>
+                                <td className="py-1.5 px-2.5 whitespace-nowrap" style={{ color: isDark ? "#D4D4D4" : "#374151" }}>
+                                  {safeFormatDate(rec.date, "dd MMM yyyy", "Session")}
+                                  {rec.startTime ? (
+                                    <span className="ml-1 font-mono text-[10px]" style={{ color: "#6B7280" }}>
+                                      {formatTime12h(rec.startTime)}
+                                    </span>
+                                  ) : null}
+                                </td>
+                                <td className="py-1.5 px-2 whitespace-nowrap">
+                                  <span
+                                    className="px-1.5 py-0.5 rounded-full text-[10px] font-bold border"
+                                    style={
+                                      rec.status === "Completed" && !rec._isExplicitAbsent
+                                        ? isDark
+                                          ? { backgroundColor: "rgba(16, 185, 129, 0.15)", borderColor: "rgba(16, 185, 129, 0.3)", color: "#34D399" }
+                                          : { backgroundColor: "#ECFDF5", borderColor: "#A7F3D0", color: "#047857" }
+                                        : rec.status === "Cancelled" || rec._isExplicitAbsent
+                                        ? isDark
+                                          ? { backgroundColor: "rgba(239, 68, 68, 0.15)", borderColor: "rgba(239, 68, 68, 0.3)", color: "#F87171" }
+                                          : { backgroundColor: "#FEF2F2", borderColor: "#FECACA", color: "#B91C1C" }
+                                        : isDark
+                                        ? { backgroundColor: "rgba(245, 158, 11, 0.15)", borderColor: "rgba(245, 158, 11, 0.3)", color: "#FBBF24" }
+                                        : { backgroundColor: "#FFF7E6", borderColor: "#FDE68A", color: "#B45309" }
+                                    }
+                                  >
+                                    {rec._isExplicitAbsent ? "Completed · Absent" : rec.status === "Scheduled" ? "Present" : rec.status}
+                                  </span>
+                                </td>
+                                <td className="py-1.5 px-2.5 whitespace-nowrap truncate max-w-[110px]" style={{ color: isDark ? "#D4D4D4" : "#4B5563" }} title={rowTeacher}>
+                                  {rowTeacher}
+                                </td>
+                                <td className="py-1.5 px-2.5 truncate max-w-[140px]" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }} title={rec.subject || rec.notes || ""}>
+                                  {rec.subject || rec.notes || "—"}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <div className="px-3 py-2.5 text-[11px]" style={{ color: isDark ? "#9CA3AF" : "#6B7280" }}>
+                      {verifiedPreCompletedGap > 0
+                        ? `${verifiedPreCompletedGap} verified pre-completed class(es) from student batch progress will be preserved on restart.`
+                        : `No classes have been marked Completed, Absent, or Cancelled yet — all ${currentClassesNeeded} sessions will be scheduled from your selected restart date.`}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

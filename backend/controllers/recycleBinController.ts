@@ -2,6 +2,20 @@ import { Response } from 'express';
 import { AuthRequest } from '../middleware/authMiddleware';
 import RecycleBin from '../models/RecycleBin';
 
+const sanitizeBinItemForClient = (item: any) => {
+  if (!item || typeof item !== 'object') return item;
+  const copy: any = { ...item };
+  if (copy.itemData && typeof copy.itemData === 'object') {
+    const { password: _p, tempPassword: _tp, resetPasswordToken: _rt, verificationToken: _vt, ...safeData } = copy.itemData;
+    copy.itemData = safeData;
+  }
+  if (copy.associatedData?.user && typeof copy.associatedData.user === 'object') {
+    const { password: _p, tempPassword: _tp, resetPasswordToken: _rt, verificationToken: _vt, ...safeUser } = copy.associatedData.user;
+    copy.associatedData = { ...copy.associatedData, user: safeUser };
+  }
+  return copy;
+};
+
 // @desc    Get all items in Recycle Bin
 // @route   GET /bin
 // @access  Private (Admin, Sub Admin)
@@ -16,7 +30,7 @@ export const getBinItems = async (req: AuthRequest, res: Response): Promise<void
       status: (status as any) || 'in_bin',
     });
 
-    res.json(items);
+    res.json(items.map(sanitizeBinItemForClient));
   } catch (error: any) {
     console.error('Get bin items error:', error.message);
     res.status(500).json({ message: 'Failed to retrieve bin items', error: error.message });

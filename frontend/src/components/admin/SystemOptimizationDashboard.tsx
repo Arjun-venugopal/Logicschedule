@@ -27,7 +27,6 @@ import {
   Check,
   Eye,
   Code,
-  Terminal,
 } from "lucide-react";
 
 interface CacheStats {
@@ -823,44 +822,14 @@ export default function SystemOptimizationDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
-                {((auditData?.codeAudit && auditData.codeAudit.length > 0) ? auditData.codeAudit : [
-                  {
-                    id: "code-1",
-                    file: "backend/utils/attendanceHelper.ts:270",
-                    name: "startScheduleAutoCompleter",
-                    status: "4. Confirmed unused and safe to remove",
-                    safeToRemove: true,
-                    preview: "export function startScheduleAutoCompleter(_intervalMs: number = 60_000): any {\n  return null;\n}",
-                    details: "Returns null stub; unreferenced across all application routes and background workers."
-                  },
-                  {
-                    id: "code-2",
-                    file: "backend/utils/scheduleHelper.ts:183",
-                    name: "indexSchedulesByTeacherAndDate",
-                    status: "4. Confirmed unused and safe to remove",
-                    safeToRemove: true,
-                    preview: "export function indexSchedulesByTeacherAndDate(schedules: any[]): Map<string, any[]> {\n  const map = new Map<string, any[]>();\n  for (const s of schedules) { ... }\n  return map;\n}",
-                    details: "Exported indexer function never imported or invoked by any controller or route."
-                  },
-                  {
-                    id: "code-3",
-                    file: "backend/utils/attendanceHelper.ts:163",
-                    name: "autoCompletePastSchedules",
-                    status: "3. Potentially unused — requires verification",
-                    safeToRemove: false,
-                    preview: "export async function autoCompletePastSchedules(force: boolean = false): Promise<number>",
-                    details: "Documented in CODE_OPTIMIZATION.md; runtime schedule integrity is handled directly during batch saves."
-                  },
-                  {
-                    id: "code-4",
-                    file: "frontend/src/lib/utils.ts",
-                    name: "formatTime12h, getSafeDateOnly, extractLevel, computeEndTime",
-                    status: "1. Active and required",
-                    safeToRemove: false,
-                    preview: "export function formatTime12h(...) \nexport function getSafeDateOnly(...) \nexport function extractLevel(...)",
-                    details: "Unified duplicate time and date formats across components into a single source of truth."
-                  }
-                ]).map((item: any, idx: number) => {
+                {(auditData?.codeAudit || []).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 px-3 text-center text-neutral-500">
+                      {isAuditing ? "Scanning codebase..." : "Run Live Code Audit to inspect repository symbols."}
+                    </td>
+                  </tr>
+                )}
+                {(auditData?.codeAudit || []).map((item: any, idx: number) => {
                   const isSafe = item.safeToRemove;
                   const isCandidate = item.status?.includes("Candidate") || item.status?.includes("Confirmed unused");
                   return (
@@ -979,58 +948,14 @@ export default function SystemOptimizationDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
-                {((auditData?.dependencyAudit && auditData.dependencyAudit.length > 0) ? auditData.dependencyAudit : [
-                  {
-                    id: "dep-1",
-                    package: "@supabase/supabase-js",
-                    location: "backend",
-                    classification: "1. Active and required",
-                    safeToRemove: false,
-                    details: "Used for all database operations and BaseModel query execution."
-                  },
-                  {
-                    id: "dep-2",
-                    package: "bcrypt, jsonwebtoken",
-                    location: "backend",
-                    classification: "1. Active and required",
-                    safeToRemove: false,
-                    details: "Password hashing, JWT generation and session authorization."
-                  },
-                  {
-                    id: "dep-3",
-                    package: "compression, helmet",
-                    location: "backend",
-                    classification: "1. Active and required",
-                    safeToRemove: false,
-                    details: "HTTP response gzip compression and security headers."
-                  },
-                  {
-                    id: "dep-4",
-                    package: "xlsx, zod, multer",
-                    location: "backend",
-                    classification: "1. Active and required",
-                    safeToRemove: false,
-                    details: "Bulk student Excel imports, input validation schemas, and file uploads."
-                  },
-                  {
-                    id: "dep-5",
-                    package: "socket.io-client",
-                    location: "frontend",
-                    classification: "4. Confirmed unused and safe to remove",
-                    safeToRemove: true,
-                    preview: "npm uninstall socket.io-client --prefix frontend",
-                    details: "Frontend uses TanStack Query; package is not imported anywhere in frontend/src."
-                  },
-                  {
-                    id: "dep-6",
-                    package: "@supabase/ssr",
-                    location: "root",
-                    classification: "4. Confirmed unused and safe to remove",
-                    safeToRemove: true,
-                    preview: "npm uninstall @supabase/ssr",
-                    details: "Root workspace does not use direct Supabase SSR imports."
-                  }
-                ]).map((item: any, idx: number) => {
+                {(auditData?.dependencyAudit || []).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 px-3 text-center text-neutral-500">
+                      {isAuditing ? "Scanning workspace packages..." : "Run Package Audit to inspect workspace dependencies."}
+                    </td>
+                  </tr>
+                )}
+                {(auditData?.dependencyAudit || []).map((item: any, idx: number) => {
                   const isSafe = item.safeToRemove;
                   const isUnused = item.classification?.includes("Confirmed unused") || item.classification?.includes("Unused Candidate");
                   return (
@@ -1173,56 +1098,14 @@ export default function SystemOptimizationDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
-                {((auditData?.sqlAudit && auditData.sqlAudit.length > 0) ? auditData.sqlAudit : [
-                  {
-                    id: "sql-1",
-                    object: "pgcrypto",
-                    type: "Extension",
-                    schema: "public",
-                    classification: "1. Active and required",
-                    details: "Generates UUIDs (gen_random_uuid()) for table primary keys. Essential."
-                  },
-                  {
-                    id: "sql-2",
-                    object: "Core Tables (users, teachers, batches, students)",
-                    type: "Tables",
-                    schema: "public",
-                    classification: "1. Active and required",
-                    details: "Core entity tables with B-Tree indexes on email, role, teacher, batch, and status."
-                  },
-                  {
-                    id: "sql-3",
-                    object: "Session Tables (schedules, demoSlots, demos, demoReports)",
-                    type: "Tables",
-                    schema: "public",
-                    classification: "1. Active and required",
-                    details: "Class schedules, attendance, demo bookings, and feedback reporting."
-                  },
-                  {
-                    id: "sql-4",
-                    object: "Financial & Bin Tables (payments, recycle_bin)",
-                    type: "Tables",
-                    schema: "public",
-                    classification: "1. Active and required",
-                    details: "Payment history records, fee tracking, and soft-delete recovery bin."
-                  },
-                  {
-                    id: "sql-5",
-                    object: "19 B-Tree Indexes",
-                    type: "Indexes",
-                    schema: "public",
-                    classification: "1. Active and required",
-                    details: "Covering foreign keys and query filters. Zero redundant or duplicate indexes found."
-                  },
-                  {
-                    id: "sql-6",
-                    object: "Database RPC / Stored Procedures / Triggers",
-                    type: "Procedures",
-                    schema: "public",
-                    classification: "Clean Architecture",
-                    details: "Zero orphan stored procedures or unmonitored database triggers."
-                  }
-                ]).map((item: any, idx: number) => (
+                {(auditData?.sqlAudit || []).length === 0 && (
+                  <tr>
+                    <td colSpan={5} className="py-6 px-3 text-center text-neutral-500">
+                      {isAuditing ? "Auditing SQL schema..." : "Run Database Audit to inspect Supabase PostgreSQL schema status."}
+                    </td>
+                  </tr>
+                )}
+                {(auditData?.sqlAudit || []).map((item: any, idx: number) => (
                   <tr key={item.id || idx} className="hover:bg-neutral-800/30 transition-colors">
                     <td className="py-2.5 px-3 font-mono text-emerald-400 font-semibold">
                       {item.object}

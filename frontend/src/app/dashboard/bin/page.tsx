@@ -77,7 +77,7 @@ export default function RecycleBinPage() {
   const { searchQuery: globalSearch, setSearchQuery: setGlobalSearch } = useSearchStore();
 
   useEffect(() => {
-    if (globalSearch !== undefined && globalSearch !== searchQuery) {
+    if (globalSearch !== undefined) {
       setSearchQuery(globalSearch);
     }
   }, [globalSearch]);

@@ -1511,10 +1511,19 @@ export const getDemoSessionPayment = async (req: Request, res: Response): Promis
 // @access  Private
 export const getPaymentNotifications = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const rawPayments = await Payment.safeFind({});
-    const students = await Student.find({});
-    const batches = await Batch.find({});
-    const completedSchedules = await Schedule.find({ status: 'Completed' });
+    const cacheKey = 'payments_notifications';
+    const cached = serverCache.get(cacheKey);
+    if (cached) {
+      res.json(cached);
+      return;
+    }
+
+    const [rawPayments, students, batches, completedSchedules] = await Promise.all([
+      Payment.safeFind({}),
+      Student.find({}).select('_id name batch payment'),
+      Batch.find({}).select('_id subject name numberOfSessions preCompletedClasses'),
+      Schedule.find({ status: 'Completed' }).select('_id batch status'),
+    ]);
 
     const batchCompletedCount = new Map<string, number>();
     for (const sch of completedSchedules) {
@@ -1607,10 +1616,12 @@ export const getPaymentNotifications = async (_req: Request, res: Response): Pro
       }
     }
 
-    res.json({
+    const payload = {
       count: notifications.length,
       notifications,
-    });
+    };
+    serverCache.set(cacheKey, payload, 30_000);
+    res.json(payload);
   } catch (error: any) {
     console.error('Get payment notifications error:', error);
     res.status(500).json({ message: error.message || 'Error fetching notifications' });

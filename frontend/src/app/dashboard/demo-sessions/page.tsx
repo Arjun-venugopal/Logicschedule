@@ -274,7 +274,7 @@ export default function DemoSessionsPage() {
   });
 
   const { data: salesPeople = [] } = useQuery<any[]>({
-    queryKey: ["salesPeople"],
+    queryKey: ["sales-people"],
     queryFn: async () => (await api.get("/sales-people")).data,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -313,7 +313,17 @@ export default function DemoSessionsPage() {
           message: error.response.data.message || "This student is already registered for a demo session. Do you want to view the existing record?",
           matches: error.response.data.matches,
           isPotentialSibling: !!error.response.data.isPotentialSibling,
-          pendingPayload: error.config?.data ? JSON.parse(error.config.data) : null,
+          pendingPayload: error.config?.data
+            ? typeof error.config.data === "string"
+              ? (() => {
+                  try {
+                    return JSON.parse(error.config.data);
+                  } catch {
+                    return null;
+                  }
+                })()
+              : error.config.data
+            : null,
         });
       }
     },

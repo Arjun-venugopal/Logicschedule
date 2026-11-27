@@ -25,7 +25,6 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  Phone,
   MessageSquare,
   Copy,
   Check,
@@ -144,11 +143,14 @@ export default function PaymentsPage() {
 
   // Sync with top navbar global search query
   useEffect(() => {
-    if (searchQuery !== undefined && searchQuery !== search) {
-      setSearch(searchQuery);
-      if (searchQuery.trim() && activeTab === "overview") {
-        setActiveTab("records");
-      }
+    if (searchQuery !== undefined) {
+      setSearch((prev) => {
+        if (prev === searchQuery) return prev;
+        if (searchQuery.trim()) {
+          setActiveTab((tab) => (tab === "overview" ? "records" : tab));
+        }
+        return searchQuery;
+      });
     }
   }, [searchQuery]);
 
@@ -204,9 +206,9 @@ export default function PaymentsPage() {
     refetchInterval: 30_000,
   });
 
-  const payments = data?.payments || [];
+  const payments = useMemo(() => data?.payments || [], [data?.payments]);
   const salesExecutives: string[] = data?.salesExecutives || [];
-  const salespersonRanking = data?.salespersonRanking || [];
+  const salespersonRanking = useMemo(() => data?.salespersonRanking || [], [data?.salespersonRanking]);
   const monthlyPendingBySalesperson = data?.monthlyPendingBySalesperson || [];
   const monthlyTrend = data?.monthlyTrend || [];
   const kpis = data?.kpis || {

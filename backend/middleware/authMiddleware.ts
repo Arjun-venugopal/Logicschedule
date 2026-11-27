@@ -58,6 +58,20 @@ export const admin = (req: AuthRequest, res: Response, next: NextFunction): void
   }
 };
 
+export const authorizeRoles = (...allowedRoles: string[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({ message: 'Not authorized' });
+      return;
+    }
+    if (allowedRoles.includes(req.user.role)) {
+      next();
+      return;
+    }
+    res.status(403).json({ message: 'Forbidden: Role does not have access to this resource' });
+  };
+};
+
 export const permissionCheck = (module: string, accessType: 'read' | 'write') => {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     if (!req.user) {

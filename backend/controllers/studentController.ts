@@ -202,11 +202,15 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
       createdStudents = newStudentsToInsert.length;
     }
 
-    for (const [bId, inc] of batchCountIncrements.entries()) {
-      if (inc > 0) {
-        await Batch.findByIdAndUpdate(bId, { $inc: { studentsCount: inc } });
-      }
-    }
+    const batchUpdates = Array.from(batchCountIncrements.entries())
+      .filter(([, inc]) => inc > 0)
+      .map(([bId, inc]) => Batch.findByIdAndUpdate(bId, { $inc: { studentsCount: inc } }));
+    await Promise.all(batchUpdates);
+
+    serverCache.clearPattern('students_');
+    serverCache.clearPattern('batches_');
+    serverCache.clearPattern('stats_');
+    deleteDiskCache('students_all');
 
     res.status(200).json({
       message: `Successfully processed: ${createdStudents} new students added, ${advancedStudents} students moved to next level/batch.`
@@ -547,7 +551,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor, status } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
     const trimmedName = name.trim();
 
     // 1. Check if already enrolled in this exact batch
@@ -722,7 +726,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       res.status(400).json({ message: 'Validation failed', errors: parsed.error.issues });
       return;
     }
-    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor, status } = parsed.data;
+    const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor } = parsed.data;
     const studentId = req.params.id as string;
 
     const student = await Student.findById(studentId);
@@ -952,6 +956,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       if (newStatus === 'Dropped') {
         if (targetBatchId) {
           const upcomingSchedules = await Schedule.find({ batch: targetBatchId, status: 'Scheduled' });
+          const dirtyScheds: any[] = [];
           for (const sched of upcomingSchedules) {
             if (Array.isArray(sched.attendance)) {
               const filtered = sched.attendance.filter(
@@ -959,9 +964,12 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
               );
               if (filtered.length !== sched.attendance.length) {
                 sched.attendance = filtered;
-                await sched.save();
+                dirtyScheds.push(sched);
               }
             }
+          }
+          for (let i = 0; i < dirtyScheds.length; i += 10) {
+            await Promise.all(dirtyScheds.slice(i, i + 10).map((s: any) => s.save()));
           }
 
           const otherActiveStudents = await Student.find({
@@ -1039,6 +1047,9 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       numberOfClasses,
       teacherId,
       timing,
+      timeMode,
+      dayTimings,
+      durationMinutes,
       days,
       meetingLink,
       startDate,
@@ -1155,12 +1166,17 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       const targetTeacherId = isExplicitUnassigned
         ? undefined
         : (teacherId || oldTeacherId || student.assignedTutor || undefined);
-      const targetDays = (days && Array.isArray(days) && days.length > 0)
+      const requestedDays = (days && Array.isArray(days) && days.length > 0)
         ? days
         : (oldBatchDoc?.days?.length ? oldBatchDoc.days : ['Monday', 'Wednesday', 'Friday']);
-      const targetTiming = (timing && timing.startTime && timing.endTime)
-        ? timing
-        : (oldBatchDoc?.timing?.startTime ? oldBatchDoc.timing : { startTime: '09:00', endTime: '10:00' });
+      const normalizedSched = normalizeRestartScheduleInput({
+        days: requestedDays,
+        dayTimings: timeMode === 'same' && (!dayTimings || Object.keys(dayTimings).length === 0) ? {} : dayTimings,
+        timing: (timing && timing.startTime) ? timing : oldBatchDoc?.timing,
+        timeMode,
+        durationMinutes: durationMinutes ?? oldBatchDoc?.durationMinutes,
+        fallbackBatch: oldBatchDoc,
+      });
       const targetMeetingLink = meetingLink !== undefined
         ? meetingLink
         : (oldBatchDoc?.meetingLink || '');
@@ -1176,8 +1192,11 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
         isRetention: true,
         retentionLevel: finalLevelTag,
         retentionFromBatch: oldBatchId || undefined,
-        days: targetDays,
-        timing: targetTiming,
+        days: normalizedSched.days,
+        timing: normalizedSched.timing,
+        timeMode: normalizedSched.timeMode,
+        dayTimings: normalizedSched.dayTimings,
+        durationMinutes: normalizedSched.durationMinutes,
         meetingLink: targetMeetingLink,
         startDate: targetStartDate,
         durationType: 'Custom',
@@ -1342,6 +1361,35 @@ export const deleteStudent = async (req: AuthRequest, res: Response): Promise<vo
   }
 };
 
+async function authorizeProjectSubmissionAccess(user: any, student: any): Promise<boolean> {
+  if (!user) return false;
+  if (user.role === 'Admin' || user.role === 'Super Admin') return true;
+  if (user.role === 'Sub Admin') {
+    return (
+      user.permissions?.students?.write === true ||
+      user.permissions?.completedClasses?.write === true
+    );
+  }
+  if (user.role === 'Teacher') {
+    const teacher = await Teacher.findOne({ user: user._id });
+    if (!teacher) return false;
+    const tId = teacher._id.toString();
+    const assignedTutorId = student.assignedTutor?._id
+      ? student.assignedTutor._id.toString()
+      : student.assignedTutor?.toString();
+    if (assignedTutorId === tId) return true;
+    const bId = student.batch?._id ? student.batch._id.toString() : student.batch?.toString();
+    if (bId) {
+      const batchDoc = await Batch.findById(bId);
+      const bTeacherId = batchDoc?.assignedTeacher?._id
+        ? batchDoc.assignedTeacher._id.toString()
+        : batchDoc?.assignedTeacher?.toString();
+      if (bTeacherId === tId) return true;
+    }
+  }
+  return false;
+}
+
 export const submitProjectSubmission = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const studentId = req.params.id as string;
@@ -1366,6 +1414,12 @@ export const submitProjectSubmission = async (req: AuthRequest, res: Response): 
     const student = await Student.findById(studentId);
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
+      return;
+    }
+
+    const canSubmit = await authorizeProjectSubmissionAccess(req.user, student);
+    if (!canSubmit) {
+      res.status(403).json({ message: 'Forbidden: Not authorized to submit project milestones for this student' });
       return;
     }
 
@@ -1445,6 +1499,12 @@ export const deleteProjectSubmission = async (req: AuthRequest, res: Response): 
     const student = await Student.findById(studentId);
     if (!student) {
       res.status(404).json({ message: 'Student not found' });
+      return;
+    }
+
+    const canDelete = await authorizeProjectSubmissionAccess(req.user, student);
+    if (!canDelete) {
+      res.status(403).json({ message: 'Forbidden: Not authorized to reset project milestones for this student' });
       return;
     }
 
@@ -1852,7 +1912,13 @@ function buildScheduleArchiveSnapshot(schedules: any[], defaultTeacherName: stri
     }));
 }
 
-function countCompletedForStudent(schedules: any[], studentId: string, isGroupBatch: boolean, fallbackPreCompleted = 0): number {
+function countCompletedForStudent(
+  schedules: any[],
+  studentId: string,
+  isGroupBatch: boolean,
+  fallbackPreCompleted = 0,
+  batchDoc?: { restartedFromBatch?: any; preRestartCompletedClasses?: number }
+): number {
   let completed = 0;
   for (const s of schedules) {
     // Never count Cancelled, Paused, or Archived uncompleted sessions as completed
@@ -1863,7 +1929,12 @@ function countCompletedForStudent(schedules: any[], studentId: string, isGroupBa
     }
     completed++;
   }
-  return Math.max(completed, Math.max(0, Number(fallbackPreCompleted) || 0));
+  const preCompleted = Math.max(0, Number(fallbackPreCompleted) || 0);
+  if (batchDoc?.restartedFromBatch) {
+    const preRestart = Math.max(0, Number(batchDoc.preRestartCompletedClasses) || 0);
+    return Math.max(preCompleted, preRestart + completed);
+  }
+  return Math.max(completed, preCompleted);
 }
 
 // @desc    Temporarily pause a student's classes, archive upcoming slots, and log pause metadata
@@ -1915,7 +1986,8 @@ export const pauseStudentClasses = async (req: AuthRequest, res: Response): Prom
       batchSchedules,
       studentId,
       isGroupBatch,
-      batchDoc?.preCompletedClasses || 0
+      batchDoc?.preCompletedClasses || 0,
+      batchDoc
     );
     const totalSessions = Number(student.classesNeeded || batchDoc?.numberOfSessions || 15);
     const remainingCount = Math.max(0, totalSessions - completedCount);
@@ -2028,10 +2100,11 @@ function normalizeRestartScheduleInput(params: {
   days?: any;
   dayTimings?: any;
   timing?: any;
+  timeMode?: any;
   durationMinutes?: any;
   fallbackBatch?: any;
 }) {
-  const { days, dayTimings, timing, durationMinutes, fallbackBatch } = params;
+  const { days, dayTimings, timing, timeMode: rawTimeMode, durationMinutes, fallbackBatch } = params;
   const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
   const rawDays = Array.isArray(days) && days.length > 0
     ? days.map((d: any) => String(d).trim()).filter((d: string) => DAY_INDEX[d] !== undefined)
@@ -2057,9 +2130,12 @@ function normalizeRestartScheduleInput(params: {
     const sTime = (entry?.startTime && typeof entry.startTime === 'string' && entry.startTime.trim())
       ? entry.startTime.trim()
       : fallbackStart;
+    const eTime = (entry?.endTime && typeof entry.endTime === 'string' && /^\d{2}:\d{2}$/.test(entry.endTime.trim()))
+      ? entry.endTime.trim()
+      : computeEndTime(sTime, resolvedDuration);
     normalizedDayTimings[day] = {
       startTime: sTime,
-      endTime: computeEndTime(sTime, resolvedDuration),
+      endTime: eTime,
     };
   }
 
@@ -2068,8 +2144,9 @@ function normalizeRestartScheduleInput(params: {
     startTime: fallbackStart,
     endTime: computeEndTime(fallbackStart, resolvedDuration),
   };
-  const distinctStarts = new Set(finalDays.map((d) => normalizedDayTimings[d].startTime));
-  const timeMode: 'same' | 'different' = distinctStarts.size > 1 ? 'different' : 'same';
+  const distinctSignatures = new Set(finalDays.map((d) => `${normalizedDayTimings[d].startTime}-${normalizedDayTimings[d].endTime}`));
+  const timeMode: 'same' | 'different' =
+    rawTimeMode === 'different' || distinctSignatures.size > 1 ? 'different' : 'same';
 
   return {
     days: finalDays,
@@ -2164,7 +2241,8 @@ export const restartStudentClasses = async (req: AuthRequest, res: Response): Pr
       allOldSchedules,
       studentId,
       isGroupBatch,
-      oldBatchDoc.preCompletedClasses || 0
+      oldBatchDoc.preCompletedClasses || 0,
+      oldBatchDoc
     );
     const completedCount = Math.max(calculatedCompleted, Number(latestPauseEntry?.completedAtPause) || 0);
     const totalSessions = Number(student.classesNeeded || oldBatchDoc.numberOfSessions || 15);
@@ -2182,6 +2260,7 @@ export const restartStudentClasses = async (req: AuthRequest, res: Response): Pr
 
     if (isGroupBatch) {
       // Group batch: keep peers' ongoing Group Batch untouched; give restarting student a fresh continuation batch from restartDate
+      const dirtyGroupSchedules: any[] = [];
       for (const s of nonArchivedOldSchedules) {
         if (s.status === 'Scheduled' && Array.isArray(s.attendance)) {
           const filtered = s.attendance.filter(
@@ -2189,9 +2268,12 @@ export const restartStudentClasses = async (req: AuthRequest, res: Response): Pr
           );
           if (filtered.length !== s.attendance.length) {
             s.attendance = filtered;
-            await s.save();
+            dirtyGroupSchedules.push(s);
           }
         }
+      }
+      for (let i = 0; i < dirtyGroupSchedules.length; i += 10) {
+        await Promise.all(dirtyGroupSchedules.slice(i, i + 10).map((s: any) => s.save()));
       }
 
       const updateCount = Math.max(0, (Number(oldBatchDoc.studentsCount) || 1) - 1);
@@ -2452,18 +2534,13 @@ export const updateStudentRestartDetails = async (req: AuthRequest, res: Respons
     });
 
     const existingBatchSchedules = await Schedule.find({ batch: targetBatchDoc._id }).sort({ date: 1 });
-    const batchCompletedCount = countCompletedForStudent(
+    const completedCount = countCompletedForStudent(
       existingBatchSchedules,
       studentId,
       false,
-      targetBatchDoc.preCompletedClasses || 0
+      targetBatchDoc.preCompletedClasses || 0,
+      targetBatchDoc
     );
-    const completedCount = targetBatchDoc.restartedFromBatch
-      ? Math.max(
-          Number(targetBatchDoc.preCompletedClasses) || 0,
-          (Number(targetBatchDoc.preRestartCompletedClasses) || 0) + existingBatchSchedules.filter((s: any) => s.status === 'Completed').length
-        )
-      : batchCompletedCount;
     const totalSessions = Number(student.classesNeeded || targetBatchDoc.numberOfSessions || 15);
     const remainingCount = Math.max(0, totalSessions - completedCount);
 

@@ -6,13 +6,14 @@ import { motion } from "framer-motion";
 import { Search, BookOpen, Clock, CheckCircle, FileText } from "lucide-react";
 import { useState, useMemo } from "react";
 import { format, parseISO } from "date-fns";
-import { useAuthStore } from "@/store/authStore";
+import { usePermissions } from "@/hooks/usePermissions";
 import { useSearchStore } from "@/store/searchStore";
 import { useDebounce } from "@/hooks/useDebounce";
 import { SessionNavTabs } from "@/components/dashboard/SessionNavTabs";
 
 export default function ClassNotesPage() {
-  const { user } = useAuthStore();
+  const { isTeacher, isAdmin, canRead } = usePermissions();
+  const canLoadDirectoryData = !isTeacher && (isAdmin || canRead("classNotes"));
   const { searchQuery, setSearchQuery } = useSearchStore();
   const debouncedSearch = useDebounce(searchQuery, 300);
 
@@ -22,7 +23,7 @@ export default function ClassNotesPage() {
   const { data: teachers = [] } = useQuery({
     queryKey: ["teachers"],
     queryFn: async () => (await api.get("/teachers")).data,
-    enabled: user?.role === "Admin",
+    enabled: canLoadDirectoryData,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
@@ -30,21 +31,21 @@ export default function ClassNotesPage() {
   const { data: batches = [] } = useQuery({
     queryKey: ["batches"],
     queryFn: async () => (await api.get("/batches")).data,
-    enabled: user?.role === "Admin",
+    enabled: canLoadDirectoryData,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
   const { data: students = [] } = useQuery({
-    queryKey: ["students"],
+    queryKey: ["students-all"],
     queryFn: async () => (await api.get("/students")).data,
-    enabled: user?.role === "Admin",
+    enabled: canLoadDirectoryData,
     staleTime: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
   const { data: schedules = [], isLoading } = useQuery({
-    queryKey: ["schedules-completed"],
+    queryKey: ["schedules"],
     queryFn: async () => (await api.get("/schedules")).data,
     staleTime: 60_000,
     refetchOnWindowFocus: false,
@@ -113,7 +114,7 @@ export default function ClassNotesPage() {
       .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [schedules, selectedTeacherId, selectedStudentId, studentBatchMap, debouncedSearch]);
 
-  if (user?.role === "Teacher") {
+  if (isTeacher) {
     return (
       <div className="flex flex-col items-center justify-center h-full text-neutral-400">
         <FileText className="w-12 h-12 mb-4 text-neutral-600" />

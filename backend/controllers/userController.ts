@@ -2,8 +2,12 @@ import { Request, Response } from 'express';
 import { AuthRequest } from '../middleware/authMiddleware';
 import User from '../models/User';
 import Teacher from '../models/Teacher';
-import RecycleBin from '../models/RecycleBin';
 import { getSupabase } from '../config/supabase';
+import {
+  createManagedUser,
+  updateManagedUser,
+  softDeleteManagedUserToBin,
+} from '../utils/userAccountHelper';
 
 // @desc    Get all sub admins
 // @route   GET /api/users/sub-admins
@@ -41,12 +45,12 @@ export const createSubAdmin = async (req: Request, res: Response): Promise<void>
         res.status(404).json({ message: 'Teacher user not found' });
         return;
       }
-      
-      await User.update(teacherUserId, { 
-        role: 'Sub Admin', 
-        permissions 
+
+      await User.update(teacherUserId, {
+        role: 'Sub Admin',
+        permissions
       });
-      
+
       const updatedUser = await User.findById(teacherUserId);
       res.status(201).json({
         _id: updatedUser?._id,
@@ -63,31 +67,20 @@ export const createSubAdmin = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    const userExists = await User.findOne({ email: email.toLowerCase() });
-    if (userExists) {
-      res.status(400).json({ message: 'User with this email already exists' });
-      return;
-    }
-
-    const inBin = await RecycleBin.checkEmailInBin(email.toLowerCase());
-    if (inBin) {
-      res.status(409).json({
-        message: `This email belongs to deleted user "${inBin.name}". You can restore them or release this email in the Recycle Bin.`,
-        inBin: true,
-        binId: inBin._id,
-      });
-      return;
-    }
-
-    const user = await User.create({
+    const result = await createManagedUser({
       name,
-      email: email.toLowerCase(),
+      email,
       password,
       role: 'Sub Admin',
       permissions,
-      mustChangePassword: true
+      mustChangePassword: true,
     });
+    if (result.status !== 201) {
+      res.status(result.status).json(result.body);
+      return;
+    }
 
+    const user = result.body;
     res.status(201).json({
       _id: user._id,
       name: user.name,
@@ -108,42 +101,13 @@ export const updateSubAdmin = async (req: Request, res: Response): Promise<void>
   try {
     const id = req.params.id as string;
     const { name, email, password, permissions } = req.body;
-
-    const user = await User.findById(id);
-    if (!user || user.role !== 'Sub Admin') {
-      res.status(404).json({ message: 'Sub admin not found' });
-      return;
-    }
-
-    const updateData: any = {};
-    if (name) updateData.name = name;
-    if (email) {
-      const emailLower = email.toLowerCase();
-      // Check if email belongs to someone else
-      if (emailLower !== user.email) {
-        const existing = await User.findOne({ email: emailLower });
-        if (existing) {
-          res.status(400).json({ message: 'Email already in use' });
-          return;
-        }
-        updateData.email = emailLower;
-      }
-    }
-    if (password) updateData.password = password;
-    if (permissions) updateData.permissions = permissions;
-
-    await User.update(id, updateData);
-    
-    // Fetch updated user to return
-    const updatedUser = await User.findById(id);
-
-    res.json({
-      _id: updatedUser?._id,
-      name: updatedUser?.name,
-      email: updatedUser?.email,
-      role: updatedUser?.role,
-      permissions: updatedUser?.permissions
+    const result = await updateManagedUser(id, 'Sub Admin', 'Sub admin', {
+      name,
+      email,
+      password,
+      permissions,
     });
+    res.status(result.status).json(result.body);
   } catch (error: any) {
     console.error('Update sub admin error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
@@ -171,20 +135,7 @@ export const deleteSubAdmin = async (req: AuthRequest, res: Response): Promise<v
       return;
     }
 
-    // Archive user snapshot into Recycle Bin
-    await RecycleBin.addToBin({
-      entityType: 'subAdmin',
-      entityId: user._id!,
-      name: user.name || 'Unnamed Sub Admin',
-      email: user.email,
-      secondaryInfo: 'Role: Sub Admin',
-      itemData: user,
-      deletedBy: req.user,
-      emailStatus: 'held',
-    });
-
-    await getSupabase().from('users').delete().eq('_id', id);
-    res.json({ message: 'Sub admin moved to Recycle Bin' });
+    await softDeleteManagedUserToBin(id, user, 'subAdmin', 'Sub Admin', req.user, res);
   } catch (error: any) {
     console.error('Delete sub admin error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });
@@ -205,11 +156,15 @@ export const bulkUpdateSubAdminsPermissions = async (req: Request, res: Response
     const { data: subAdmins, error } = await getSupabase().from('users').select('_id, data').eq('role', 'Sub Admin');
     if (error) throw error;
 
-    for (const admin of subAdmins || []) {
-      await User.update(admin._id, { permissions });
+    const list = subAdmins || [];
+    const CHUNK_SIZE = 10;
+    for (let i = 0; i < list.length; i += CHUNK_SIZE) {
+      await Promise.all(
+        list.slice(i, i + CHUNK_SIZE).map((admin: any) => User.update(admin._id, { permissions }))
+      );
     }
 
-    res.json({ message: `Successfully updated permissions for ${(subAdmins || []).length} sub admin(s)` });
+    res.json({ message: `Successfully updated permissions for ${list.length} sub admin(s)` });
   } catch (error: any) {
     console.error('Bulk update sub admins error:', error.message);
     res.status(500).json({ message: 'Server error', detail: error.message });

@@ -3,7 +3,8 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import User from '../models/User';
 import Teacher from '../models/Teacher';
-import generateToken, { generateTokens, REFRESH_COOKIE_OPTIONS, parseCookies } from '../utils/generateToken';
+import { generateTokens, REFRESH_COOKIE_OPTIONS, parseCookies } from '../utils/generateToken';
+import { getSupabase } from '../config/supabase';
 import {
   loginSchema,
   registerSchema,
@@ -121,7 +122,23 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 // @access  Public
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // 1. Validate request body against schema (enforcing strong passwords)
+    // 1. Disable public Admin / Super Admin self-registration once an admin account exists
+    const { data: existingAdmins, error: adminCheckErr } = await getSupabase()
+      .from('users')
+      .select('_id')
+      .in('role', ['Admin', 'Super Admin'])
+      .limit(1);
+
+    if (adminCheckErr) throw adminCheckErr;
+
+    if (existingAdmins && existingAdmins.length > 0) {
+      res.status(403).json({
+        message: 'Public registration is disabled. Please ask an administrator to create an account for you.',
+      });
+      return;
+    }
+
+    // 2. Validate request body against schema (enforcing strong passwords)
     const validation = registerSchema.safeParse(req.body);
     if (!validation.success) {
       res.status(400).json({
@@ -130,26 +147,26 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
       return;
     }
 
-    const { name, email, password, role } = validation.data;
+    const { name, email, password } = validation.data;
     const normalizedEmail = email.toLowerCase().trim();
 
-    // 2. Prevent duplicate accounts
+    // 3. Prevent duplicate accounts
     const userExists = await User.findOne({ email: normalizedEmail });
     if (userExists) {
       res.status(400).json({ message: 'A user with this email address already exists' });
       return;
     }
 
-    // 3. Generate cryptographic email verification token (24-hour expiration)
+    // 4. Generate cryptographic email verification token (24-hour expiration, never returned in response)
     const verificationToken = crypto.randomBytes(32).toString('hex');
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // 4. Create User (password automatically hashed with bcrypt factor 12)
+    // 5. Create initial bootstrap Admin user (password automatically hashed with bcrypt factor 12)
     const user: any = await User.create({
       name,
       email: normalizedEmail,
       password,
-      role: role || 'Admin',
+      role: 'Admin',
       isVerified: false,
       verificationToken,
       verificationExpires,
@@ -161,7 +178,7 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
       const tokens = generateTokens(user._id, user.role);
       res.cookie('refreshToken', tokens.refreshToken, REFRESH_COOKIE_OPTIONS);
 
-      console.log(`[AUTH_AUDIT] New user registered: ${normalizedEmail} (Role: ${user.role})`);
+      console.log(`[AUTH_AUDIT] Initial bootstrap admin registered: ${normalizedEmail}`);
 
       res.status(201).json({
         _id: user._id,
@@ -170,7 +187,6 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         role: user.role,
         permissions: user.permissions,
         isVerified: false,
-        verificationToken, // Provided in response for verification flow
         token: tokens.accessToken,
         refreshToken: tokens.refreshToken,
       });
@@ -348,7 +364,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // Update password (hashed with bcrypt salt 12) & clear lockout/reset fields
+    // Update password (hashed with bcrypt salt 12) & clear lockout/reset/tempPassword fields
     await User.update(user._id as string, {
       password: newPassword,
       resetPasswordToken: null,
@@ -357,6 +373,14 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       lockUntil: null,
       mustChangePassword: false,
     });
+
+    if (user.role === 'Teacher' || user.role === 'Sub Admin') {
+      const teacher = await Teacher.findOne({ user: user._id });
+      if (teacher && teacher.tempPassword) {
+        await Teacher.findByIdAndUpdate(teacher._id, { tempPassword: '' });
+        serverCache.delete('teachers_all');
+      }
+    }
 
     console.log(`[AUTH_AUDIT] Password reset successfully executed for: ${user.email}`);
 
@@ -447,11 +471,12 @@ export const changePassword = async (req: any, res: Response): Promise<void> => 
         mustChangePassword: false,
       });
 
-      // Update tempPassword on Teacher profile so Admin view stays in sync
+      // Clear plaintext tempPassword once teacher/sub-admin changes their password
       if (user.role === 'Teacher' || user.role === 'Sub Admin') {
         const teacher = await Teacher.findOne({ user: user._id });
-        if (teacher) {
-          await Teacher.findByIdAndUpdate(teacher._id, { tempPassword: newPassword });
+        if (teacher && teacher.tempPassword) {
+          await Teacher.findByIdAndUpdate(teacher._id, { tempPassword: '' });
+          serverCache.delete('teachers_all');
         }
       }
 

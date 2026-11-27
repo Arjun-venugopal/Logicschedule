@@ -12,17 +12,21 @@ import {
   X,
 } from "lucide-react";
 import { RecordPaymentModal } from "../payments/RecordPaymentModal";
+import { usePermissions } from "@/hooks/usePermissions";
 
 export function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<"all" | "due" | "upcoming">("all");
   const [selectedPaymentForRecord, setSelectedPaymentForRecord] = useState<any>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { isTeacher, isAdmin, isSalesPerson, canRead } = usePermissions();
+  const canPollNotifications = !isTeacher && (isAdmin || isSalesPerson || canRead("payments") || canRead("demoSessions"));
 
   const { data, isLoading } = useQuery({
     queryKey: ["payment-notifications"],
     queryFn: async () => (await api.get("/payments/notifications")).data,
-    refetchInterval: 30_000,
+    enabled: canPollNotifications,
+    refetchInterval: canPollNotifications ? 30_000 : false,
   });
 
   const notifications = data?.notifications || [];

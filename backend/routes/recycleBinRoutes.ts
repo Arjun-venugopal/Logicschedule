@@ -9,11 +9,11 @@ import {
   deleteBinItemPermanently,
   emptyBin,
 } from '../controllers/recycleBinController';
-import { protect, admin } from '../middleware/authMiddleware';
+import { protect, admin, authorizeRoles } from '../middleware/authMiddleware';
 
 const router = express.Router();
 
-router.use(protect);
+router.use(protect, authorizeRoles('Admin', 'Super Admin', 'Sub Admin'));
 
 router.get('/', getBinItems);
 router.get('/stats', getBinStats);

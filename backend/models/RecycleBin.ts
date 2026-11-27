@@ -199,60 +199,74 @@ class RecycleBinModel {
     const items = this._readLocal();
     const emailItems = items.filter((i) => Boolean(i.email) && i.status === 'in_bin');
 
-    // Check active status of these emails against current database
-    const results = await Promise.all(
-      emailItems.map(async (item) => {
-        const emailLower = (item.email || '').trim().toLowerCase();
-        let isEmailTakenInActive = false;
-        let activeEntityDetail: string | null = null;
-
-        try {
-          // Check users table
-          const activeUser = await User.findOne({ email: emailLower });
-          if (activeUser && activeUser._id !== item.entityId) {
-            isEmailTakenInActive = true;
-            activeEntityDetail = `Active User (${activeUser.name || 'Account'}, Role: ${activeUser.role})`;
-          } else {
-            // Check students table if student
-            const activeStudent = await Student.findOne({ email: emailLower });
-            if (activeStudent && activeStudent._id !== item.entityId) {
-              isEmailTakenInActive = true;
-              activeEntityDetail = `Active Student (${activeStudent.name || 'Student'})`;
-            }
-          }
-        } catch {
-          // fallback
-        }
-
-        return {
-          binId: item._id,
-          entityId: item.entityId,
-          entityType: item.entityType,
-          name: item.name,
-          email: item.email,
-          role:
-            item.entityType === 'teacher'
-              ? 'Teacher'
-              : item.entityType === 'student'
-              ? 'Student'
-              : item.entityType === 'salesPerson'
-              ? 'Sales Person'
-              : item.entityType === 'subAdmin'
-              ? 'Sub Admin'
-              : 'User',
-          secondaryInfo: item.secondaryInfo,
-          deletedAt: item.deletedAt,
-          deletedBy: item.deletedBy,
-          emailStatus: item.emailStatus || 'held',
-          isEmailTakenInActive,
-          activeEntityDetail,
-          canRestore: !isEmailTakenInActive || item.emailStatus === 'released',
-          canRelease: item.emailStatus !== 'released',
-        };
-      })
+    const targetEmails = Array.from(
+      new Set(emailItems.map((i) => (i.email || '').trim().toLowerCase()).filter(Boolean))
     );
 
-    return results;
+    const activeUserByEmail = new Map<string, any>();
+    const activeStudentByEmail = new Map<string, any>();
+
+    if (targetEmails.length > 0) {
+      try {
+        const [{ data: usersRows }, activeStudents] = await Promise.all([
+          getSupabase().from('users').select('_id, name, email, role').in('email', targetEmails),
+          Student.find({}).select('_id name email'),
+        ]);
+
+        for (const u of usersRows || []) {
+          if (u.email) activeUserByEmail.set(String(u.email).trim().toLowerCase(), u);
+        }
+        for (const st of activeStudents || []) {
+          if (st.email) activeStudentByEmail.set(String(st.email).trim().toLowerCase(), st);
+        }
+      } catch {
+        // fallback cleanly with empty maps
+      }
+    }
+
+    return emailItems.map((item) => {
+      const emailLower = (item.email || '').trim().toLowerCase();
+      let isEmailTakenInActive = false;
+      let activeEntityDetail: string | null = null;
+
+      const activeUser = activeUserByEmail.get(emailLower);
+      if (activeUser && activeUser._id !== item.entityId) {
+        isEmailTakenInActive = true;
+        activeEntityDetail = `Active User (${activeUser.name || 'Account'}, Role: ${activeUser.role})`;
+      } else {
+        const activeStudent = activeStudentByEmail.get(emailLower);
+        if (activeStudent && activeStudent._id !== item.entityId) {
+          isEmailTakenInActive = true;
+          activeEntityDetail = `Active Student (${activeStudent.name || 'Student'})`;
+        }
+      }
+
+      return {
+        binId: item._id,
+        entityId: item.entityId,
+        entityType: item.entityType,
+        name: item.name,
+        email: item.email,
+        role:
+          item.entityType === 'teacher'
+            ? 'Teacher'
+            : item.entityType === 'student'
+            ? 'Student'
+            : item.entityType === 'salesPerson'
+            ? 'Sales Person'
+            : item.entityType === 'subAdmin'
+            ? 'Sub Admin'
+            : 'User',
+        secondaryInfo: item.secondaryInfo,
+        deletedAt: item.deletedAt,
+        deletedBy: item.deletedBy,
+        emailStatus: item.emailStatus || 'held',
+        isEmailTakenInActive,
+        activeEntityDetail,
+        canRestore: !isEmailTakenInActive || item.emailStatus === 'released',
+        canRelease: item.emailStatus !== 'released',
+      };
+    });
   }
 
   async releaseEmail(binId: string): Promise<{ success: boolean; message: string; email: string }> {

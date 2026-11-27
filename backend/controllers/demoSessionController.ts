@@ -6,7 +6,7 @@ import Student from '../models/Student';
 import Batch from '../models/Batch';
 import Payment from '../models/Payment';
 import RecycleBin from '../models/RecycleBin';
-import { findExistingStudent, syncStudentBatchSchedules, escapeRegex } from './studentController';
+import { findExistingStudent, syncStudentBatchSchedules } from './studentController';
 import { checkTeacherConflict, getKolkataNow, formatDateToYYYYMMDD } from '../utils/scheduleHelper';
 import { serverCache, deleteDiskCache } from '../utils/cache';
 
@@ -723,7 +723,9 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
 
     const previousAdmissionConfirmed = demoSession.admissionConfirmed;
 
-    const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
+    const isFullAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin';
+    const isPermittedSubAdmin = req.user?.role === 'Sub Admin' && req.user?.permissions?.demoSessions?.write === true;
+    const isAdmin = isFullAdmin || isPermittedSubAdmin;
     const isSalesPerson = req.user?.role === 'Sales Person';
     let isAssignedTeacher = false;
 
@@ -961,16 +963,24 @@ export const updateDemoSession = async (req: any, res: Response): Promise<void> 
           bDoc.assignedTeacher = updated.classAssignedTutor;
           await bDoc.save();
           const batchStudents = await Student.find({ batch: bDoc._id });
-          for (const bs of batchStudents) {
-            bs.assignedTutor = updated.classAssignedTutor;
-            await bs.save();
+          for (let i = 0; i < batchStudents.length; i += 10) {
+            await Promise.all(
+              batchStudents.slice(i, i + 10).map((bs: any) => {
+                bs.assignedTutor = updated.classAssignedTutor;
+                return bs.save();
+              })
+            );
           }
           const kolkata = getKolkataNow();
           const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
           const futureScheds = await Schedule.find({ batch: bDoc._id, status: 'Scheduled', date: { $gte: todayStart } });
-          for (const fs of futureScheds) {
-            fs.teacher = updated.classAssignedTutor;
-            await fs.save();
+          for (let i = 0; i < futureScheds.length; i += 10) {
+            await Promise.all(
+              futureScheds.slice(i, i + 10).map((fs: any) => {
+                fs.teacher = updated.classAssignedTutor;
+                return fs.save();
+              })
+            );
           }
           serverCache.clearPattern('schedules_');
           serverCache.clearPattern('students_');
@@ -1010,7 +1020,9 @@ export const deleteDemoSession = async (req: any, res: Response): Promise<void> 
     const demoSession = await DemoSession.findById(req.params.id);
 
     if (demoSession) {
-      const isAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin' || req.user?.role === 'Sub Admin';
+      const isFullAdmin = req.user?.role === 'Admin' || req.user?.role === 'Super Admin';
+    const isPermittedSubAdmin = req.user?.role === 'Sub Admin' && req.user?.permissions?.demoSessions?.write === true;
+    const isAdmin = isFullAdmin || isPermittedSubAdmin;
       const isOwnerSales = req.user?.role === 'Sales Person' &&
         (demoSession.createdBy === req.user?._id?.toString() || demoSession.salesExecutive?.trim().toLowerCase() === req.user?.name?.trim().toLowerCase());
 

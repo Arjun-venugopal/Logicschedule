@@ -60,7 +60,7 @@ export function RecordPaymentModal({
       queryClient.invalidateQueries({ queryKey: ["payments"] });
       queryClient.invalidateQueries({ queryKey: ["payment-notifications"] });
       queryClient.invalidateQueries({ queryKey: ["students"] });
-      queryClient.invalidateQueries({ queryKey: ["all-students"] });
+      queryClient.invalidateQueries({ queryKey: ["students-all"] });
       queryClient.invalidateQueries({ queryKey: ["demo-sessions"] });
       queryClient.invalidateQueries({ queryKey: ["demo-session-payment"] });
       if (payment?.student?._id) {
