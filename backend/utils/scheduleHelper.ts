@@ -87,7 +87,7 @@ export function findConflictingSlot(
   const parsedIntervals: ParsedInterval[] = [];
   for (let i = 0; i < existingSlots.length; i++) {
     const slot = existingSlots[i];
-    if (!slot || slot.status === 'Cancelled') continue;
+    if (!slot || slot.status === 'Cancelled' || slot.status === 'Archived' || slot.status === 'Paused' || Boolean((slot as any).isArchived)) continue;
     if (excludeIdStr && (slot._id?.toString() === excludeIdStr || (slot as any).id?.toString() === excludeIdStr)) {
       continue;
     }

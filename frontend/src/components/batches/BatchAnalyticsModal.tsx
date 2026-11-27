@@ -437,9 +437,12 @@ export function BatchAnalyticsModal({ batchId, onClose }: { batchId: string; onC
                               </button>
                             </td>
                             {schedules.filter((s: any) => s.status === 'Completed').map((cls: any) => {
-                              const record = cls.attendance?.find((a: any) => a.studentId === stu.studentId);
-                              const isPresent = record ? record.isPresent : false;
-                              const hasRecord = !!record;
+                              const record = cls.attendance?.find((a: any) => {
+                                const aId = a.studentId?._id ? a.studentId._id.toString() : a.studentId?.toString();
+                                return aId === stu.studentId?.toString();
+                              });
+                              const isPresent = record ? record.isPresent !== false : true;
+                              const hasRecord = Boolean(record) || Boolean(cls.isPreRestartCompleted);
                               return (
                                 <td key={cls._id} className="px-4 py-3 text-center">
                                   {!hasRecord ? (

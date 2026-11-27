@@ -346,6 +346,10 @@ export default function StudentsPage() {
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                                   Dropped
                                 </span>
+                              ) : student.status === "Paused" ? (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                  Paused
+                                </span>
                               ) : (
                                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                                   Active
@@ -458,7 +462,16 @@ export default function StudentsPage() {
                                 <div className="w-10 h-10 rounded-full brand-gradient flex items-center justify-center text-sm font-bold text-black shrink-0">
                                   {student.name.charAt(0)}
                                 </div>
-                                <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 ${student.status === "Dropped" ? "bg-rose-500" : "bg-emerald-500"} border-2 border-neutral-900 rounded-full`} title={student.status === "Dropped" ? "Dropped" : "Active"}></div>
+                                <div
+                                  className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 ${
+                                    student.status === "Dropped"
+                                      ? "bg-rose-500"
+                                      : student.status === "Paused"
+                                      ? "bg-amber-500"
+                                      : "bg-emerald-500"
+                                  } border-2 border-neutral-900 rounded-full`}
+                                  title={student.status === "Dropped" ? "Dropped" : student.status === "Paused" ? "Paused" : "Active"}
+                                ></div>
                               </div>
                               <div className="flex flex-col">
                                 <div className="flex items-center gap-2">
@@ -469,6 +482,10 @@ export default function StudentsPage() {
                                   {student.status === "Dropped" ? (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-500/15 text-rose-400 border border-rose-500/30">
                                       Dropped
+                                    </span>
+                                  ) : student.status === "Paused" ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                                      Paused
                                     </span>
                                   ) : (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">

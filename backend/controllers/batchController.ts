@@ -43,19 +43,22 @@ export function getSlotTimingForDay(batch: any, date: Date | number): { startTim
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const dayName = dayNames[d.getUTCDay()];
   const dayNameLower = dayName ? dayName.toLowerCase() : '';
-  
+  const fallbackDur = (Number(batch.durationMinutes) >= 15 && Number(batch.durationMinutes) <= 360)
+    ? Math.round(Number(batch.durationMinutes))
+    : 60;
+
   const dayTimings = batch.dayTimings;
   if (dayTimings && typeof dayTimings === 'object') {
     const entry = dayTimings[dayName] || dayTimings[dayNameLower];
     if (entry && entry.startTime) {
       const sTime = entry.startTime;
-      const eTime = entry.endTime || computeEndTime(sTime, 60);
+      const eTime = entry.endTime || computeEndTime(sTime, fallbackDur);
       return { startTime: sTime, endTime: eTime };
     }
   }
 
   const sTime = batch.timing?.startTime || '09:00';
-  const eTime = batch.timing?.endTime || computeEndTime(sTime, 60);
+  const eTime = batch.timing?.endTime || computeEndTime(sTime, fallbackDur);
   return { startTime: sTime, endTime: eTime };
 }
 
@@ -72,6 +75,10 @@ export async function generateSchedulesForBatch(
   customTargetSessions?: number
 ): Promise<number> {
   const { _id, assignedTeacher, timing, days, meetingLink, startDate, numberOfSessions } = batch;
+
+  if (['Paused', 'Dropped', 'Cancelled', 'Archived'].includes(batch.status)) {
+    return 0;
+  }
 
   const hasTiming =
     (timing?.startTime && timing?.endTime) ||
@@ -93,7 +100,7 @@ export async function generateSchedulesForBatch(
     try {
       const tDoc = await Teacher.findById(teacherId).populate('user', 'name');
       batchTeacherName = tDoc?.name || (tDoc as any)?.user?.name || '';
-    } catch {}
+    } catch { }
   }
 
   const preCompletedClasses = Math.max(0, Number(rawPreCompletedClasses) || Number(batch.preCompletedClasses) || 0);
@@ -107,18 +114,20 @@ export async function generateSchedulesForBatch(
   const todayEnd = new Date(`${kolkata.todayStr}T23:59:59.999Z`);
   const todayUtc = normalizeDateOnlyToUtc(kolkata.todayStr)!;
 
-  // Pre-fetch all schedules for this batch
+  // Pre-fetch all schedules for this batch (ignore archived/paused slots when creating active slots)
   const existingSchedules = await Schedule.find({ batch: _id });
-  const existingTimes = new Set(existingSchedules.map((s: any) => new Date(s.date).getTime()));
+  const activeExisting = existingSchedules.filter((s: any) => !s.isArchived && s.status !== 'Archived' && s.status !== 'Paused');
+  const existingTimes = new Set(activeExisting.map((s: any) => new Date(s.date).getTime()));
   const existingCompletedCount = existingSchedules.filter((s: any) => s.status === 'Completed').length;
 
   // Pre-fetch teacher's other schedules and demo sessions to detect conflicts
   const teacherSlotsByDate = new Map<string, any[]>();
   if (teacherId) {
-    const [tScheds, tDemos] = await Promise.all([
-      Schedule.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch'),
+    const [tSchedsRaw, tDemos] = await Promise.all([
+      Schedule.find({ teacher: teacherId, status: { $nin: ['Cancelled', 'Archived', 'Paused'] } }).select('date startTime endTime batch isArchived status'),
       DemoSession.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
     ]);
+    const tScheds = tSchedsRaw.filter((s: any) => !s.isArchived);
 
     const addToMap = (items: any[]) => {
       for (const item of items) {
@@ -289,6 +298,162 @@ export async function generateSchedulesForBatch(
   return schedulesToCreate.length;
 }
 
+/**
+ * Generates remaining future Scheduled sessions strictly from restartDateUtc forward,
+ * preserving previously completed class counts without duplicating dates or backfilling past sessions.
+ */
+export async function generateRestartedSchedulesForBatch(params: {
+  batch: any;
+  restartDateUtc: Date;
+  completedCount: number;
+  totalSessions: number;
+  studentId: string;
+  restartTag?: string;
+}): Promise<number> {
+  const { batch, restartDateUtc, completedCount, totalSessions, studentId, restartTag } = params;
+  const remaining = Math.max(0, totalSessions - completedCount);
+  if (remaining === 0) return 0;
+
+  const { _id, assignedTeacher, days, meetingLink } = batch;
+  const selectedDayIndexes = new Set(
+    (Array.isArray(days) && days.length > 0 ? days : ['Monday', 'Wednesday', 'Friday'])
+      .map((d: string) => DAY_INDEX[d])
+      .filter((d) => d !== undefined)
+  );
+  if (selectedDayIndexes.size === 0) return 0;
+
+  const teacherId = assignedTeacher?._id
+    ? assignedTeacher._id.toString()
+    : (assignedTeacher ? assignedTeacher.toString() : undefined);
+
+  const teacherSlotsByDate = new Map<string, any[]>();
+  if (teacherId) {
+    const [tSchedsRaw, tDemos] = await Promise.all([
+      Schedule.find({ teacher: teacherId, status: { $nin: ['Cancelled', 'Archived', 'Paused'] } }).select('date startTime endTime batch isArchived status'),
+      DemoSession.find({ teacher: teacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
+    ]);
+    const tScheds = tSchedsRaw.filter((s: any) => !s.isArchived);
+    const addToMap = (items: any[]) => {
+      for (const item of items) {
+        if (!item.date || !item.startTime || !item.endTime) continue;
+        const dStr = normalizeDateOnlyToUtc(item.date)?.toISOString().split('T')[0];
+        if (!dStr) continue;
+        const list = teacherSlotsByDate.get(dStr) || [];
+        list.push(item);
+        teacherSlotsByDate.set(dStr, list);
+      }
+    };
+    addToMap(tScheds);
+    addToMap(tDemos);
+  }
+
+  // Gather active batch students (excluding Dropped/Paused) & any active schedule dates already present
+  const [studentsInBatch, existingBatchSchedules] = await Promise.all([
+    Student.find({ batch: _id }).select('_id status'),
+    Schedule.find({ batch: _id }),
+  ]);
+
+  const batchStudentIds: string[] = [];
+  for (const st of studentsInBatch) {
+    if (st?._id && st.status !== 'Dropped' && st.status !== 'Paused') {
+      batchStudentIds.push(st._id.toString());
+    }
+  }
+  if (studentId && !batchStudentIds.includes(studentId)) {
+    batchStudentIds.push(studentId);
+  }
+
+  const activeExistingSchedules = existingBatchSchedules.filter(
+    (s: any) => !s.isArchived && s.status !== 'Archived' && s.status !== 'Paused'
+  );
+  const existingActiveScheduledCount = activeExistingSchedules.filter(
+    (s: any) => s.status === 'Scheduled' && !s.isExtraClass
+  ).length;
+  const activeExistingTimes = new Set(
+    activeExistingSchedules
+      .map((s: any) => normalizeDateOnlyToUtc(s.date)?.getTime())
+      .filter(Boolean)
+  );
+  const existingIds = new Set(existingBatchSchedules.map((s: any) => s._id?.toString()));
+
+  const schedulesToCreate: any[] = [];
+  const forwardCursor = new Date(restartDateUtc.getTime());
+  let created = 0;
+  let scanned = 0;
+  const suffix = restartTag || `r${Date.now()}`;
+
+  while ((existingActiveScheduledCount + created) < remaining && scanned < 450) {
+    if (selectedDayIndexes.has(forwardCursor.getUTCDay())) {
+      const fTime = forwardCursor.getTime();
+      if (!activeExistingTimes.has(fTime)) {
+        const slotTiming = getSlotTimingForDay(batch, fTime);
+        const dateKey = forwardCursor.toISOString().split('T')[0];
+        const daySlots = teacherSlotsByDate.get(dateKey) || [];
+        const isConflict = teacherId
+          ? checkIntervalConflict(daySlots, { startTime: slotTiming.startTime, endTime: slotTiming.endTime })
+          : false;
+
+        const sessionNum = completedCount + existingActiveScheduledCount + created + 1;
+        const baseId = `sched_${_id}_${dateKey}_${(slotTiming.startTime || '09:00').replace(':', '')}`;
+        const slotId = existingIds.has(baseId) ? `${baseId}_${suffix}_${sessionNum}` : baseId;
+
+        const newSlot = {
+          _id: slotId,
+          teacher: teacherId || undefined,
+          batch: _id,
+          date: new Date(fTime),
+          startTime: slotTiming.startTime,
+          endTime: slotTiming.endTime,
+          status: 'Scheduled',
+          isArchived: false,
+          sessionNumber: sessionNum,
+          conflict: isConflict,
+          meetingLink: meetingLink || '',
+          notes: `Class ${sessionNum} of ${totalSessions}`,
+          attendance: batchStudentIds.map((sId) => ({
+            studentId: sId,
+            isPresent: false,
+            date: new Date(fTime),
+          })),
+        };
+
+        schedulesToCreate.push(newSlot);
+        activeExistingTimes.add(fTime);
+        existingIds.add(slotId);
+        daySlots.push(newSlot);
+        teacherSlotsByDate.set(dateKey, daySlots);
+        created++;
+      }
+    }
+    forwardCursor.setUTCDate(forwardCursor.getUTCDate() + 1);
+    scanned++;
+  }
+
+  if (schedulesToCreate.length > 0) {
+    await Schedule.insertMany(schedulesToCreate);
+
+    // Ensure regular active Scheduled sessions have monotonic chronological session numbers after inserts
+    const regularScheduled = (await Schedule.find({ batch: _id }))
+      .filter((s: any) => !s.isArchived && s.status === 'Scheduled' && !s.isExtraClass)
+      .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    for (let i = 0; i < regularScheduled.length; i++) {
+      const targetNum = completedCount + i + 1;
+      const targetNotes = `Class ${targetNum} of ${totalSessions}`;
+      if (regularScheduled[i].sessionNumber !== targetNum || (regularScheduled[i].notes || '').startsWith('Class ')) {
+        if (regularScheduled[i].sessionNumber !== targetNum || regularScheduled[i].notes !== targetNotes) {
+          regularScheduled[i].sessionNumber = targetNum;
+          if (!regularScheduled[i].notes || regularScheduled[i].notes.startsWith('Class ')) {
+            regularScheduled[i].notes = targetNotes;
+          }
+          await regularScheduled[i].save();
+        }
+      }
+    }
+  }
+
+  return schedulesToCreate.length;
+}
+
 // @desc    Get all batches
 // @route   GET /batches
 // @access  Private
@@ -349,6 +514,9 @@ export const getBatches = async (req: any, res: Response) => {
     });
 
     const completedCountMap: Record<string, number> = {};
+    const archivedCompletedCountMap: Record<string, number> = {};
+    const activeCompletedCountMap: Record<string, number> = {};
+    const batchHasArchivedMap = new Set<string>();
     const cancelledCountMap: Record<string, number> = {};
     const upcomingCountMap: Record<string, number> = {};
     const totalCountMap: Record<string, number> = {};
@@ -360,18 +528,32 @@ export const getBatches = async (req: any, res: Response) => {
     allSchedules.forEach((s: any) => {
       const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
       if (!bId) return;
-      totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
+
+      const isArchivedOrPaused = Boolean(s.isArchived) || s.status === 'Archived' || s.status === 'Paused';
+      if (isArchivedOrPaused) {
+        batchHasArchivedMap.add(bId);
+      } else {
+        totalCountMap[bId] = (totalCountMap[bId] || 0) + 1;
+      }
 
       const sDateStr = s.date ? normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0] : '';
 
       if (s.status === 'Completed') {
         completedCountMap[bId] = (completedCountMap[bId] || 0) + 1;
+        if (s.isArchived) {
+          archivedCompletedCountMap[bId] = (archivedCompletedCountMap[bId] || 0) + 1;
+        } else {
+          activeCompletedCountMap[bId] = (activeCompletedCountMap[bId] || 0) + 1;
+        }
         if (s.date) {
           const sDate = new Date(s.date);
           if (!isNaN(sDate.getTime()) && (!lastCompletedDateMap[bId] || sDate > lastCompletedDateMap[bId])) {
             lastCompletedDateMap[bId] = sDate;
           }
         }
+      } else if (isArchivedOrPaused) {
+        // Archived / paused uncompleted schedules must NOT count as completed or upcoming active classes
+        return;
       } else if (s.status === 'Cancelled') {
         cancelledCountMap[bId] = (cancelledCountMap[bId] || 0) + 1;
       } else {
@@ -386,15 +568,29 @@ export const getBatches = async (req: any, res: Response) => {
       const batchObj = b.toObject ? b.toObject() : b;
       const bId = batchObj._id.toString();
       const rawCompleted = completedCountMap[bId] || 0;
+      const archivedCompleted = archivedCompletedCountMap[bId] || 0;
+      const activeCompleted = activeCompletedCountMap[bId] || 0;
+      const isGroupContinuation = Boolean(batchObj.restartedFromBatch);
+      const isRestartedBatch = Boolean(
+        batchObj.isRestarted ||
+        batchObj.lastRestartDate ||
+        isGroupContinuation ||
+        batchHasArchivedMap.has(bId)
+      );
       const preCompleted = Math.max(0, Number(batchObj.preCompletedClasses) || 0);
-      const completedCount = Math.max(rawCompleted, preCompleted);
+      const preRestartBase = isGroupContinuation
+        ? Math.max(0, Number(batchObj.preRestartCompletedClasses ?? batchObj.preCompletedClasses) || 0)
+        : Math.max(archivedCompleted, Math.max(0, Number(batchObj.preRestartCompletedClasses ?? batchObj.preCompletedClasses) || 0));
+      const completedCount = isGroupContinuation
+        ? (preRestartBase + rawCompleted)
+        : Math.max(rawCompleted, preCompleted);
       const schedCount = totalCountMap[bId] || 0;
       const targetSessions = (batchObj.numberOfSessions && Number(batchObj.numberOfSessions) > 0)
         ? Number(batchObj.numberOfSessions)
-        : Math.max(schedCount, completedCount);
+        : Math.max(schedCount + (isGroupContinuation ? preRestartBase : 0), completedCount);
 
       const isClassCompleted = targetSessions > 0 && completedCount >= targetSessions;
-      const effectiveStatus = (isClassCompleted && batchObj.status !== 'Dropped' && batchObj.status !== 'Cancelled')
+      const effectiveStatus = (isClassCompleted && !['Dropped', 'Cancelled', 'Paused'].includes(batchObj.status))
         ? 'Completed'
         : batchObj.status;
 
@@ -404,13 +600,17 @@ export const getBatches = async (req: any, res: Response) => {
         batchLvl === 1
           ? false
           : hasStudents
-          ? level2PlusBatchIds.has(bId)
-          : Boolean(batchObj.isRetention || (batchLvl !== null && batchLvl >= 2));
+            ? level2PlusBatchIds.has(bId)
+            : Boolean(batchObj.isRetention || (batchLvl !== null && batchLvl >= 2));
 
       return {
         ...batchObj,
         status: effectiveStatus,
         isRetention: computedIsRetention,
+        isRestarted: isRestartedBatch,
+        archivedCompletedCount: archivedCompleted,
+        activeCompletedCount: activeCompleted,
+        preRestartCompletedClasses: preRestartBase,
         completedClassesCount: completedCount,
         cancelledClassesCount: cancelledCountMap[bId] || 0,
         upcomingClassesCount: upcomingCountMap[bId] || 0,
@@ -628,11 +828,45 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     if (req.body.startDate !== undefined)
       batch.startDate = normalizeDateOnlyToUtc(req.body.startDate);
 
+    const existingSchedules = await Schedule.find({ batch: batch._id });
+    const hasArchivedInBatch = existingSchedules.some(
+      (s: any) => Boolean(s.isArchived) || s.status === 'Archived' || s.status === 'Paused'
+    );
+    const isRestartedBatch = Boolean(
+      batch.isRestarted ||
+      batch.restartedFromBatch ||
+      batch.lastRestartDate ||
+      req.body.isRestarted ||
+      hasArchivedInBatch
+    );
+
     const kolkataNow = getKolkataNow();
     const effectiveStartDate = batch.startDate ? (normalizeDateOnlyToUtc(batch.startDate)?.toISOString().split('T')[0] || '') : '';
-    let validatedUpdatePreCompleted = batch.preCompletedClasses || 0;
+    let validatedUpdatePreCompleted = Number(batch.preCompletedClasses) || 0;
 
-    if (effectiveStartDate) {
+    if (isRestartedBatch) {
+      batch.isRestarted = true;
+      if (req.body.preCompletedClasses !== undefined && req.body.preCompletedClasses !== '') {
+        const pre = Number(req.body.preCompletedClasses);
+        if (isNaN(pre) || pre < 0 || !Number.isInteger(pre)) {
+          res.status(400).json({ message: 'Total Completed Classes must be a whole number 0 or greater' });
+          return;
+        }
+        if (batch.numberOfSessions && pre > Number(batch.numberOfSessions)) {
+          res.status(400).json({ message: `Total Completed Classes cannot exceed total classes (${batch.numberOfSessions})` });
+          return;
+        }
+        validatedUpdatePreCompleted = pre;
+      }
+      const batchCompletedInDb = existingSchedules.filter((s: any) => s.status === 'Completed').length;
+      if (batch.restartedFromBatch) {
+        if (batch.preRestartCompletedClasses === undefined || req.body.preCompletedClasses !== undefined) {
+          batch.preRestartCompletedClasses = Math.max(0, validatedUpdatePreCompleted - batchCompletedInDb);
+        }
+      } else if (batch.preRestartCompletedClasses === undefined) {
+        batch.preRestartCompletedClasses = validatedUpdatePreCompleted;
+      }
+    } else if (effectiveStartDate) {
       if (effectiveStartDate > kolkataNow.todayStr) {
         validatedUpdatePreCompleted = 0;
       } else if (effectiveStartDate === kolkataNow.todayStr) {
@@ -676,8 +910,8 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
     const kolkata = getKolkataNow();
     const todayStart = new Date(`${kolkata.todayStr}T00:00:00.000Z`);
 
-    const existingSchedules = await Schedule.find({ batch: updated._id });
     const existingFutureCount = existingSchedules.filter((s: any) => {
+      if (s.isArchived) return false;
       const sDate = s.date ? new Date(s.date) : null;
       return s.status === 'Scheduled' && sDate && sDate >= todayStart;
     }).length;
@@ -723,6 +957,27 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
     const canGenerateSchedules = Boolean(updated.startDate && updated.days?.length && hasTiming);
     const onlyTimingChanged = timingChanged && !daysChanged && !startDateChanged && !sessionsChanged;
+    const totalBatchSessions = (updated.numberOfSessions && Number(updated.numberOfSessions) > 0)
+      ? Number(updated.numberOfSessions)
+      : 15;
+    const generateUpdatedSchedules = async (): Promise<number> => {
+      if (isRestartedBatch) {
+        const isGroupContinuation = Boolean(updated.restartedFromBatch);
+        const batchCompletedCount = (await Schedule.find({ batch: updated._id }))
+          .filter((s: any) => s.status === 'Completed').length;
+        const effectiveCompleted = isGroupContinuation
+          ? Math.max(validatedUpdatePreCompleted, (Number(updated.preRestartCompletedClasses) || 0) + batchCompletedCount)
+          : Math.max(validatedUpdatePreCompleted, batchCompletedCount);
+        return generateRestartedSchedulesForBatch({
+          batch: updated,
+          restartDateUtc: normalizeDateOnlyToUtc(updated.startDate) || new Date(),
+          completedCount: effectiveCompleted,
+          totalSessions: totalBatchSessions,
+          studentId: '',
+        });
+      }
+      return generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+    };
 
     if (onlyTimingChanged && canGenerateSchedules) {
       // 1. In-place update of all upcoming Scheduled sessions for this batch
@@ -730,10 +985,11 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       const activeTeacherId = targetTeacherStr || '';
       const teacherSlotsByDate = new Map<string, any[]>();
       if (activeTeacherId) {
-        const [tScheds, tDemos] = await Promise.all([
-          Schedule.find({ teacher: activeTeacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime batch _id'),
+        const [tSchedsRaw, tDemos] = await Promise.all([
+          Schedule.find({ teacher: activeTeacherId, status: { $nin: ['Cancelled', 'Archived', 'Paused'] } }).select('date startTime endTime batch _id isArchived'),
           DemoSession.find({ teacher: activeTeacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime')
         ]);
+        const tScheds = tSchedsRaw.filter((s: any) => !s.isArchived);
         for (const item of [...tScheds, ...tDemos]) {
           if (!item.date || !item.startTime || !item.endTime) continue;
           const dStr = normalizeDateOnlyToUtc(item.date)?.toISOString().split('T')[0];
@@ -750,10 +1006,10 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
       const allBatchSchedules = await Schedule.find({ batch: updated._id });
       let syncedCount = 0;
       for (const s of allBatchSchedules) {
+        if (s.isArchived || s.status !== 'Scheduled') continue;
         const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
         // Requirement 6: Do not change past attendance records or completed class history
         if (!sDateStr || sDateStr < kolkata.todayStr) continue;
-        if (s.status !== 'Scheduled') continue;
         // If today's class has already been marked with attendance, leave it untouched
         if (sDateStr === kolkata.todayStr && Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined)) {
           continue;
@@ -782,35 +1038,37 @@ export const updateBatch = async (req: Request, res: Response): Promise<void> =>
 
       // If there were no upcoming schedules at all, auto-generate remaining needed
       if (existingFutureCount === 0) {
-        const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+        const generated = await generateUpdatedSchedules();
         console.log(`🔄 Auto-scheduled ${generated} class(es) for batch "${updated.name}"`);
       }
     } else if (datesChanged && canGenerateSchedules) {
-      // Days or start date changed: remove ONLY upcoming uncompleted sessions and regenerate
+      // Days or start date changed: remove ONLY upcoming uncompleted non-archived sessions and regenerate
       const existingAll = await Schedule.find({ batch: updated._id });
       const upcomingIdsToDelete: string[] = [];
       for (const s of existingAll) {
+        if (s.isArchived || s.status !== 'Scheduled') continue;
         const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0];
         const isUpcoming = sDateStr && sDateStr >= kolkata.todayStr;
         const hasAttendance = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined);
-        if (s.status === 'Scheduled' && isUpcoming && !hasAttendance) {
+        if (isUpcoming && !hasAttendance) {
           upcomingIdsToDelete.push(s._id.toString());
         }
       }
       if (upcomingIdsToDelete.length > 0) {
         await Schedule.deleteMany({ _id: { $in: upcomingIdsToDelete } });
       }
-      const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+      const generated = await generateUpdatedSchedules();
       console.log(`🔄 Auto-scheduled/regenerated ${generated} class(es) for batch "${updated.name}"`);
     } else if (canGenerateSchedules && existingFutureCount === 0) {
-      const generated = await generateSchedulesForBatch(updated, updated.preCompletedClasses || 0);
+      const generated = await generateUpdatedSchedules();
       console.log(`🔄 Auto-scheduled ${generated} class(es) for batch "${updated.name}"`);
     }
 
     if (teacherChanged) {
-      // Surgically ensure all upcoming scheduled slots reflect the new assigned teacher
+      // Surgically ensure all upcoming non-archived scheduled slots reflect the new assigned teacher
       const futureScheds = await Schedule.find({ batch: updated._id, status: 'Scheduled' });
       for (const fs of futureScheds) {
+        if (fs.isArchived) continue;
         if (fs.teacher?.toString() !== targetTeacherStr) {
           fs.teacher = targetTeacher;
           await fs.save();
@@ -919,14 +1177,60 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
     }
 
     const students = await Student.find({ batch: batch._id });
-    const schedules = await Schedule.find({ batch: batch._id }).sort({ date: 1 });
+    const batchSchedules = await Schedule.find({ batch: batch._id }).sort({ date: 1 });
+
+    let preRestartFromOldBatch: any[] = [];
+    if (batch.restartedFromBatch) {
+      const oldBatchScheds = await Schedule.find({
+        batch: batch.restartedFromBatch,
+        status: 'Completed',
+      }).sort({ date: 1 });
+      const batchStuIds = new Set(students.map((st: any) => st._id?.toString()).filter(Boolean));
+      preRestartFromOldBatch = oldBatchScheds
+        .filter((s: any) => {
+          if (batchStuIds.size === 0 || !Array.isArray(s.attendance) || s.attendance.length === 0) return true;
+          const rec = s.attendance.find((a: any) => batchStuIds.has((a.studentId?._id || a.studentId || '').toString()));
+          return !rec || rec.isPresent !== false;
+        })
+        .map((s: any) => ({ ...(s.toObject ? s.toObject() : s), isPreRestartCompleted: true }));
+    }
+
+    const schedById = new Map<string, any>();
+    for (const s of [...preRestartFromOldBatch, ...batchSchedules]) {
+      const idStr = s._id?.toString();
+      if (idStr && !schedById.has(idStr)) {
+        schedById.set(idStr, s);
+      }
+    }
+    const allSchedules = Array.from(schedById.values()).sort(
+      (a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime()
+    );
+
+    const schedules = allSchedules.filter(
+      (s: any) => s.status !== 'Paused' && s.status !== 'Archived' && (!s.isArchived || s.status === 'Completed')
+    );
 
     const completedClasses = schedules.filter((s: any) => s.status === 'Completed');
+    const archivedCompletedCount = batchSchedules.filter((s: any) => Boolean(s.isArchived) && s.status === 'Completed').length;
+    const activeCompletedCount = batchSchedules.filter((s: any) => !s.isArchived && s.status === 'Completed').length;
     const cancelledClasses = schedules.filter((s: any) => s.status === 'Cancelled');
-    const upcomingClasses = schedules.filter((s: any) => s.status === 'Scheduled');
+    const upcomingClasses = schedules.filter((s: any) => !s.isArchived && s.status === 'Scheduled');
+
+    const isGroupContinuation = Boolean(batch.restartedFromBatch);
+    const isRestartedBatch = Boolean(
+      batch.isRestarted ||
+      batch.lastRestartDate ||
+      isGroupContinuation ||
+      batchSchedules.some((s: any) => Boolean(s.isArchived) || s.status === 'Archived' || s.status === 'Paused')
+    );
 
     const preCompleted = Math.max(0, Number(batch.preCompletedClasses) || 0);
-    const effectiveCompletedCount = Math.max(completedClasses.length, preCompleted);
+    const preRestartBase = isGroupContinuation
+      ? Math.max(preRestartFromOldBatch.length, Math.max(0, Number(batch.preRestartCompletedClasses ?? batch.preCompletedClasses) || 0))
+      : Math.max(archivedCompletedCount, Math.max(0, Number(batch.preRestartCompletedClasses ?? batch.preCompletedClasses) || 0));
+    const effectiveCompletedCount = isGroupContinuation
+      ? Math.max(completedClasses.length, preRestartBase + activeCompletedCount)
+      : Math.max(completedClasses.length, preCompleted);
 
     // Compute attendance statistics per student
     const attendanceStats = students.map((stu: any) => {
@@ -958,7 +1262,7 @@ export const getBatchAnalytics = async (req: Request, res: Response): Promise<vo
 
     const targetSessions = (batch.numberOfSessions && Number(batch.numberOfSessions) > 0)
       ? Number(batch.numberOfSessions)
-      : Math.max(schedules.length, effectiveCompletedCount);
+      : Math.max(schedules.length + (isGroupContinuation && preRestartFromOldBatch.length === 0 ? preRestartBase : 0), effectiveCompletedCount);
 
     res.json({
       batch,

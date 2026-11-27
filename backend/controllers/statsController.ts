@@ -55,13 +55,15 @@ export const getDashboardStats = async (req: any, res: Response) => {
     const weekEnd   = new Date(weekStart); weekEnd.setDate(weekStart.getDate() + 6); weekEnd.setHours(23, 59, 59, 999);
 
     let scheduleQuery: any = {
-      date: { $gte: weekStart, $lte: weekEnd }
+      date: { $gte: weekStart, $lte: weekEnd },
+      status: { $nin: ['Cancelled', 'Archived', 'Paused'] },
     };
     if (isTeacher && teacherProfile) {
       scheduleQuery.teacher = teacherProfile._id;
     }
 
-    const weekSchedules = await Schedule.find(scheduleQuery);
+    const weekSchedulesRaw = await Schedule.find(scheduleQuery);
+    const weekSchedules = weekSchedulesRaw.filter((s: any) => !s.isArchived);
 
     // --- Single-pass weekly aggregation (hours scheduled & chart buckets) ---
     let hoursScheduled = 0;
@@ -111,10 +113,11 @@ export const getDashboardStats = async (req: any, res: Response) => {
       todayDemosQuery.teacher = teacherProfile._id;
     }
 
-    const [todaySchedules, todayDemos] = await Promise.all([
-      Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject'),
+    const [todaySchedulesRaw, todayDemos] = await Promise.all([
+      Schedule.find(todaySchedulesQuery).populate('teacher', 'name').populate('batch', 'name subject status'),
       DemoSession.find(todayDemosQuery).populate('teacher', 'name')
     ]);
+    const todaySchedules = todaySchedulesRaw.filter((s: any) => !s.isArchived && s.batch?.status !== 'Paused' && s.batch?.status !== 'Dropped');
 
     // Hash map grouping today's schedules and demo sessions by teacher ID for O(1) lookup
     const teacherSchedulesMap = new Map<string, any[]>();

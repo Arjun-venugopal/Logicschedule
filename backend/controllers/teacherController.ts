@@ -51,7 +51,7 @@ export const getTeachers = async (_req: Request, res: Response) => {
       Teacher.find({}).populate('user', 'name email role mustChangePassword').lean(),
       Schedule.find({
         date: { $gte: todayStart, $lte: todayEnd },
-        status: { $ne: 'Cancelled' }
+        status: { $nin: ['Cancelled', 'Archived', 'Paused'] }
       }).populate('batch', 'status'),
       DemoSession.find({
         date: { $gte: todayStart, $lte: todayEnd },
@@ -60,8 +60,9 @@ export const getTeachers = async (_req: Request, res: Response) => {
     ]);
 
     const todaySchedules = todaySchedulesRaw.filter((s: any) => {
+      if (s.isArchived || s.status === 'Archived' || s.status === 'Paused') return false;
       const bStatus = s.batch?.status || (typeof s.batch === 'object' ? s.batch.status : '');
-      return bStatus !== 'Dropped';
+      return bStatus !== 'Dropped' && bStatus !== 'Paused';
     });
 
     // Hash Maps for O(1) per-teacher schedules and demos lookups
@@ -495,7 +496,8 @@ export const getTeacherPerformance = async (req: any, res: Response): Promise<vo
       scheduleQuery.batch = { $in: matchedBatchIds };
     }
 
-    const allSchedulesList = await Schedule.find(scheduleQuery).populate('batch', 'name subject').sort({ date: -1 });
+    const allSchedulesListRaw = await Schedule.find(scheduleQuery).populate('batch', 'name subject').sort({ date: -1 });
+    const allSchedulesList = allSchedulesListRaw.filter((s: any) => s.status !== 'Archived' && s.status !== 'Paused' && (!s.isArchived || s.status === 'Completed'));
     
     const totalSchedules = allSchedulesList.length;
     const completedSchedulesList = allSchedulesList.filter((s: any) => s.status === 'Completed');
@@ -682,8 +684,8 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
       Teacher.find({}).populate('user', 'name email role').lean(),
       Schedule.find({
         date: { $gte: dayStart, $lte: dayEnd },
-        status: { $ne: 'Cancelled' }
-      }).populate('batch', 'name subject').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean(),
+        status: { $nin: ['Cancelled', 'Archived', 'Paused'] }
+      }).populate('batch', 'name subject status').populate('teacher', 'name email').populate('replacementTeacher', 'name email').lean(),
       DemoSession.find({
         date: { $gte: dayStart, $lte: dayEnd },
         status: { $ne: 'Cancelled' }
@@ -693,6 +695,10 @@ export const getTeacherTimings = async (req: Request, res: Response): Promise<vo
     // Pre-index schedules and demos by teacher ID for O(1) lookups
     const schedulesByTeacher = new Map<string, any[]>();
     for (const s of schedules) {
+      if ((s as any).status === 'Archived' || (s as any).status === 'Paused' || ((s as any).isArchived && (s as any).status !== 'Completed')) {
+        continue;
+      }
+      if (s.batch && typeof s.batch === 'object' && ((s.batch as any).status === 'Paused' || (s.batch as any).status === 'Dropped')) continue;
       const primaryTId = (s.teacher?._id || s.teacher)?.toString();
       if (primaryTId) {
         let list = schedulesByTeacher.get(primaryTId);

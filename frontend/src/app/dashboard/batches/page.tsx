@@ -10,7 +10,7 @@ import dynamic from "next/dynamic";
 import { useSearchStore } from "@/store/searchStore";
 import { usePermissions } from "@/hooks/usePermissions";
 import { getSafeDateOnly, formatTime12h, computeEndTime } from "@/lib/utils";
-import { calculateBatchProgressAndSchedule } from "@/lib/scheduleCalculation";
+import { calculateBatchProgressAndSchedule, formatDisplayDate, getKolkataNowDetails, SchedulePreviewItem } from "@/lib/scheduleCalculation";
 import { DeleteConfirmModal } from "@/components/common/DeleteConfirmModal";
 import { SuccessToast } from "@/components/common/SuccessToast";
 
@@ -28,6 +28,7 @@ const STATUS_COLORS: Record<string, string> = {
   Upcoming: "bg-blue-500/10 text-blue-400 border-blue-500/20",
   Active: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
   Ongoing: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  Paused: "bg-amber-500/10 text-amber-400 border-amber-500/20",
   Completed: "bg-neutral-700/50 text-neutral-400 border-neutral-600/30",
   Cancelled: "bg-red-500/10 text-red-400 border-red-500/20",
   Dropped: "bg-red-500/10 text-red-400 border-red-500/20",
@@ -142,6 +143,19 @@ export default function BatchesPage() {
   const [filterCourse, setFilterCourse] = useState<string>("");
   const [formError, setFormError] = useState<string | null>(null);
   const [showAllPreview, setShowAllPreview] = useState<boolean>(false);
+  const [initialScheduleSignature, setInitialScheduleSignature] = useState<string | null>(null);
+
+  const getScheduleSignature = (f: BatchForm) =>
+    JSON.stringify({
+      startDate: f.startDate || "",
+      days: Array.isArray(f.days) ? [...f.days].sort() : [],
+      timeMode: f.timeMode,
+      startTime: f.startTime || "",
+      endTime: f.endTime || "",
+      dayTimings: f.timeMode === "different" ? (f.dayTimings || {}) : {},
+      numberOfSessions: f.numberOfSessions ?? "",
+      preCompletedClasses: f.preCompletedClasses ?? "",
+    });
 
   const { data: batches = [], isLoading } = useQuery({
     queryKey: ["batches"],
@@ -157,16 +171,30 @@ export default function BatchesPage() {
     refetchOnWindowFocus: false,
   });
 
+  const { data: editingBatchAnalytics, isFetching: isFetchingEditAnalytics } = useQuery({
+    queryKey: ["batch-analytics", editingId],
+    queryFn: async () => (await api.get(`/batches/${editingId}/analytics`)).data,
+    enabled: Boolean(modal && editingId),
+    staleTime: 15 * 1000,
+    refetchOnWindowFocus: false,
+  });
+
   const editingBatch = useMemo(() => {
     if (!editingId) return null;
     return batches.find((b: any) => b._id === editingId) || null;
   }, [editingId, batches]);
+
+  const hasEditedScheduleFields = useMemo(() => {
+    if (!editingId || !initialScheduleSignature) return true;
+    return getScheduleSignature(form) !== initialScheduleSignature;
+  }, [editingId, initialScheduleSignature, form]);
 
   // Intelligent class progress and calendar schedule calculation
   const progressCalculation = useMemo(() => {
     return calculateBatchProgressAndSchedule({
       startDate: form.startDate,
       days: form.days,
+      timeMode: form.timeMode,
       dayTimings: form.dayTimings,
       fallbackStartTime: form.startTime,
       fallbackEndTime: form.endTime,
@@ -174,10 +202,12 @@ export default function BatchesPage() {
       preCompletedClassesInput: form.preCompletedClasses,
       existingCompletedCount: editingBatch?.completedClassesCount || 0,
       isEditing: Boolean(editingId),
+      isRestarted: Boolean(editingBatch?.isRestarted),
     });
   }, [
     form.startDate,
     form.days,
+    form.timeMode,
     form.dayTimings,
     form.startTime,
     form.endTime,
@@ -186,6 +216,48 @@ export default function BatchesPage() {
     editingBatch,
     editingId,
   ]);
+
+  // When editing an existing batch and schedule-affecting form fields haven't changed,
+  // display the actual active database schedules (so restarts, extra classes, & progress corrections match 1:1).
+  // As soon as any date/day/time/session field is edited, show the live recalculated preview.
+  const displayedSchedulePreview: SchedulePreviewItem[] = useMemo(() => {
+    if (editingId && !hasEditedScheduleFields && Array.isArray(editingBatchAnalytics?.schedules)) {
+      const visibleDb = editingBatchAnalytics.schedules
+        .filter((s: any) => s.status === "Completed" || (!s.isArchived && s.status === "Scheduled"))
+        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+      if (visibleDb.length > 0) {
+        const kolkata = getKolkataNowDetails();
+        const dayNames = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+        const dbCompletedCount = visibleDb.filter((s: any) => s.status === "Completed").length;
+        const fallbackOffset = (dbCompletedCount === 0 && editingBatch?.isRestarted)
+          ? Number(editingBatch?.preRestartCompletedClasses ?? editingBatch?.preCompletedClasses ?? 0)
+          : 0;
+
+        return visibleDb.map((s: any, idx: number) => {
+          const dateStr = getSafeDateOnly(s.date) || "";
+          const parts = dateStr.split("-").map(Number);
+          const dateUtc = parts.length === 3 ? new Date(Date.UTC(parts[0], parts[1] - 1, parts[2], 12, 0, 0)) : new Date(s.date);
+          const dayOfWeek = !isNaN(dateUtc.getTime()) ? dayNames[dateUtc.getUTCDay()] : "";
+          const startTime = s.startTime || form.startTime || "09:00";
+          const endTime = s.endTime || computeEndTime(startTime, 60);
+          return {
+            classNumber: s.sessionNumber || (fallbackOffset + idx + 1),
+            dateStr,
+            displayDate: !isNaN(dateUtc.getTime()) ? formatDisplayDate(dateUtc) : dateStr,
+            dayOfWeek,
+            startTime,
+            endTime,
+            formattedTime: `${formatTime12h(startTime)} – ${formatTime12h(endTime)}`,
+            status: s.status === "Completed" ? "Completed" : "Scheduled",
+            isToday: dateStr === kolkata.todayStr,
+            isPast: dateStr < kolkata.todayStr,
+          };
+        });
+      }
+    }
+    return progressCalculation.schedulePreview;
+  }, [editingId, hasEditedScheduleFields, editingBatchAnalytics, editingBatch, form.startTime, progressCalculation.schedulePreview]);
 
   const validateAndPreparePayload = (data: BatchForm) => {
     if (!data.name || !data.name.trim()) {
@@ -231,6 +303,7 @@ export default function BatchesPage() {
 
     return {
       ...data,
+      isRestarted: Boolean(editingBatch?.isRestarted),
       preCompletedClasses: progressCalculation.effectiveCompletedCount,
       numberOfSessions: data.numberOfSessions !== "" && data.numberOfSessions !== undefined ? Number(data.numberOfSessions) : null,
       timing: { startTime: primaryStart, endTime: primaryEnd },
@@ -253,6 +326,7 @@ export default function BatchesPage() {
     mutationFn: ({ id, data }: { id: string; data: any }) => api.put(`/batches/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["batch-analytics"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["all-completed-schedules"] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
@@ -269,6 +343,7 @@ export default function BatchesPage() {
     mutationFn: (id: string) => api.delete(`/batches/${id}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["batches"] });
+      queryClient.invalidateQueries({ queryKey: ["batch-analytics"] });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       queryClient.invalidateQueries({ queryKey: ["students-all"] });
       setDeleteConfirm(null);
@@ -279,6 +354,7 @@ export default function BatchesPage() {
 
   const openCreate = () => {
     setForm(emptyForm());
+    setInitialScheduleSignature(null);
     setFormError(null);
     setEditingId(null);
     setShowAllPreview(false);
@@ -315,7 +391,7 @@ export default function BatchesPage() {
       }
     });
 
-    setForm({
+    const editFormState: BatchForm = {
       name: b.name || "",
       subject: b.subject || "",
       studentsCount: b.studentsCount || 1,
@@ -331,8 +407,13 @@ export default function BatchesPage() {
       status: b.status || "Upcoming",
       isRetention: Boolean(b.isRetention),
       numberOfSessions: b.numberOfSessions || "",
-      preCompletedClasses: b.preCompletedClasses !== undefined && b.preCompletedClasses !== null && b.preCompletedClasses !== "" ? b.preCompletedClasses : (b.completedClassesCount || ""),
-    });
+      preCompletedClasses: b.completedClassesCount !== undefined && b.completedClassesCount !== null
+        ? b.completedClassesCount
+        : (b.preCompletedClasses !== undefined && b.preCompletedClasses !== null && b.preCompletedClasses !== "" ? b.preCompletedClasses : ""),
+    };
+
+    setForm(editFormState);
+    setInitialScheduleSignature(getScheduleSignature(editFormState));
     setFormError(null);
     setEditingId(b._id);
     setShowAllPreview(false);
@@ -342,6 +423,7 @@ export default function BatchesPage() {
   const closeModal = () => {
     setModal(false);
     setForm(emptyForm());
+    setInitialScheduleSignature(null);
     setFormError(null);
     setEditingId(null);
     setShowAllPreview(false);
@@ -397,7 +479,7 @@ export default function BatchesPage() {
   // No early return for teacher, let them see their batches
 
   // Determine effective status for a batch
-  const getBatchEffectiveStatus = (b: any): "Ongoing" | "Completed" | "Dropped" | "Upcoming" => {
+  const getBatchEffectiveStatus = (b: any): "Ongoing" | "Completed" | "Dropped" | "Upcoming" | "Paused" => {
     const targetSessions = (b.numberOfSessions && Number(b.numberOfSessions) > 0)
       ? Number(b.numberOfSessions)
       : (b.totalClassesCount || 0);
@@ -406,6 +488,7 @@ export default function BatchesPage() {
     const rawStatus = (b.status || "").toLowerCase();
 
     if (rawStatus === "dropped" || rawStatus === "cancelled") return "Dropped";
+    if (rawStatus === "paused") return "Paused";
     if (isClassCompleted || rawStatus === "completed") return "Completed";
     if (rawStatus === "upcoming") return "Upcoming";
     return "Ongoing";
@@ -431,16 +514,19 @@ export default function BatchesPage() {
     let completedBatches = 0;
     let droppedBatches = 0;
     let upcomingBatches = 0;
+    let pausedBatches = 0;
 
     baseBatchesForStats.forEach((b: any) => {
       const effective = getBatchEffectiveStatus(b);
 
-      if (b.isRetention && effective !== "Dropped") {
+      if (b.isRetention && effective !== "Dropped" && effective !== "Paused") {
         retentionBatches++;
       }
 
       if (effective === "Completed") {
         completedBatches++;
+      } else if (effective === "Paused") {
+        pausedBatches++;
       } else if (effective === "Ongoing") {
         ongoingBatches++;
       } else if (effective === "Dropped") {
@@ -457,6 +543,7 @@ export default function BatchesPage() {
       completedBatches,
       droppedBatches,
       upcomingBatches,
+      pausedBatches,
     };
   }, [baseBatchesForStats]);
 
@@ -465,8 +552,9 @@ export default function BatchesPage() {
 
     if (filterStatus) {
       const effective = getBatchEffectiveStatus(b);
-      if (filterStatus === "Retention" && (!b.isRetention || effective === "Dropped")) return false;
+      if (filterStatus === "Retention" && (!b.isRetention || effective === "Dropped" || effective === "Paused")) return false;
       if (filterStatus === "Ongoing" && effective !== "Ongoing") return false;
+      if (filterStatus === "Paused" && effective !== "Paused") return false;
       if (filterStatus === "Completed" && effective !== "Completed") return false;
       if (filterStatus === "Dropped" && effective !== "Dropped") return false;
       if (filterStatus === "Upcoming" && effective !== "Upcoming") return false;
@@ -705,6 +793,7 @@ export default function BatchesPage() {
           >
             <option value="">All Statuses ({batchStats.totalBatches})</option>
             <option value="Ongoing">Ongoing / Active ({batchStats.ongoingBatches})</option>
+            <option value="Paused">Paused ({batchStats.pausedBatches})</option>
             <option value="Retention">Retention / Next Level ({batchStats.retentionBatches})</option>
             <option value="Completed">Completed ({batchStats.completedBatches})</option>
             <option value="Dropped">Dropped / Cancelled ({batchStats.droppedBatches})</option>
@@ -1123,7 +1212,38 @@ export default function BatchesPage() {
                 )}
 
                 {/* Conditional Completed Classes Calculation / Manual Input (Requirements 1, 2, 6) */}
-                {progressCalculation.scenario === "past" ? (
+                {editingBatch?.isRestarted ? (
+                  <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs font-bold text-amber-300">
+                        Restarted Schedule — Preserved Completed Classes
+                      </label>
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 font-semibold border border-amber-500/30 shrink-0">
+                        Restarted Batch
+                      </span>
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      max={form.numberOfSessions ? Number(form.numberOfSessions) : undefined}
+                      placeholder="0"
+                      value={form.preCompletedClasses}
+                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value !== "" ? Number(e.target.value) : "" })}
+                      className="w-full bg-neutral-900 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20 transition-all placeholder-neutral-600"
+                    />
+                    <p className="text-[11px] text-neutral-300 leading-relaxed">
+                      <strong className="text-white">{progressCalculation.effectiveCompletedCount}</strong> prior completed class(es) preserved. Remaining{" "}
+                      <strong className="text-amber-300">{progressCalculation.remainingClasses}</strong> class(es) begin from Start / Restart Date (
+                      <strong className="text-white">{progressCalculation.formattedStartDate || "Selected Date"}</strong>).
+                    </p>
+                    {progressCalculation.validationError && (
+                      <p className="text-xs text-red-400 font-medium flex items-center gap-1 pt-0.5">
+                        <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                        {progressCalculation.validationError}
+                      </p>
+                    )}
+                  </div>
+                ) : progressCalculation.scenario === "past" ? (
                   // Scenario C: Start Date is in the past -> Mandatory manual input
                   <div className="animate-in fade-in slide-in-from-top-1 duration-200 p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-1.5">
                     <div className="flex items-center justify-between">
@@ -1141,7 +1261,7 @@ export default function BatchesPage() {
                       max={form.numberOfSessions ? Number(form.numberOfSessions) : undefined}
                       placeholder="e.g. 5"
                       value={form.preCompletedClasses}
-                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value ? Number(e.target.value) : "" })}
+                      onChange={(e) => setForm({ ...form, preCompletedClasses: e.target.value !== "" ? Number(e.target.value) : "" })}
                       className="w-full bg-neutral-900 border border-amber-500/40 rounded-lg px-3 py-2 text-sm text-white outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400/20 transition-all placeholder-neutral-600"
                     />
                     <p className="text-[11px] text-neutral-400">
@@ -1180,7 +1300,10 @@ export default function BatchesPage() {
                         Start Date is in the Future ({progressCalculation.formattedStartDate})
                       </p>
                       <p className="text-[11px] text-neutral-300 mt-0.5 leading-relaxed">
-                        All classes will be generated as upcoming starting from {progressCalculation.formattedStartDate}. Total completed classes default to 0.
+                        All remaining classes will be generated as upcoming starting from {progressCalculation.formattedStartDate}.{" "}
+                        {progressCalculation.effectiveCompletedCount > 0
+                          ? `(${progressCalculation.effectiveCompletedCount} completed class(es) preserved.)`
+                          : "Total completed classes default to 0."}
                       </p>
                     </div>
                   </div>
@@ -1189,10 +1312,11 @@ export default function BatchesPage() {
                 {/* Status */}
                 <div>
                   <label className="block text-sm font-medium text-neutral-300 mb-1.5">Status</label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className={`grid gap-2 ${form.status === "Paused" ? "grid-cols-2 sm:grid-cols-5" : "grid-cols-2 sm:grid-cols-4"}`}>
                     {[
                       { label: "Upcoming", value: "Upcoming" },
                       { label: "Ongoing", value: "Active" },
+                      ...(form.status === "Paused" ? [{ label: "Paused", value: "Paused" }] : []),
                       { label: "Completed", value: "Completed" },
                       { label: "Dropped", value: "Dropped" },
                     ].map((s) => (
@@ -1275,10 +1399,18 @@ export default function BatchesPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            setForm((f) => ({
-                              ...f,
-                              timeMode: "same",
-                            }));
+                            setForm((f) => {
+                              const syncedEnd = f.endTime || computeEndTime(f.startTime || "09:00", 60);
+                              const updatedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+                              f.days.forEach((day) => {
+                                updatedDayTimings[day] = { startTime: f.startTime || "09:00", endTime: syncedEnd };
+                              });
+                              return {
+                                ...f,
+                                timeMode: "same",
+                                dayTimings: updatedDayTimings,
+                              };
+                            });
                           }}
                           className={`py-2 px-3 rounded-lg text-xs font-semibold transition-all flex items-center justify-center gap-2 ${form.timeMode === "same"
                             ? "brand-gradient text-black shadow-sm"
@@ -1335,11 +1467,19 @@ export default function BatchesPage() {
                               value={form.startTime}
                               onChange={(e) => {
                                 const newStart = e.target.value;
-                                setForm((f) => ({
-                                  ...f,
-                                  startTime: newStart,
-                                  endTime: computeEndTime(newStart, 60),
-                                }));
+                                const newEnd = computeEndTime(newStart, 60);
+                                setForm((f) => {
+                                  const syncedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+                                  f.days.forEach((day) => {
+                                    syncedDayTimings[day] = { startTime: newStart, endTime: newEnd };
+                                  });
+                                  return {
+                                    ...f,
+                                    startTime: newStart,
+                                    endTime: newEnd,
+                                    dayTimings: syncedDayTimings,
+                                  };
+                                });
                               }}
                               className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
                             />
@@ -1354,7 +1494,20 @@ export default function BatchesPage() {
                             <input
                               type="time"
                               value={form.endTime}
-                              onChange={(e) => setForm({ ...form, endTime: e.target.value })}
+                              onChange={(e) => {
+                                const newEnd = e.target.value;
+                                setForm((f) => {
+                                  const syncedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+                                  f.days.forEach((day) => {
+                                    syncedDayTimings[day] = { startTime: f.startTime || "09:00", endTime: newEnd };
+                                  });
+                                  return {
+                                    ...f,
+                                    endTime: newEnd,
+                                    dayTimings: syncedDayTimings,
+                                  };
+                                });
+                              }}
                               className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-amber-500 transition-all"
                             />
                           </div>
@@ -1431,19 +1584,44 @@ export default function BatchesPage() {
 
                 {/* Generated Class Schedule Preview (Requirement 6) */}
                 <div className="bg-neutral-900/70 border border-neutral-800 rounded-xl p-3.5 space-y-3">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
                       <Calendar className="w-4 h-4 text-amber-500" />
                       <span className="text-xs font-bold text-white">Generated Class Schedule Preview</span>
+                      {editingId && !hasEditedScheduleFields && !isFetchingEditAnalytics && displayedSchedulePreview.length > 0 && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-semibold">
+                          Synced Calendar
+                        </span>
+                      )}
+                      {editingId && hasEditedScheduleFields && (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300 border border-amber-500/20 font-semibold">
+                          Recalculated Preview
+                        </span>
+                      )}
                     </div>
-                    {progressCalculation.schedulePreview.length > 0 && (
-                      <span className="text-[11px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
-                        {progressCalculation.schedulePreview.length} sessions
-                      </span>
-                    )}
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {editingBatch?.isRestarted && (Number(editingBatch?.preRestartCompletedClasses) > 0 || Number(editingBatch?.archivedCompletedCount) > 0) && (
+                        <span className="text-[10px] text-emerald-400 font-semibold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                          {Math.max(Number(editingBatch?.archivedCompletedCount) || 0, Number(editingBatch?.preRestartCompletedClasses) || 0)} prior completed
+                        </span>
+                      )}
+                      {displayedSchedulePreview.length > 0 && (
+                        <span className="text-[11px] text-amber-400 font-semibold bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                          {displayedSchedulePreview.length} sessions
+                        </span>
+                      )}
+                    </div>
                   </div>
 
-                  {progressCalculation.schedulePreview.length === 0 ? (
+                  {form.status === "Paused" ? (
+                    <p className="text-xs text-amber-300/90 text-center py-3 px-3 bg-amber-500/10 rounded-lg border border-amber-500/20">
+                      This batch is currently Paused. Upcoming schedules are archived until classes are restarted.
+                    </p>
+                  ) : isFetchingEditAnalytics && !hasEditedScheduleFields && displayedSchedulePreview.length === 0 ? (
+                    <p className="text-xs text-neutral-400 text-center py-3 bg-neutral-950/40 rounded-lg border border-neutral-800/60">
+                      Loading active class schedule...
+                    </p>
+                  ) : displayedSchedulePreview.length === 0 ? (
                     <p className="text-xs text-neutral-500 text-center py-3 bg-neutral-950/40 rounded-lg border border-neutral-800/60">
                       Select Start Date and at least one class day above to preview the automatic calendar schedule.
                     </p>
@@ -1451,11 +1629,11 @@ export default function BatchesPage() {
                     <div className="space-y-2">
                       <div className="grid grid-cols-1 gap-1.5 max-h-56 overflow-y-auto pr-1">
                         {(showAllPreview
-                          ? progressCalculation.schedulePreview
-                          : progressCalculation.schedulePreview.slice(0, 6)
+                          ? displayedSchedulePreview
+                          : displayedSchedulePreview.slice(0, 6)
                         ).map((item) => (
                           <div
-                            key={item.classNumber}
+                            key={`${item.classNumber}_${item.dateStr}`}
                             className={`flex items-center justify-between px-3 py-2 rounded-lg text-xs border transition-all ${item.status === "Completed"
                               ? "bg-emerald-500/5 border-emerald-500/20 text-neutral-200"
                               : item.isToday
@@ -1497,7 +1675,7 @@ export default function BatchesPage() {
                         ))}
                       </div>
 
-                      {progressCalculation.schedulePreview.length > 6 && (
+                      {displayedSchedulePreview.length > 6 && (
                         <button
                           type="button"
                           onClick={() => setShowAllPreview(!showAllPreview)}
@@ -1509,7 +1687,7 @@ export default function BatchesPage() {
                             </>
                           ) : (
                             <>
-                              <ChevronDown className="w-3.5 h-3.5" /> Show all {progressCalculation.schedulePreview.length} classes
+                              <ChevronDown className="w-3.5 h-3.5" /> Show all {displayedSchedulePreview.length} classes
                             </>
                           )}
                         </button>

@@ -12,6 +12,9 @@ import {
   submitProjectSubmission,
   deleteProjectSubmission,
   correctStudentProgress,
+  pauseStudentClasses,
+  restartStudentClasses,
+  updateStudentRestartDetails,
 } from '../controllers/studentController';
 import { protect, permissionCheck } from '../middleware/authMiddleware';
 
@@ -26,6 +29,9 @@ router.get('/:id', protect, getStudentById);
 router.put('/:id', protect, permissionCheck('students', 'write'), updateStudent);
 router.post('/:id/advance-level', protect, permissionCheck('students', 'write'), advanceStudentLevel);
 router.post('/:id/correct-progress', protect, permissionCheck('students', 'write'), correctStudentProgress);
+router.post('/:id/pause-classes', protect, permissionCheck('students', 'write'), pauseStudentClasses);
+router.post('/:id/restart-classes', protect, permissionCheck('students', 'write'), restartStudentClasses);
+router.put('/:id/restart-classes', protect, permissionCheck('students', 'write'), updateStudentRestartDetails);
 router.delete('/:id', protect, permissionCheck('students', 'write'), deleteStudent);
 
 // Project Link Submission by Teacher or Admin

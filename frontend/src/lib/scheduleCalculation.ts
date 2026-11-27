@@ -113,6 +113,7 @@ export function formatDisplayDate(dateObj: Date): string {
 export function calculateBatchProgressAndSchedule(params: {
   startDate?: string;
   days: string[];
+  timeMode?: "same" | "different";
   dayTimings?: Record<string, { startTime: string; endTime: string }>;
   fallbackStartTime?: string;
   fallbackEndTime?: string;
@@ -120,10 +121,12 @@ export function calculateBatchProgressAndSchedule(params: {
   preCompletedClassesInput?: number | string | null;
   existingCompletedCount?: number;
   isEditing?: boolean;
+  isRestarted?: boolean;
 }): ClassProgressCalculation {
   const {
     startDate,
     days = [],
+    timeMode = "different",
     dayTimings = {},
     fallbackStartTime = "09:00",
     fallbackEndTime = "10:00",
@@ -131,6 +134,7 @@ export function calculateBatchProgressAndSchedule(params: {
     preCompletedClassesInput,
     existingCompletedCount = 0,
     isEditing = false,
+    isRestarted = false,
   } = params;
 
   const kolkata = getKolkataNowDetails();
@@ -143,21 +147,23 @@ export function calculateBatchProgressAndSchedule(params: {
     else scenario = "past";
   }
 
-  const isManualCompletedRequired = scenario === "past";
+  const isManualCompletedRequired = scenario === "past" && !isRestarted;
 
   const totalClasses =
     numberOfSessions !== "" && numberOfSessions !== null && numberOfSessions !== undefined
       ? Math.max(0, Math.floor(Number(numberOfSessions) || 0))
       : 0;
 
-  // Determine slot timing helper
+  // Determine slot timing helper (respects timeMode: "same" strictly uses fallbackStartTime/EndTime)
   const getSlotTiming = (dayName: string): { startTime: string; endTime: string } => {
-    const custom = dayTimings[dayName] || dayTimings[dayName.toLowerCase()];
-    if (custom?.startTime) {
-      return {
-        startTime: custom.startTime,
-        endTime: custom.endTime || computeEndTime(custom.startTime, 60),
-      };
+    if (timeMode !== "same") {
+      const custom = dayTimings[dayName] || dayTimings[dayName.toLowerCase()];
+      if (custom?.startTime) {
+        return {
+          startTime: custom.startTime,
+          endTime: custom.endTime || computeEndTime(custom.startTime, 60),
+        };
+      }
     }
     const s = fallbackStartTime || "09:00";
     const e = fallbackEndTime || computeEndTime(s, 60);
@@ -166,10 +172,11 @@ export function calculateBatchProgressAndSchedule(params: {
 
   // Scenario A: Auto completed calculation for today
   let autoCompletedCount = 0;
-  if (scenario === "today") {
+  if (scenario === "today" && !isRestarted) {
     const todayParts = kolkata.todayStr.split("-").map(Number);
     const todayUtc = new Date(Date.UTC(todayParts[0], todayParts[1] - 1, todayParts[2], 12, 0, 0));
-    const todayDayName = DAY_NAMES[todayUtc.getUTCDay()];
+    const dayNames = DAY_NAMES;
+    const todayDayName = dayNames[todayUtc.getUTCDay()];
 
     if (days.includes(todayDayName)) {
       const timing = getSlotTiming(todayDayName);
@@ -185,9 +192,32 @@ export function calculateBatchProgressAndSchedule(params: {
   let validationError: string | null = null;
   let statusHint = "";
 
-  if (scenario === "future") {
+  const hasExplicitPreCompleted =
+    preCompletedClassesInput !== "" &&
+    preCompletedClassesInput !== null &&
+    preCompletedClassesInput !== undefined;
+
+  if (isRestarted) {
+    if (hasExplicitPreCompleted) {
+      const numVal = Number(preCompletedClassesInput);
+      if (isNaN(numVal) || numVal < 0 || !Number.isInteger(numVal)) {
+        validationError = "Total Completed Classes must be a whole number (0 or greater).";
+        effectiveCompletedCount = existingCompletedCount || 0;
+      } else if (totalClasses > 0 && numVal > totalClasses) {
+        validationError = `Total Completed Classes cannot exceed total classes (${totalClasses}).`;
+        effectiveCompletedCount = numVal;
+      } else {
+        effectiveCompletedCount = numVal;
+      }
+    } else {
+      effectiveCompletedCount = Math.min(existingCompletedCount || 0, totalClasses || Infinity);
+    }
+    statusHint = "Restarted schedule — prior completed classes are preserved and remaining classes begin from the selected Start/Restart Date.";
+  } else if (scenario === "future") {
     effectiveCompletedCount = isEditing ? Math.min(existingCompletedCount, totalClasses || Infinity) : 0;
-    statusHint = "Batch starts in the future — completed classes default to 0.";
+    statusHint = effectiveCompletedCount > 0
+      ? "Prior completed classes preserved — remaining classes start in the future."
+      : "Batch starts in the future — completed classes default to 0.";
   } else if (scenario === "today") {
     effectiveCompletedCount = Math.max(existingCompletedCount, autoCompletedCount);
     if (autoCompletedCount > 0) {
@@ -197,11 +227,7 @@ export function calculateBatchProgressAndSchedule(params: {
     }
   } else if (scenario === "past") {
     statusHint = "Batch start date is in the past. Specify completed classes.";
-    if (
-      preCompletedClassesInput === "" ||
-      preCompletedClassesInput === null ||
-      preCompletedClassesInput === undefined
-    ) {
+    if (!hasExplicitPreCompleted) {
       validationError = "Total Completed Classes is required when Start Date is in the past.";
       effectiveCompletedCount = existingCompletedCount || 0;
     } else {
@@ -232,15 +258,21 @@ export function calculateBatchProgressAndSchedule(params: {
 
   // Generate Schedule Preview (strictly starting from cleanStartDate forward)
   const schedulePreview: SchedulePreviewItem[] = [];
+  const isContinuationSchedule =
+    Boolean(isRestarted) ||
+    (Boolean(isEditing) && effectiveCompletedCount > 0 && scenario === "future");
 
   if (cleanStartDate && days.length > 0) {
     const [sy, sm, sd] = cleanStartDate.split("-").map(Number);
     if (sy && sm && sd) {
       const cursor = new Date(Date.UTC(sy, sm - 1, sd, 12, 0, 0));
-      const targetCount = totalClasses > 0 ? totalClasses : 15;
+      const continuationOffset = isContinuationSchedule ? effectiveCompletedCount : 0;
+      const targetCount = totalClasses > 0
+        ? Math.max(0, totalClasses - continuationOffset)
+        : 15;
       let daysScanned = 0;
 
-      while (schedulePreview.length < targetCount && daysScanned < 400) {
+      while (schedulePreview.length < targetCount && daysScanned < 450) {
         const dayOfWeek = DAY_NAMES[cursor.getUTCDay()];
 
         if (days.includes(dayOfWeek)) {
@@ -250,8 +282,8 @@ export function calculateBatchProgressAndSchedule(params: {
           const dateStr = `${cy}-${cm}-${cd}`;
 
           const timing = getSlotTiming(dayOfWeek);
-          const classNum = schedulePreview.length + 1;
-          const isSlotCompleted = classNum <= effectiveCompletedCount;
+          const classNum = continuationOffset + schedulePreview.length + 1;
+          const isSlotCompleted = !isContinuationSchedule && classNum <= effectiveCompletedCount;
           const isToday = dateStr === kolkata.todayStr;
           const isPast = dateStr < kolkata.todayStr;
 

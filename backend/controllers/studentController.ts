@@ -7,11 +7,12 @@ import Batch from '../models/Batch';
 import Teacher from '../models/Teacher';
 import Payment from '../models/Payment';
 import Schedule from '../models/Schedule';
+import DemoSession from '../models/DemoSession';
 import { calculateDueAfterClasses, calculatePaymentStatus } from '../utils/paymentRules';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { serverCache, deleteDiskCache } from '../utils/cache';
-import { generateSchedulesForBatch, normalizeDateOnlyToUtc, computeEndTime, getSlotTimingForDay, DAY_INDEX } from './batchController';
-import { getKolkataNow, checkTeacherConflict } from '../utils/scheduleHelper';
+import { generateSchedulesForBatch, generateRestartedSchedulesForBatch, normalizeDateOnlyToUtc, computeEndTime, getSlotTimingForDay, DAY_INDEX } from './batchController';
+import { getKolkataNow, checkTeacherConflict, checkIntervalConflict } from '../utils/scheduleHelper';
 import RecycleBin from '../models/RecycleBin';
 
 export function extractLevel(text?: string, fallback = 'Level 1'): string {
@@ -48,7 +49,7 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
 
     let createdStudents = 0;
     let advancedStudents = 0;
-    
+
     // Pre-fetch all batches into a Map<name, id> for O(1) lookups
     const allBatches = await Batch.find({});
     const batchMap = new Map<string, string>();
@@ -118,7 +119,7 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
         const last10Phone = cleanPhone.length >= 8 ? cleanPhone.slice(-10) : '';
         const normEmail = String(email || '').trim().toLowerCase();
 
-        const existingStudent = 
+        const existingStudent =
           (normEmail && studentByEmail.get(normEmail)) ||
           (last10Phone && studentByPhone.get(last10Phone)) ||
           studentByName.get(normName);
@@ -207,8 +208,8 @@ export const uploadStudents = async (req: Request, res: Response): Promise<void>
       }
     }
 
-    res.status(200).json({ 
-      message: `Successfully processed: ${createdStudents} new students added, ${advancedStudents} students moved to next level/batch.` 
+    res.status(200).json({
+      message: `Successfully processed: ${createdStudents} new students added, ${advancedStudents} students moved to next level/batch.`
     });
   } catch (error) {
     console.error('Error uploading students:', error);
@@ -221,7 +222,7 @@ export const getStudentsByBatch = async (req: Request, res: Response): Promise<v
     const { batchId } = req.params;
     const bId = (Array.isArray(batchId) ? batchId[0] : batchId) as string;
     let students = await Student.find({ batch: bId });
-    
+
     // Also include any students referenced in batch.students
     const batch = await Batch.findById(bId);
     if (batch && Array.isArray(batch.students) && batch.students.length > 0) {
@@ -271,10 +272,10 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
         res.status(200).json([]);
         return;
       }
-      
+
       const teacherBatches = await Batch.find({ assignedTeacher: teacher._id }).select('_id');
       const teacherBatchIds = teacherBatches.map((b: any) => b._id);
-      
+
       let queryChain = Student.find({
         $or: [
           { batch: { $in: teacherBatchIds } },
@@ -309,10 +310,13 @@ export const getAllStudents = async (req: any, res: Response): Promise<void> => 
   }
 };
 
+export const STUDENT_BATCH_POPULATE_FIELDS =
+  'name subject status assignedTeacher numberOfSessions timing dayTimings timeMode days durationMinutes startDate meetingLink studentsCount preCompletedClasses preRestartCompletedClasses isRestarted lastRestartDate restartedFromBatch isRetention';
+
 export const getStudentById = async (req: Request, res: Response): Promise<void> => {
   try {
     const student = await Student.findById(req.params.id as string)
-      .populate('batch', 'name subject status assignedTeacher numberOfSessions')
+      .populate('batch', STUDENT_BATCH_POPULATE_FIELDS)
       .populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions')
       .populate('assignedTutor', 'name email');
     if (!student) {
@@ -378,6 +382,14 @@ export async function syncStudentBatchSchedules(
       ]);
 
       if (batchDoc) {
+        if (
+          ['Paused', 'Dropped', 'Cancelled', 'Archived'].includes(batchDoc.status) ||
+          studentDoc?.status === 'Paused' ||
+          studentDoc?.status === 'Dropped'
+        ) {
+          return;
+        }
+
         // Automatically assign batch teacher to student if student tutor is missing or needs sync
         const batchTeacherId = batchDoc.assignedTeacher?._id
           ? batchDoc.assignedTeacher._id.toString()
@@ -394,7 +406,8 @@ export async function syncStudentBatchSchedules(
         }
 
         const existingSchedules = await Schedule.find({ batch: batchDoc._id });
-        const scheduledClasses = existingSchedules.filter((s: any) => s.status === 'Scheduled');
+        const activeExistingSchedules = existingSchedules.filter((s: any) => !s.isArchived && s.status !== 'Archived' && s.status !== 'Paused');
+        const scheduledClasses = activeExistingSchedules.filter((s: any) => s.status === 'Scheduled');
 
         const hasTiming =
           (batchDoc.timing?.startTime && batchDoc.timing?.endTime) ||
@@ -405,9 +418,28 @@ export async function syncStudentBatchSchedules(
           ? Number(studentDoc.classesNeeded)
           : (batchDoc.numberOfSessions && Number(batchDoc.numberOfSessions) > 0 ? Number(batchDoc.numberOfSessions) : 0);
 
+        const isRestartedBatch = Boolean(
+          batchDoc.isRestarted || batchDoc.restartedFromBatch || batchDoc.lastRestartDate
+        );
+
         if (scheduledClasses.length === 0 && batchDoc.startDate && batchDoc.days?.length && hasTiming) {
           // No scheduled classes yet, auto-generate calendar starting from batch.startDate
-          await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+          if (isRestartedBatch) {
+            const totalS = targetSessions > 0 ? targetSessions : 15;
+            const completedS = Math.max(
+              Number(batchDoc.preCompletedClasses) || 0,
+              existingSchedules.filter((s: any) => s.status === 'Completed').length
+            );
+            await generateRestartedSchedulesForBatch({
+              batch: batchDoc,
+              restartDateUtc: normalizeDateOnlyToUtc(batchDoc.lastRestartDate || batchDoc.startDate) || new Date(),
+              completedCount: completedS,
+              totalSessions: totalS,
+              studentId,
+            });
+          } else {
+            await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+          }
         } else {
           // Schedules already exist:
           // A) Ensure student is added to attendance for all Scheduled classes
@@ -443,7 +475,21 @@ export async function syncStudentBatchSchedules(
           const existingCompletedCount = existingSchedules.filter((s: any) => s.status === 'Completed').length;
           const totalExisting = existingCompletedCount + scheduledClasses.length;
           if (targetSessions > 0 && totalExisting < targetSessions && batchDoc.startDate && batchDoc.days?.length && hasTiming) {
-            await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+            if (isRestartedBatch) {
+              const completedS = Math.max(
+                Number(batchDoc.preCompletedClasses) || 0,
+                existingCompletedCount
+              );
+              await generateRestartedSchedulesForBatch({
+                batch: batchDoc,
+                restartDateUtc: normalizeDateOnlyToUtc(batchDoc.lastRestartDate || batchDoc.startDate) || new Date(),
+                completedCount: completedS,
+                totalSessions: targetSessions,
+                studentId,
+              });
+            } else {
+              await generateSchedulesForBatch(batchDoc, batchDoc.preCompletedClasses || 0, studentId, targetSessions);
+            }
           }
         }
       }
@@ -503,7 +549,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
     }
     const { name, batch, parentName, mobileNumber, whatsappNumber, email, currentLevel, level, classesNeeded, assignedTutor, status } = parsed.data;
     const trimmedName = name.trim();
-    
+
     // 1. Check if already enrolled in this exact batch
     const existingInBatch = await Student.findOne({
       name: { $regex: `^\\s*${escapeRegex(trimmedName)}\\s*$`, $options: 'i' },
@@ -543,7 +589,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
               oldTeacherName = oldB.assignedTeacher?.name || oldB.assignedTeacher?.user?.name || '';
               oldSessions = oldB.numberOfSessions || 0;
             }
-          } catch {}
+          } catch { }
 
           const prevLevel = existingStudent.currentLevel || existingStudent.level || extractLevel(oldBName, 'Level 1');
 
@@ -576,7 +622,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
           if (newB?.name) {
             derivedLevel = extractLevel(newB.name, undefined);
           }
-        } catch {}
+        } catch { }
       }
       if (derivedLevel) {
         existingStudent.currentLevel = derivedLevel;
@@ -589,7 +635,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
         try {
           const bDoc = await Batch.findById(newBatchId);
           if (bDoc?.assignedTeacher) existingStudent.assignedTutor = bDoc.assignedTeacher;
-        } catch {}
+        } catch { }
       }
 
       const updatedStudent = await existingStudent.save();
@@ -628,7 +674,7 @@ export const createStudent = async (req: Request, res: Response, next: NextFunct
             batchAssignedTeacher = batchDoc.assignedTeacher;
           }
         }
-      } catch {}
+      } catch { }
     }
     if (!initialLevel) initialLevel = 'Level 1';
 
@@ -745,7 +791,7 @@ export const updateStudent = async (req: Request, res: Response): Promise<void> 
       student.level = level;
     }
     if (classesNeeded !== undefined) student.classesNeeded = Number(classesNeeded);
-const oldStatus = student.status || 'Active';
+    const oldStatus = student.status || 'Active';
     const newStatus = status !== undefined ? status : oldStatus;
     const statusChanged = status !== undefined && newStatus !== oldStatus;
     if (status !== undefined) {
@@ -757,7 +803,7 @@ const oldStatus = student.status || 'Active';
     if (targetBatchId) {
       try {
         targetBatchDoc = await Batch.findById(targetBatchId);
-      } catch {}
+      } catch { }
     }
 
     if (newBatchId && newBatchId !== oldBatchId && currentLevel === undefined && level === undefined && targetBatchDoc) {
@@ -900,7 +946,7 @@ const oldStatus = student.status || 'Active';
     }
 
     await student.save();
-if (statusChanged) {
+    if (statusChanged) {
       const targetBatchId = newBatchId || oldBatchId || (student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : ''));
 
       if (newStatus === 'Dropped') {
@@ -999,8 +1045,8 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       paymentDetails,
     } = req.body;
 
-    const oldBatchId = student.batch?._id 
-      ? student.batch._id.toString() 
+    const oldBatchId = student.batch?._id
+      ? student.batch._id.toString()
       : (typeof student.batch === 'string' ? student.batch : student.batch?.toString());
 
     let oldBatchDoc: any = null;
@@ -1020,9 +1066,9 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
         oldBatchDoc = await Batch.findById(oldBatchId).populate('assignedTeacher', 'name email');
         if (oldBatchDoc) {
           oldTeacherId = oldBatchDoc.assignedTeacher?._id || oldBatchDoc.assignedTeacher;
-          oldTeacherName = oldBatchDoc.assignedTeacher?.name || 
-                           oldBatchDoc.assignedTeacher?.user?.name || 
-                           (typeof oldBatchDoc.assignedTeacher === 'string' ? oldBatchDoc.assignedTeacher : '');
+          oldTeacherName = oldBatchDoc.assignedTeacher?.name ||
+            oldBatchDoc.assignedTeacher?.user?.name ||
+            (typeof oldBatchDoc.assignedTeacher === 'string' ? oldBatchDoc.assignedTeacher : '');
           oldSessions = oldBatchDoc.numberOfSessions || 0;
         }
       } catch (e) {
@@ -1030,8 +1076,8 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       }
 
       if (!alreadyInPast) {
-        const prevLevelTag = student.currentLevel || 
-          student.level || 
+        const prevLevelTag = student.currentLevel ||
+          student.level ||
           extractLevel(oldBatchDoc?.name, 'Level 1');
 
         student.pastBatches.push({
@@ -1067,13 +1113,23 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
     // 3. Resolve or create new next level batch for this student (No separate batch selection needed!)
     let targetBatchId: string;
     let targetBatchDoc: any = null;
+    const isExplicitUnassigned =
+      teacherId === null ||
+      teacherId === '' ||
+      teacherId === 'unassigned' ||
+      teacherId === '__unassigned__';
 
     if (batchId) {
       // Optional fallback if existing batch was explicitly provided
       targetBatchDoc = await Batch.findById(batchId);
       if (targetBatchDoc) {
         let changed = false;
-        if (teacherId && targetBatchDoc.assignedTeacher?.toString() !== teacherId.toString()) {
+        if (isExplicitUnassigned) {
+          if (targetBatchDoc.assignedTeacher) {
+            targetBatchDoc.assignedTeacher = undefined;
+            changed = true;
+          }
+        } else if (teacherId && targetBatchDoc.assignedTeacher?.toString() !== teacherId.toString()) {
           targetBatchDoc.assignedTeacher = teacherId;
           changed = true;
         }
@@ -1096,15 +1152,17 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
       const studentName = student.name ? student.name.trim() : 'Student';
       const newBatchName = batchName && batchName.trim() ? batchName.trim() : `${studentName} - ${finalLevelTag}`;
       const batchSubject = subject || oldBatchDoc?.subject || 'General';
-      const targetTeacherId = teacherId || oldTeacherId || student.assignedTutor || undefined;
-      const targetDays = (days && Array.isArray(days) && days.length > 0) 
-        ? days 
+      const targetTeacherId = isExplicitUnassigned
+        ? undefined
+        : (teacherId || oldTeacherId || student.assignedTutor || undefined);
+      const targetDays = (days && Array.isArray(days) && days.length > 0)
+        ? days
         : (oldBatchDoc?.days?.length ? oldBatchDoc.days : ['Monday', 'Wednesday', 'Friday']);
-      const targetTiming = (timing && timing.startTime && timing.endTime) 
-        ? timing 
+      const targetTiming = (timing && timing.startTime && timing.endTime)
+        ? timing
         : (oldBatchDoc?.timing?.startTime ? oldBatchDoc.timing : { startTime: '09:00', endTime: '10:00' });
-      const targetMeetingLink = meetingLink !== undefined 
-        ? meetingLink 
+      const targetMeetingLink = meetingLink !== undefined
+        ? meetingLink
         : (oldBatchDoc?.meetingLink || '');
       const targetStartDate = startDate ? (normalizeDateOnlyToUtc(startDate) || new Date()) : new Date();
 
@@ -1141,7 +1199,9 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
     student.currentLevel = finalLevelTag;
     student.level = finalLevelTag;
     student.classesNeeded = targetSessions;
-    if (teacherId || targetBatchDoc?.assignedTeacher) {
+    if (isExplicitUnassigned) {
+      student.assignedTutor = undefined;
+    } else if (teacherId || targetBatchDoc?.assignedTeacher) {
       student.assignedTutor = teacherId || targetBatchDoc.assignedTeacher;
     }
 
@@ -1165,8 +1225,8 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
         const remainingAmount = Math.max(0, totalFee - amountPaid);
         const rawType = paymentDetails.paymentType || (amountPaid >= totalFee ? 'Full Payment' : amountPaid > 0 ? 'Half Payment' : 'Custom Payment');
         const paymentMethod = paymentDetails.paymentMethod || 'Bank Transfer';
-        const paymentDate = paymentDetails.paymentDate 
-          ? (normalizeDateOnlyToUtc(paymentDetails.paymentDate) || new Date(paymentDetails.paymentDate)).toISOString() 
+        const paymentDate = paymentDetails.paymentDate
+          ? (normalizeDateOnlyToUtc(paymentDetails.paymentDate) || new Date(paymentDetails.paymentDate)).toISOString()
           : new Date().toISOString();
         const paymentNotes = paymentDetails.notes || '';
         const dueAfterClasses = calculateDueAfterClasses(targetSessions);
@@ -1205,7 +1265,7 @@ export const advanceStudentLevel = async (req: Request, res: Response): Promise<
           dueAfterClasses,
           reminderBeforeClasses: 2,
           notes: paymentNotes ? `[${finalLevelTag}] ${paymentNotes}` : `Fee for ${finalLevelTag}`,
-          paymentHistory: existingPayment 
+          paymentHistory: existingPayment
             ? (amountPaid > 0 ? [newTx, ...(existingPayment.paymentHistory || [])] : (existingPayment.paymentHistory || []))
             : (amountPaid > 0 ? [newTx] : []),
         };
@@ -1747,6 +1807,961 @@ export const correctStudentProgress = async (req: AuthRequest, res: Response): P
   } catch (error: any) {
     console.error('Error correcting student progress:', error);
     res.status(500).json({ message: 'Failed to correct class progress', detail: error.message });
+  }
+};
+
+function clearStudentScheduleCaches(teacherIds: string[] = []): void {
+  serverCache.clearPattern('schedules_');
+  serverCache.clearPattern('students_');
+  serverCache.clearPattern('batches_');
+  serverCache.clearPattern('timings_');
+  serverCache.clearPattern('stats_');
+  serverCache.delete('teachers_all');
+  deleteDiskCache('schedules_all');
+  deleteDiskCache('students_all');
+  deleteDiskCache('batches_all');
+  teacherIds.forEach((tId) => {
+    if (tId) deleteDiskCache(`schedules_teacher_${tId}`);
+  });
+}
+
+async function resolveTeacherDisplay(teacherId?: string): Promise<string> {
+  if (!teacherId) return 'Unassigned';
+  try {
+    const tDoc = await Teacher.findById(teacherId).populate('user', 'name');
+    return tDoc?.name || (tDoc as any)?.user?.name || 'Assigned Tutor';
+  } catch {
+    return 'Assigned Tutor';
+  }
+}
+
+function buildScheduleArchiveSnapshot(schedules: any[], defaultTeacherName: string) {
+  return [...schedules]
+    .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
+    .map((s: any) => ({
+      scheduleId: s._id?.toString(),
+      date: s.date,
+      startTime: s.startTime || '',
+      endTime: s.endTime || '',
+      status: s.originalStatus || s.status,
+      sessionNumber: s.sessionNumber,
+      subject: s.subject || '',
+      notes: s.notes || '',
+      teacherName: s.completedByName || defaultTeacherName,
+      isExtraClass: Boolean(s.isExtraClass),
+    }));
+}
+
+function countCompletedForStudent(schedules: any[], studentId: string, isGroupBatch: boolean, fallbackPreCompleted = 0): number {
+  let completed = 0;
+  for (const s of schedules) {
+    // Never count Cancelled, Paused, or Archived uncompleted sessions as completed
+    if (s.status !== 'Completed') continue;
+    if (isGroupBatch && Array.isArray(s.attendance) && s.attendance.length > 0) {
+      const rec = s.attendance.find((a: any) => (a.studentId?._id || a.studentId || '').toString() === studentId);
+      if (rec && rec.isPresent === false) continue;
+    }
+    completed++;
+  }
+  return Math.max(completed, Math.max(0, Number(fallbackPreCompleted) || 0));
+}
+
+// @desc    Temporarily pause a student's classes, archive upcoming slots, and log pause metadata
+// @route   POST /students/:id/pause-classes
+// @access  Private/Admin
+export const pauseStudentClasses = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const { pauseDate, reason } = req.body || {};
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found.' });
+      return;
+    }
+    if (student.status === 'Dropped') {
+      res.status(400).json({ message: 'Cannot pause a dropped student. Reactivate the student first.' });
+      return;
+    }
+
+    const normalizedPauseDate = pauseDate
+      ? (normalizeDateOnlyToUtc(pauseDate) || new Date())
+      : (normalizeDateOnlyToUtc(getKolkataNow().todayStr) || new Date());
+    const pauseReasonStr = typeof reason === 'string' && reason.trim() ? reason.trim() : 'Paused by Admin';
+
+    const batchId = student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : '');
+    const batchDoc: any = batchId ? await Batch.findById(batchId) : null;
+
+    const currentTeacherId =
+      (student.assignedTutor?._id ? student.assignedTutor._id.toString() : (student.assignedTutor ? student.assignedTutor.toString() : '')) ||
+      (batchDoc?.assignedTeacher?._id ? batchDoc.assignedTeacher._id.toString() : (batchDoc?.assignedTeacher ? batchDoc.assignedTeacher.toString() : ''));
+    const previousTeacherName = await resolveTeacherDisplay(currentTeacherId);
+
+    const otherActiveStudents = batchId
+      ? await Student.find({
+        batch: batchId,
+        _id: { $ne: student._id },
+        status: { $nin: ['Dropped', 'Paused'] },
+      }).select('_id')
+      : [];
+    const isGroupBatch = otherActiveStudents.length > 0;
+
+    const batchSchedules = batchId
+      ? await Schedule.find({ batch: batchId }).sort({ date: 1 })
+      : [];
+    const activeBatchSchedules = batchSchedules.filter((s: any) => !s.isArchived && s.status !== 'Archived' && s.status !== 'Paused');
+
+    const completedCount = countCompletedForStudent(
+      batchSchedules,
+      studentId,
+      isGroupBatch,
+      batchDoc?.preCompletedClasses || 0
+    );
+    const totalSessions = Number(student.classesNeeded || batchDoc?.numberOfSessions || 15);
+    const remainingCount = Math.max(0, totalSessions - completedCount);
+
+    const historyEntryId = `pr_${Date.now()}`;
+    const archivedSnapshot = buildScheduleArchiveSnapshot(activeBatchSchedules, previousTeacherName);
+
+    if (batchDoc && !isGroupBatch) {
+      // 1-on-1 batch: archive upcoming unconducted Scheduled sessions without deleting records, and pause batch generation
+      for (const s of activeBatchSchedules) {
+        if (s.status === 'Scheduled') {
+          s.originalStatus = 'Scheduled';
+          s.status = 'Paused';
+          s.isArchived = true;
+          s.archivedAt = new Date();
+          s.archiveReason = pauseReasonStr;
+          s.archiveSessionId = historyEntryId;
+          s.archivedForStudent = student._id;
+          await s.save();
+        }
+      }
+      if (batchDoc.status !== 'Completed' && batchDoc.status !== 'Dropped') {
+        batchDoc.status = 'Paused';
+        batchDoc.preCompletedClasses = completedCount;
+        await batchDoc.save();
+      }
+    } else if (batchDoc && isGroupBatch) {
+      // Group batch: remove only the paused student from upcoming unconducted classes; peers continue unaffected
+      for (const s of activeBatchSchedules) {
+        if (s.status === 'Scheduled' && Array.isArray(s.attendance)) {
+          const filtered = s.attendance.filter(
+            (a: any) => (a.studentId?._id || a.studentId || '').toString() !== student._id.toString()
+          );
+          if (filtered.length !== s.attendance.length) {
+            s.attendance = filtered;
+            await s.save();
+          }
+        }
+      }
+    }
+
+    if (!Array.isArray(student.restartHistory)) {
+      student.restartHistory = [];
+    }
+
+    student.restartHistory.push({
+      id: historyEntryId,
+      status: 'Paused',
+      pauseDate: normalizedPauseDate,
+      reason: pauseReasonStr,
+      pausedBy: req.user?._id,
+      restartDate: null,
+      previousBatchId: batchId || undefined,
+      previousBatchName: batchDoc?.name || '',
+      previousBatchType: isGroupBatch ? 'Group' : '1:1',
+      previousTeacherId: currentTeacherId || undefined,
+      previousTeacherName,
+      previousSchedule: {
+        days: Array.isArray(batchDoc?.days) ? [...batchDoc.days] : [],
+        timing: batchDoc?.timing ? { ...batchDoc.timing } : {},
+        dayTimings: batchDoc?.dayTimings ? { ...batchDoc.dayTimings } : {},
+        startDate: batchDoc?.startDate || null,
+      },
+      completedAtPause: completedCount,
+      remainingAtPause: remainingCount,
+      totalClasses: totalSessions,
+      archivedSchedules: archivedSnapshot,
+      createdAt: new Date(),
+    });
+
+    student.status = 'Paused';
+    student.isPaused = true;
+    student.pauseDate = normalizedPauseDate;
+    student.pauseReason = pauseReasonStr;
+    if (student.restartDetails) {
+      student.restartDetails = { ...student.restartDetails, restartStatus: 'Paused' };
+    }
+    await student.save();
+
+    clearStudentScheduleCaches([currentTeacherId]);
+
+    res.status(200).json({
+      message: 'Student classes paused successfully.',
+      student,
+      completedClasses: completedCount,
+      remainingClasses: remainingCount,
+    });
+  } catch (error: any) {
+    console.error('Error pausing student classes:', error);
+    res.status(500).json({ message: 'Failed to pause student classes', detail: error.message });
+  }
+};
+
+function computeRestartDurationMinutes(startTime?: string, endTime?: string, explicitDuration?: any): number {
+  const dur = Number(explicitDuration);
+  if (!isNaN(dur) && dur >= 15 && dur <= 360) return Math.round(dur);
+  if (startTime && endTime) {
+    const [sh, sm] = startTime.split(':').map(Number);
+    const [eh, em] = endTime.split(':').map(Number);
+    if (!isNaN(sh) && !isNaN(eh)) {
+      let diff = (eh * 60 + (em || 0)) - (sh * 60 + (sm || 0));
+      if (diff <= 0) diff += 24 * 60;
+      if (diff >= 15 && diff <= 360) return diff;
+    }
+  }
+  return 60;
+}
+
+function normalizeRestartScheduleInput(params: {
+  days?: any;
+  dayTimings?: any;
+  timing?: any;
+  durationMinutes?: any;
+  fallbackBatch?: any;
+}) {
+  const { days, dayTimings, timing, durationMinutes, fallbackBatch } = params;
+  const orderedDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const rawDays = Array.isArray(days) && days.length > 0
+    ? days.map((d: any) => String(d).trim()).filter((d: string) => DAY_INDEX[d] !== undefined)
+    : (Array.isArray(fallbackBatch?.days) && fallbackBatch.days.length > 0 ? fallbackBatch.days : ['Monday', 'Wednesday', 'Friday']);
+  const uniqueDays = orderedDays.filter((d) => rawDays.includes(d));
+  const finalDays = uniqueDays.length > 0 ? uniqueDays : ['Monday', 'Wednesday', 'Friday'];
+
+  const fallbackStart = (timing?.startTime && typeof timing.startTime === 'string' && timing.startTime.trim())
+    ? timing.startTime.trim()
+    : (fallbackBatch?.timing?.startTime || '09:00');
+  const resolvedDuration = computeRestartDurationMinutes(
+    fallbackStart,
+    timing?.endTime || fallbackBatch?.timing?.endTime,
+    durationMinutes ?? fallbackBatch?.durationMinutes
+  );
+
+  const sourceDayTimings = (dayTimings && typeof dayTimings === 'object')
+    ? dayTimings
+    : (fallbackBatch?.dayTimings || {});
+  const normalizedDayTimings: Record<string, { startTime: string; endTime: string }> = {};
+  for (const day of finalDays) {
+    const entry = sourceDayTimings[day] || sourceDayTimings[day.toLowerCase()];
+    const sTime = (entry?.startTime && typeof entry.startTime === 'string' && entry.startTime.trim())
+      ? entry.startTime.trim()
+      : fallbackStart;
+    normalizedDayTimings[day] = {
+      startTime: sTime,
+      endTime: computeEndTime(sTime, resolvedDuration),
+    };
+  }
+
+  const primaryDay = finalDays[0];
+  const primaryTiming = normalizedDayTimings[primaryDay] || {
+    startTime: fallbackStart,
+    endTime: computeEndTime(fallbackStart, resolvedDuration),
+  };
+  const distinctStarts = new Set(finalDays.map((d) => normalizedDayTimings[d].startTime));
+  const timeMode: 'same' | 'different' = distinctStarts.size > 1 ? 'different' : 'same';
+
+  return {
+    days: finalDays,
+    dayTimings: normalizedDayTimings,
+    timing: primaryTiming,
+    durationMinutes: resolvedDuration,
+    timeMode,
+  };
+}
+
+// @desc    Restart student classes from a new restart date, archive old schedule records, and generate remaining sessions
+// @route   POST /students/:id/restart-classes
+// @access  Private/Admin
+export const restartStudentClasses = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const { restartDate, days, timing, dayTimings, durationMinutes, teacherId } = req.body || {};
+
+    if (!restartDate) {
+      res.status(400).json({ message: 'Restart date is required.' });
+      return;
+    }
+
+    const restartDateUtc = normalizeDateOnlyToUtc(restartDate);
+    if (!restartDateUtc) {
+      res.status(400).json({ message: 'Please provide a valid restart date (YYYY-MM-DD).' });
+      return;
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found.' });
+      return;
+    }
+
+    const oldBatchId = student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : '');
+    if (!oldBatchId) {
+      res.status(400).json({ message: 'Student does not have an assigned batch to restart.' });
+      return;
+    }
+
+    const oldBatchDoc: any = await Batch.findById(oldBatchId);
+    if (!oldBatchDoc) {
+      res.status(404).json({ message: 'Student batch not found.' });
+      return;
+    }
+
+    const oldTeacherId =
+      (student.assignedTutor?._id ? student.assignedTutor._id.toString() : (student.assignedTutor ? student.assignedTutor.toString() : '')) ||
+      (oldBatchDoc.assignedTeacher?._id ? oldBatchDoc.assignedTeacher._id.toString() : (oldBatchDoc.assignedTeacher ? oldBatchDoc.assignedTeacher.toString() : ''));
+    const previousTeacherName = await resolveTeacherDisplay(oldTeacherId);
+
+    const isExplicitUnassigned =
+      teacherId === null ||
+      teacherId === '' ||
+      teacherId === 'unassigned' ||
+      teacherId === '__unassigned__';
+    const resolvedTeacherId = isExplicitUnassigned
+      ? undefined
+      : (teacherId ? String(teacherId) : (oldTeacherId || undefined));
+    const newTeacherName = await resolveTeacherDisplay(resolvedTeacherId);
+
+    const normalizedSched = normalizeRestartScheduleInput({
+      days,
+      dayTimings,
+      timing,
+      durationMinutes,
+      fallbackBatch: oldBatchDoc,
+    });
+
+    const otherActiveStudents = await Student.find({
+      batch: oldBatchId,
+      _id: { $ne: student._id },
+      status: { $nin: ['Dropped', 'Paused'] },
+    }).select('_id');
+    const isGroupBatch = otherActiveStudents.length > 0;
+
+    const allOldSchedules = await Schedule.find({ batch: oldBatchId }).sort({ date: 1 });
+    const nonArchivedOldSchedules = allOldSchedules.filter((s: any) => !s.isArchived && s.status !== 'Archived' && s.status !== 'Paused');
+
+    if (!Array.isArray(student.restartHistory)) {
+      student.restartHistory = [];
+    }
+    const pendingPauseIdx = [...student.restartHistory]
+      .reverse()
+      .findIndex((rh: any) => rh.status === 'Paused' && !rh.restartDate);
+    const actualPauseIdx = pendingPauseIdx >= 0 ? (student.restartHistory.length - 1 - pendingPauseIdx) : -1;
+    const latestPauseEntry = actualPauseIdx >= 0 ? student.restartHistory[actualPauseIdx] : null;
+
+    // Preserve completed class count accurately (never reset completed classes; never count cancelled/paused sessions)
+    const calculatedCompleted = countCompletedForStudent(
+      allOldSchedules,
+      studentId,
+      isGroupBatch,
+      oldBatchDoc.preCompletedClasses || 0
+    );
+    const completedCount = Math.max(calculatedCompleted, Number(latestPauseEntry?.completedAtPause) || 0);
+    const totalSessions = Number(student.classesNeeded || oldBatchDoc.numberOfSessions || 15);
+    const remainingCount = Math.max(0, totalSessions - completedCount);
+
+    const historyEntryId = latestPauseEntry?.id || `pr_${Date.now()}`;
+    const archivedSnapshot = (latestPauseEntry?.archivedSchedules && latestPauseEntry.archivedSchedules.length > 0)
+      ? latestPauseEntry.archivedSchedules
+      : buildScheduleArchiveSnapshot(nonArchivedOldSchedules, previousTeacherName);
+    const previousScheduleStatus = archivedSnapshot.some((s: any) => s.status === 'Scheduled' || s.status === 'Paused')
+      ? 'Archived'
+      : (archivedSnapshot.length > 0 ? 'Completed' : 'Preserved');
+
+    let targetBatchDoc: any = oldBatchDoc;
+
+    if (isGroupBatch) {
+      // Group batch: keep peers' ongoing Group Batch untouched; give restarting student a fresh continuation batch from restartDate
+      for (const s of nonArchivedOldSchedules) {
+        if (s.status === 'Scheduled' && Array.isArray(s.attendance)) {
+          const filtered = s.attendance.filter(
+            (a: any) => (a.studentId?._id || a.studentId || '').toString() !== student._id.toString()
+          );
+          if (filtered.length !== s.attendance.length) {
+            s.attendance = filtered;
+            await s.save();
+          }
+        }
+      }
+
+      const updateCount = Math.max(0, (Number(oldBatchDoc.studentsCount) || 1) - 1);
+      await Batch.findByIdAndUpdate(oldBatchId, { $set: { studentsCount: updateCount } });
+
+      const studentLvlNum = extractLevelNumber(student.currentLevel || student.level || oldBatchDoc.name || oldBatchDoc.subject);
+      const levelTag = student.currentLevel || student.level || extractLevel(oldBatchDoc.name, 'Level 1');
+      const isRetentionBatch = studentLvlNum !== null ? studentLvlNum >= 2 : Boolean(oldBatchDoc.isRetention);
+
+      targetBatchDoc = await Batch.create({
+        name: `${student.name ? student.name.trim() : 'Student'} - ${levelTag} (Restarted)`,
+        subject: oldBatchDoc.subject || 'General',
+        assignedTeacher: resolvedTeacherId,
+        numberOfSessions: totalSessions,
+        preCompletedClasses: completedCount,
+        preRestartCompletedClasses: completedCount,
+        isRestarted: true,
+        lastRestartDate: restartDateUtc,
+        studentsCount: 1,
+        status: remainingCount > 0 ? 'Active' : 'Completed',
+        isRetention: isRetentionBatch,
+        retentionLevel: isRetentionBatch ? levelTag : undefined,
+        restartedFromBatch: oldBatchId,
+        days: normalizedSched.days,
+        timing: normalizedSched.timing,
+        timeMode: normalizedSched.timeMode,
+        dayTimings: normalizedSched.dayTimings,
+        durationMinutes: normalizedSched.durationMinutes,
+        meetingLink: oldBatchDoc.meetingLink || '',
+        startDate: restartDateUtc,
+        durationType: oldBatchDoc.durationType || 'Custom',
+      });
+
+      student.batch = targetBatchDoc._id.toString();
+    } else {
+      // 1-on-1 batch: archive only uncompleted previous schedule records (preserve Completed records visibly)
+      for (const s of allOldSchedules) {
+        if (s.isArchived || s.status === 'Completed') continue;
+        if (s.status === 'Scheduled') {
+          s.originalStatus = 'Scheduled';
+          s.status = 'Archived';
+        }
+        s.isArchived = true;
+        s.archivedAt = new Date();
+        s.archiveSessionId = historyEntryId;
+        s.archiveReason = s.archiveReason || 'Schedule Reset on Restart';
+        s.archivedForStudent = student._id;
+        await s.save();
+      }
+
+      oldBatchDoc.days = normalizedSched.days;
+      oldBatchDoc.timing = normalizedSched.timing;
+      oldBatchDoc.timeMode = normalizedSched.timeMode;
+      oldBatchDoc.dayTimings = normalizedSched.dayTimings;
+      oldBatchDoc.durationMinutes = normalizedSched.durationMinutes;
+      oldBatchDoc.assignedTeacher = resolvedTeacherId;
+      oldBatchDoc.startDate = restartDateUtc;
+      oldBatchDoc.preCompletedClasses = completedCount;
+      oldBatchDoc.preRestartCompletedClasses = completedCount;
+      oldBatchDoc.isRestarted = true;
+      oldBatchDoc.lastRestartDate = restartDateUtc;
+      oldBatchDoc.numberOfSessions = totalSessions;
+      oldBatchDoc.status = remainingCount > 0 ? 'Active' : 'Completed';
+      await oldBatchDoc.save();
+    }
+
+    // Generate ONLY remaining future classes strictly starting from restartDateUtc (zero duplicates)
+    const generatedCount = await generateRestartedSchedulesForBatch({
+      batch: targetBatchDoc,
+      restartDateUtc,
+      completedCount,
+      totalSessions,
+      studentId: student._id.toString(),
+      restartTag: historyEntryId,
+    });
+
+    const newScheduleInfo = {
+      days: normalizedSched.days,
+      timing: normalizedSched.timing,
+      dayTimings: normalizedSched.dayTimings,
+      durationMinutes: normalizedSched.durationMinutes,
+      timeMode: normalizedSched.timeMode,
+      startDate: restartDateUtc,
+    };
+
+    if (actualPauseIdx >= 0) {
+      student.restartHistory[actualPauseIdx] = {
+        ...student.restartHistory[actualPauseIdx],
+        status: 'Restarted',
+        previousScheduleStatus,
+        restartDate: restartDateUtc,
+        restartedBy: req.user?._id,
+        newBatchId: targetBatchDoc._id.toString(),
+        newBatchName: targetBatchDoc.name,
+        newTeacherId: resolvedTeacherId || undefined,
+        newTeacherName,
+        newSchedule: newScheduleInfo,
+        completedAtRestart: completedCount,
+        remainingAtRestart: remainingCount,
+        generatedSessionsCount: generatedCount,
+        archivedSchedules: archivedSnapshot,
+        editHistory: Array.isArray(student.restartHistory[actualPauseIdx].editHistory)
+          ? student.restartHistory[actualPauseIdx].editHistory
+          : [],
+      };
+    } else {
+      student.restartHistory.push({
+        id: historyEntryId,
+        status: 'Restarted',
+        previousScheduleStatus,
+        pauseDate: student.pauseDate || new Date(),
+        reason: student.pauseReason || 'Schedule Reset / Restart',
+        pausedBy: req.user?._id,
+        restartDate: restartDateUtc,
+        restartedBy: req.user?._id,
+        previousBatchId: oldBatchId,
+        previousBatchName: oldBatchDoc.name || '',
+        previousBatchType: isGroupBatch ? 'Group' : '1:1',
+        previousTeacherId: oldTeacherId || undefined,
+        previousTeacherName,
+        previousSchedule: {
+          days: Array.isArray(oldBatchDoc.days) ? [...oldBatchDoc.days] : [],
+          timing: oldBatchDoc.timing ? { ...oldBatchDoc.timing } : {},
+          dayTimings: oldBatchDoc.dayTimings ? { ...oldBatchDoc.dayTimings } : {},
+          durationMinutes: oldBatchDoc.durationMinutes || 60,
+          startDate: oldBatchDoc.startDate || null,
+        },
+        newBatchId: targetBatchDoc._id.toString(),
+        newBatchName: targetBatchDoc.name,
+        newTeacherId: resolvedTeacherId || undefined,
+        newTeacherName,
+        newSchedule: newScheduleInfo,
+        completedAtPause: completedCount,
+        remainingAtPause: remainingCount,
+        completedAtRestart: completedCount,
+        remainingAtRestart: remainingCount,
+        totalClasses: totalSessions,
+        generatedSessionsCount: generatedCount,
+        archivedSchedules: archivedSnapshot,
+        editHistory: [],
+        createdAt: new Date(),
+      });
+    }
+
+    student.restartDetails = {
+      historyEntryId,
+      restartDate: restartDateUtc,
+      days: normalizedSched.days,
+      dayTimings: normalizedSched.dayTimings,
+      timing: normalizedSched.timing,
+      durationMinutes: normalizedSched.durationMinutes,
+      timeMode: normalizedSched.timeMode,
+      teacherId: resolvedTeacherId || undefined,
+      teacherName: newTeacherName,
+      previousScheduleStatus,
+      restartStatus: 'Active',
+      updatedAt: new Date(),
+    };
+
+    student.status = 'Active';
+    student.isPaused = false;
+    student.lastRestartDate = restartDateUtc;
+    student.assignedTutor = resolvedTeacherId || undefined;
+    await student.save();
+
+    clearStudentScheduleCaches([oldTeacherId, resolvedTeacherId || '']);
+
+    await student.populate('batch', STUDENT_BATCH_POPULATE_FIELDS);
+    await student.populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+    await student.populate('assignedTutor', 'name email');
+
+    res.status(200).json({
+      message: `Classes restarted from ${restartDate}. Generated ${generatedCount} upcoming class(es) with ${completedCount} completed class(es) preserved.`,
+      student,
+      batch: targetBatchDoc,
+      completedClasses: completedCount,
+      remainingClasses: remainingCount,
+      generatedSessionsCount: generatedCount,
+    });
+  } catch (error: any) {
+    console.error('Error restarting student classes:', error);
+    res.status(500).json({ message: 'Failed to restart student classes', detail: error.message });
+  }
+};
+
+// @desc    Edit saved restart schedule details (date, days, per-day start times, duration, teacher) and surgically update future schedules
+// @route   PUT /students/:id/restart-classes
+// @access  Private/Admin
+export const updateStudentRestartDetails = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const studentId = req.params.id as string;
+    const { restartDate, days, dayTimings, timing, durationMinutes, teacherId, historyEntryId } = req.body || {};
+
+    if (!restartDate) {
+      res.status(400).json({ message: 'Restart date is required.' });
+      return;
+    }
+    const restartDateUtc = normalizeDateOnlyToUtc(restartDate);
+    if (!restartDateUtc) {
+      res.status(400).json({ message: 'Please provide a valid restart date (YYYY-MM-DD).' });
+      return;
+    }
+    if (!Array.isArray(days) || days.length === 0) {
+      res.status(400).json({ message: 'Please select at least one class day.' });
+      return;
+    }
+
+    const student = await Student.findById(studentId);
+    if (!student) {
+      res.status(404).json({ message: 'Student not found.' });
+      return;
+    }
+
+    const batchId = student.batch?._id ? student.batch._id.toString() : (student.batch ? student.batch.toString() : '');
+    if (!batchId) {
+      res.status(400).json({ message: 'Student does not have an assigned batch.' });
+      return;
+    }
+
+    const targetBatchDoc: any = await Batch.findById(batchId);
+    if (!targetBatchDoc) {
+      res.status(404).json({ message: 'Student batch not found.' });
+      return;
+    }
+
+    const otherActiveStudents = await Student.find({
+      batch: batchId,
+      _id: { $ne: student._id },
+      status: { $nin: ['Dropped', 'Paused'] },
+    }).select('_id');
+    if (otherActiveStudents.length > 0) {
+      res.status(400).json({
+        message: 'Student is currently sharing a group batch with active peers. Use Restart Classes first to isolate their personal continuation schedule.',
+      });
+      return;
+    }
+
+    const oldTeacherId =
+      (student.assignedTutor?._id ? student.assignedTutor._id.toString() : (student.assignedTutor ? student.assignedTutor.toString() : '')) ||
+      (targetBatchDoc.assignedTeacher?._id ? targetBatchDoc.assignedTeacher._id.toString() : (targetBatchDoc.assignedTeacher ? targetBatchDoc.assignedTeacher.toString() : ''));
+
+    const isExplicitUnassigned =
+      teacherId === null ||
+      teacherId === '' ||
+      teacherId === 'unassigned' ||
+      teacherId === '__unassigned__';
+    const resolvedTeacherId = isExplicitUnassigned
+      ? undefined
+      : (teacherId ? String(teacherId) : undefined);
+    const newTeacherName = await resolveTeacherDisplay(resolvedTeacherId);
+
+    const normalizedSched = normalizeRestartScheduleInput({
+      days,
+      dayTimings,
+      timing,
+      durationMinutes,
+      fallbackBatch: targetBatchDoc,
+    });
+
+    const existingBatchSchedules = await Schedule.find({ batch: targetBatchDoc._id }).sort({ date: 1 });
+    const batchCompletedCount = countCompletedForStudent(
+      existingBatchSchedules,
+      studentId,
+      false,
+      targetBatchDoc.preCompletedClasses || 0
+    );
+    const completedCount = targetBatchDoc.restartedFromBatch
+      ? Math.max(
+          Number(targetBatchDoc.preCompletedClasses) || 0,
+          (Number(targetBatchDoc.preRestartCompletedClasses) || 0) + existingBatchSchedules.filter((s: any) => s.status === 'Completed').length
+        )
+      : batchCompletedCount;
+    const totalSessions = Number(student.classesNeeded || targetBatchDoc.numberOfSessions || 15);
+    const remainingCount = Math.max(0, totalSessions - completedCount);
+
+    // Update batch configuration cleanly
+    targetBatchDoc.days = normalizedSched.days;
+    targetBatchDoc.dayTimings = normalizedSched.dayTimings;
+    targetBatchDoc.timing = normalizedSched.timing;
+    targetBatchDoc.timeMode = normalizedSched.timeMode;
+    targetBatchDoc.durationMinutes = normalizedSched.durationMinutes;
+    targetBatchDoc.assignedTeacher = resolvedTeacherId;
+    targetBatchDoc.startDate = restartDateUtc;
+    targetBatchDoc.preCompletedClasses = completedCount;
+    if (!targetBatchDoc.restartedFromBatch && targetBatchDoc.preRestartCompletedClasses === undefined) {
+      targetBatchDoc.preRestartCompletedClasses = completedCount;
+    }
+    targetBatchDoc.isRestarted = true;
+    targetBatchDoc.lastRestartDate = restartDateUtc;
+    targetBatchDoc.numberOfSessions = totalSessions;
+    targetBatchDoc.status = student.isPaused ? 'Paused' : (remainingCount > 0 ? 'Active' : 'Completed');
+    await targetBatchDoc.save();
+
+    // Update affected regular future Scheduled sessions surgically; NEVER touch Completed, Archived, Paused, Cancelled, Extra, or attendance-marked rows
+    let updatedSessionsCount = 0;
+    let deletedSessionsCount = 0;
+    let createdSessionsCount = 0;
+
+    if (!student.isPaused) {
+      const selectedDayIndexes = new Set(
+        normalizedSched.days.map((d: string) => DAY_INDEX[d]).filter((d: any) => d !== undefined)
+      );
+
+      // Dates already occupied by active Completed or attendance-marked/extra sessions (never moved or duplicated)
+      const lockedFutureOrCompletedTimes = new Set<number>();
+      const preservedScheduledCount = existingBatchSchedules.filter((s: any) => {
+        if (s.isArchived || s.status !== 'Scheduled' || s.isExtraClass) return false;
+        const hasAtt = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined);
+        if (hasAtt) {
+          const dt = normalizeDateOnlyToUtc(s.date)?.getTime();
+          if (dt) lockedFutureOrCompletedTimes.add(dt);
+          return true;
+        }
+        return false;
+      }).length;
+
+      existingBatchSchedules.forEach((s: any) => {
+        if (!s.isArchived && (s.status === 'Completed' || (s.status === 'Scheduled' && s.isExtraClass))) {
+          const dt = normalizeDateOnlyToUtc(s.date)?.getTime();
+          if (dt) lockedFutureOrCompletedTimes.add(dt);
+        }
+      });
+
+      const targetDatesNeeded = Math.max(0, remainingCount - preservedScheduledCount);
+      const targetDateTimeSet = new Set<number>();
+      const cursor = new Date(restartDateUtc.getTime());
+      let scanned = 0;
+      while (targetDateTimeSet.size < targetDatesNeeded && scanned < 450) {
+        if (selectedDayIndexes.has(cursor.getUTCDay())) {
+          const cTime = cursor.getTime();
+          if (!lockedFutureOrCompletedTimes.has(cTime)) {
+            targetDateTimeSet.add(cTime);
+          }
+        }
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+        scanned++;
+      }
+
+      const regularEditableScheduled = existingBatchSchedules.filter((s: any) => {
+        if (s.isArchived || s.status !== 'Scheduled' || s.isExtraClass) return false;
+        const hasAtt = Array.isArray(s.attendance) && s.attendance.some((a: any) => a.isPresent !== undefined);
+        return !hasAtt;
+      });
+
+      const idsToDelete: string[] = [];
+      const keptEditable: any[] = [];
+      for (const s of regularEditableScheduled) {
+        const sTime = normalizeDateOnlyToUtc(s.date)?.getTime();
+        if (!sTime || !targetDateTimeSet.has(sTime)) {
+          idsToDelete.push(s._id.toString());
+        } else {
+          keptEditable.push(s);
+        }
+      }
+
+      if (idsToDelete.length > 0) {
+        await Schedule.deleteMany({ _id: { $in: idsToDelete } });
+        deletedSessionsCount = idsToDelete.length;
+      }
+
+      // Build conflict map once in O(N) if teacher is assigned
+      const teacherSlotsByDate = new Map<string, any[]>();
+      if (resolvedTeacherId) {
+        const [tSchedsRaw, tDemos] = await Promise.all([
+          Schedule.find({ teacher: resolvedTeacherId, status: { $nin: ['Cancelled', 'Archived', 'Paused'] } }).select('date startTime endTime batch _id isArchived'),
+          DemoSession.find({ teacher: resolvedTeacherId, status: { $ne: 'Cancelled' } }).select('date startTime endTime'),
+        ]);
+        const tScheds = tSchedsRaw.filter((s: any) => !s.isArchived);
+        for (const item of [...tScheds, ...tDemos]) {
+          if (!item.date || !item.startTime || !item.endTime) continue;
+          const dStr = normalizeDateOnlyToUtc(item.date)?.toISOString().split('T')[0];
+          if (!dStr) continue;
+          const list = teacherSlotsByDate.get(dStr) || [];
+          list.push(item);
+          teacherSlotsByDate.set(dStr, list);
+        }
+      }
+
+      // Surgically update ONLY kept future schedules whose day timing/teacher/conflict changed
+      for (const s of keptEditable) {
+        const slotTiming = getSlotTimingForDay(targetBatchDoc, s.date);
+        const sDateStr = normalizeDateOnlyToUtc(s.date)?.toISOString().split('T')[0] || '';
+        const daySlots = (teacherSlotsByDate.get(sDateStr) || []).filter(
+          (item: any) => item._id?.toString() !== s._id?.toString()
+        );
+        const isConflict = resolvedTeacherId
+          ? checkIntervalConflict(daySlots, { startTime: slotTiming.startTime, endTime: slotTiming.endTime })
+          : false;
+        const currTeacherId = s.teacher?._id ? s.teacher._id.toString() : (s.teacher ? s.teacher.toString() : '');
+
+        if (
+          s.startTime !== slotTiming.startTime ||
+          s.endTime !== slotTiming.endTime ||
+          currTeacherId !== (resolvedTeacherId || '') ||
+          Boolean(s.conflict) !== Boolean(isConflict)
+        ) {
+          s.startTime = slotTiming.startTime;
+          s.endTime = slotTiming.endTime;
+          s.teacher = resolvedTeacherId || undefined;
+          s.conflict = isConflict;
+          await s.save();
+          updatedSessionsCount++;
+        }
+      }
+
+      // Generate any newly added dates / weekdays strictly from restartDateUtc
+      createdSessionsCount = await generateRestartedSchedulesForBatch({
+        batch: targetBatchDoc,
+        restartDateUtc,
+        completedCount,
+        totalSessions,
+        studentId: student._id.toString(),
+        restartTag: `edit_${Date.now()}`,
+      });
+
+      // Ensure regular Scheduled session numbers remain chronologically ordered
+      const finalRegularScheduled = (await Schedule.find({ batch: targetBatchDoc._id }))
+        .filter((s: any) => !s.isArchived && s.status === 'Scheduled' && !s.isExtraClass)
+        .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime());
+      for (let i = 0; i < finalRegularScheduled.length; i++) {
+        const s = finalRegularScheduled[i];
+        const targetNum = completedCount + i + 1;
+        const targetNotes = `Class ${targetNum} of ${totalSessions}`;
+        if (s.sessionNumber !== targetNum || (!s.notes || s.notes.startsWith('Class ')) && s.notes !== targetNotes) {
+          s.sessionNumber = targetNum;
+          if (!s.notes || s.notes.startsWith('Class ')) s.notes = targetNotes;
+          await s.save();
+        }
+      }
+    }
+
+    // Record edit history and updated restart details on Student
+    if (!Array.isArray(student.restartHistory)) {
+      student.restartHistory = [];
+    }
+
+    let targetIdx = -1;
+    if (historyEntryId) {
+      targetIdx = student.restartHistory.findIndex((rh: any) => rh.id === historyEntryId);
+    }
+    if (targetIdx < 0 && student.restartHistory.length > 0) {
+      targetIdx = student.restartHistory.length - 1;
+    }
+
+    const newScheduleInfo = {
+      days: normalizedSched.days,
+      timing: normalizedSched.timing,
+      dayTimings: normalizedSched.dayTimings,
+      durationMinutes: normalizedSched.durationMinutes,
+      timeMode: normalizedSched.timeMode,
+      startDate: restartDateUtc,
+    };
+
+    const prevEntry = targetIdx >= 0 ? student.restartHistory[targetIdx] : null;
+    const prevTeacherName = prevEntry?.newTeacherName || (await resolveTeacherDisplay(oldTeacherId));
+    const editLogItem = {
+      id: `re_${Date.now()}`,
+      editedAt: new Date(),
+      editedBy: req.user?._id,
+      editedByName: req.user?.name || 'Admin',
+      previousValues: {
+        restartDate: prevEntry?.restartDate || student.lastRestartDate || targetBatchDoc.startDate || null,
+        days: prevEntry?.newSchedule?.days || targetBatchDoc.days || [],
+        dayTimings: prevEntry?.newSchedule?.dayTimings || targetBatchDoc.dayTimings || {},
+        timing: prevEntry?.newSchedule?.timing || targetBatchDoc.timing || {},
+        durationMinutes: prevEntry?.newSchedule?.durationMinutes || targetBatchDoc.durationMinutes || 60,
+        teacherId: prevEntry?.newTeacherId || oldTeacherId || undefined,
+        teacherName: prevTeacherName,
+      },
+      newValues: {
+        restartDate: restartDateUtc,
+        days: normalizedSched.days,
+        dayTimings: normalizedSched.dayTimings,
+        timing: normalizedSched.timing,
+        durationMinutes: normalizedSched.durationMinutes,
+        teacherId: resolvedTeacherId || undefined,
+        teacherName: newTeacherName,
+      },
+    };
+
+    const prevScheduleStatus = prevEntry?.previousScheduleStatus || (prevEntry?.archivedSchedules?.length ? 'Archived' : 'Preserved');
+
+    if (targetIdx >= 0) {
+      const existingEdits = Array.isArray(student.restartHistory[targetIdx].editHistory)
+        ? [...student.restartHistory[targetIdx].editHistory]
+        : [];
+      existingEdits.push(editLogItem);
+      student.restartHistory[targetIdx] = {
+        ...student.restartHistory[targetIdx],
+        status: student.isPaused ? 'Paused' : 'Restarted',
+        previousScheduleStatus: prevScheduleStatus,
+        restartDate: restartDateUtc,
+        newBatchId: targetBatchDoc._id.toString(),
+        newBatchName: targetBatchDoc.name,
+        newTeacherId: resolvedTeacherId || undefined,
+        newTeacherName,
+        newSchedule: newScheduleInfo,
+        completedAtRestart: completedCount,
+        remainingAtRestart: remainingCount,
+        lastEditedAt: new Date(),
+        lastEditedBy: req.user?._id,
+        editHistory: existingEdits,
+      };
+    } else {
+      student.restartHistory.push({
+        id: `pr_${Date.now()}`,
+        status: student.isPaused ? 'Paused' : 'Restarted',
+        previousScheduleStatus: prevScheduleStatus,
+        pauseDate: student.pauseDate || new Date(),
+        reason: student.pauseReason || 'Schedule Reset / Restart',
+        restartDate: restartDateUtc,
+        restartedBy: req.user?._id,
+        previousBatchId: batchId,
+        previousBatchName: targetBatchDoc.name || '',
+        previousBatchType: '1:1',
+        previousTeacherId: oldTeacherId || undefined,
+        previousTeacherName: prevTeacherName,
+        previousSchedule: editLogItem.previousValues,
+        newBatchId: targetBatchDoc._id.toString(),
+        newBatchName: targetBatchDoc.name,
+        newTeacherId: resolvedTeacherId || undefined,
+        newTeacherName,
+        newSchedule: newScheduleInfo,
+        completedAtRestart: completedCount,
+        remainingAtRestart: remainingCount,
+        totalClasses: totalSessions,
+        archivedSchedules: [],
+        editHistory: [editLogItem],
+        createdAt: new Date(),
+      });
+    }
+
+    student.restartDetails = {
+      historyEntryId: targetIdx >= 0 ? student.restartHistory[targetIdx].id : student.restartHistory[student.restartHistory.length - 1].id,
+      restartDate: restartDateUtc,
+      days: normalizedSched.days,
+      dayTimings: normalizedSched.dayTimings,
+      timing: normalizedSched.timing,
+      durationMinutes: normalizedSched.durationMinutes,
+      timeMode: normalizedSched.timeMode,
+      teacherId: resolvedTeacherId || undefined,
+      teacherName: newTeacherName,
+      previousScheduleStatus: prevScheduleStatus,
+      restartStatus: student.isPaused ? 'Paused' : 'Active',
+      updatedAt: new Date(),
+    };
+
+    student.lastRestartDate = restartDateUtc;
+    student.assignedTutor = resolvedTeacherId || undefined;
+    await student.save();
+
+    clearStudentScheduleCaches([oldTeacherId, resolvedTeacherId || '']);
+
+    await student.populate('batch', STUDENT_BATCH_POPULATE_FIELDS);
+    await student.populate('pastBatches.batch', 'name subject status assignedTeacher numberOfSessions');
+    await student.populate('assignedTutor', 'name email');
+
+    res.status(200).json({
+      message: `Restart details updated (${updatedSessionsCount} adjusted, ${createdSessionsCount} added, ${deletedSessionsCount} removed). Completed classes preserved.`,
+      student,
+      batch: targetBatchDoc,
+      completedClasses: completedCount,
+      remainingClasses: remainingCount,
+      updatedSessionsCount,
+      createdSessionsCount,
+      deletedSessionsCount,
+    });
+  } catch (error: any) {
+    console.error('Error updating restart details:', error);
+    res.status(500).json({ message: 'Failed to update restart details', detail: error.message });
   }
 };
 

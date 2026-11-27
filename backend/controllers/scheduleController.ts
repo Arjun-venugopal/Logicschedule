@@ -99,23 +99,27 @@ export const getSchedules = async (req: any, res: Response) => {
     const batchActiveStudentsMap = new Map<string, number>();
     const batchTotalStudentsMap = new Map<string, number>();
     const explicitlyDroppedBatchSet = new Set<string>();
+    const explicitlyPausedBatchSet = new Set<string>();
 
     for (const b of allBatches) {
-      if (b && (b.status === 'Dropped' || b.status === 'Cancelled')) {
+      if (!b) continue;
+      if (b.status === 'Dropped' || b.status === 'Cancelled') {
         explicitlyDroppedBatchSet.add(b._id.toString());
+      } else if (b.status === 'Paused') {
+        explicitlyPausedBatchSet.add(b._id.toString());
       }
     }
 
     for (const st of allStudents) {
       const sId = st._id.toString();
-      const isDropped = st.status === 'Dropped';
-      if (isDropped) {
+      const isInactive = st.status === 'Dropped' || st.status === 'Paused';
+      if (isInactive) {
         droppedStudentIdSet.add(sId);
       }
       const bId = st.batch?._id ? st.batch._id.toString() : (st.batch ? st.batch.toString() : '');
       if (bId) {
         batchTotalStudentsMap.set(bId, (batchTotalStudentsMap.get(bId) || 0) + 1);
-        if (!isDropped) {
+        if (!isInactive) {
           batchActiveStudentsMap.set(bId, (batchActiveStudentsMap.get(bId) || 0) + 1);
         }
       }
@@ -123,20 +127,27 @@ export const getSchedules = async (req: any, res: Response) => {
 
     const visibleSchedules: any[] = [];
     for (const s of schedules) {
-      const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
-      const isDroppedBatch = explicitlyDroppedBatchSet.has(bId);
-      const totalInBatch = batchTotalStudentsMap.get(bId) || 0;
-      const activeInBatch = batchActiveStudentsMap.get(bId) || 0;
-
-      // If the batch had enrolled students and NONE are active, or the batch is dropped:
-      const hasNoActiveStudents = isDroppedBatch || (totalInBatch > 0 && activeInBatch === 0);
-
-      if (hasNoActiveStudents) {
-        // Exclude dropped students from regular daily/weekly schedule
+      const isCompletedRecord = s.status === 'Completed';
+      if (s.status === 'Archived' || s.status === 'Paused' || (s.isArchived && !isCompletedRecord)) {
+        // Archived / paused uncompleted classes must not appear in active schedules or teacher calendars
         continue;
       }
 
-      // If schedule is upcoming / scheduled, filter out dropped students from attendance list
+      const bId = s.batch?._id ? s.batch._id.toString() : (s.batch ? s.batch.toString() : '');
+      const isDroppedBatch = explicitlyDroppedBatchSet.has(bId);
+      const isPausedBatch = explicitlyPausedBatchSet.has(bId);
+      const totalInBatch = batchTotalStudentsMap.get(bId) || 0;
+      const activeInBatch = batchActiveStudentsMap.get(bId) || 0;
+
+      // Always drop dropped batches; for paused batches/students, hide upcoming/uncompleted slots while keeping historical Completed records
+      if (isDroppedBatch) {
+        continue;
+      }
+      if (!isCompletedRecord && (isPausedBatch || (totalInBatch > 0 && activeInBatch === 0))) {
+        continue;
+      }
+
+      // If schedule is upcoming / scheduled, filter out dropped/paused students from attendance list
       if (s.status === 'Scheduled' && Array.isArray(s.attendance)) {
         s.attendance = s.attendance.filter((a: any) => {
           const aStudentId = (a.studentId?._id || a.studentId || '').toString();
@@ -664,6 +675,12 @@ export const getSchedulesByStudent = async (req: Request, res: Response): Promis
       student.pastBatches.forEach((pb: any) => {
         const pbId = typeof pb.batch === 'object' ? pb.batch?._id : pb.batch;
         if (pbId) batchIds.push(pbId.toString());
+      });
+    }
+    if (student.restartHistory && Array.isArray(student.restartHistory)) {
+      student.restartHistory.forEach((rh: any) => {
+        if (rh.previousBatchId) batchIds.push(rh.previousBatchId.toString());
+        if (rh.newBatchId) batchIds.push(rh.newBatchId.toString());
       });
     }
 
