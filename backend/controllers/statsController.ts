@@ -5,6 +5,7 @@ import Teacher from '../models/Teacher';
 import Batch from '../models/Batch';
 import Schedule from '../models/Schedule';
 import DemoSession from '../models/DemoSession';
+import Student from '../models/Student';
 import { getTeacherStatusForDate, formatDateToYYYYMMDD } from './teacherController';
 import {
   serverCache,
@@ -40,12 +41,13 @@ export const getDashboardStats = async (req: any, res: Response) => {
     const teacherFilter = (isTeacher && teacherProfile) ? { assignedTeacher: teacherProfile._id } : {};
     const conflictFilter = (isTeacher && teacherProfile) ? { teacher: teacherProfile._id, conflict: true } : { conflict: true };
 
-    const [totalTeachers, totalBatches, activeBatches, scheduleConflicts, demoConflicts] = await Promise.all([
+    const [totalTeachers, totalBatches, activeBatches, scheduleConflicts, demoConflicts, allStudentsForStats] = await Promise.all([
       Teacher.countDocuments(),
       Batch.countDocuments(teacherFilter),
       Batch.countDocuments({ ...teacherFilter, status: 'Active' }),
       Schedule.countDocuments(conflictFilter),
       DemoSession.countDocuments(conflictFilter),
+      (!isTeacher ? Student.find({}).populate('batch', 'name subject status') : Promise.resolve([])),
     ]);
 
     const conflicts = scheduleConflicts + demoConflicts;
@@ -207,6 +209,109 @@ export const getDashboardStats = async (req: any, res: Response) => {
 
     const todayClasses = todaySchedules.filter((s: any) => s.status === 'Scheduled').length;
 
+    // --- Student Enrollment Distribution by Course & Age Group ---
+    const courseDistribution = {
+      earlyLogic: { key: 'earlyLogic', label: 'EarlyLogic (Age 4 - 7)', count: 0, activeCount: 0 },
+      scratch: { key: 'scratch', label: 'Scratch (Age 8 - 15)', count: 0, activeCount: 0 },
+      robotics: { key: 'robotics', label: 'Robotics', count: 0, activeCount: 0 },
+      aiCoding: { key: 'aiCoding', label: 'AI Coding', count: 0, activeCount: 0 },
+      python: { key: 'python', label: 'Python', count: 0, activeCount: 0 },
+      appDevelopment: { key: 'appDevelopment', label: 'App Development', count: 0, activeCount: 0 },
+      other: { key: 'other', label: 'Other / Unassigned', count: 0, activeCount: 0 },
+      totalStudents: 0,
+      totalActiveStudents: 0,
+    };
+
+    if (Array.isArray(allStudentsForStats)) {
+      courseDistribution.totalStudents = allStudentsForStats.length;
+
+      for (const s of allStudentsForStats) {
+        const isActive = s.status === 'Active';
+        if (isActive) courseDistribution.totalActiveStudents++;
+
+        const subj = (s.batch?.subject || s.subject || s.course || '').trim();
+        const batchName = (s.batch?.name || '').trim();
+        const notes = (s.notes || '').trim();
+        const combined = `${subj} ${batchName} ${notes}`.toLowerCase();
+
+        let matched = false;
+
+        // 1. EarlyLogic (Age 4 - 7): early logic, earlylogic, scratch jr, scratchjr, or explicit age 4-7
+        if (
+          combined.includes('early logic') ||
+          combined.includes('earlylogic') ||
+          combined.includes('scratch jr') ||
+          combined.includes('scratchjr') ||
+          (s.age != null && Number(s.age) >= 4 && Number(s.age) <= 7)
+        ) {
+          courseDistribution.earlyLogic.count++;
+          if (isActive) courseDistribution.earlyLogic.activeCount++;
+          matched = true;
+        }
+
+        // 2. Scratch (Age 8 - 15): standard Scratch
+        if (
+          (combined.includes('scratch') || combined.includes('scratach')) &&
+          !combined.includes('scratch jr') &&
+          !combined.includes('scratchjr') &&
+          !combined.includes('earlylogic') &&
+          !combined.includes('early logic')
+        ) {
+          courseDistribution.scratch.count++;
+          if (isActive) courseDistribution.scratch.activeCount++;
+          matched = true;
+        }
+
+        // 3. Robotics
+        if (combined.includes('robotics') || combined.includes('robotic')) {
+          courseDistribution.robotics.count++;
+          if (isActive) courseDistribution.robotics.activeCount++;
+          matched = true;
+        }
+
+        // 4. AI Coding: ai coding, ai & ml, +ai, + ai, plus ai, and ai, coding + ai, or AI in subject/name
+        if (
+          combined.includes('ai coding') ||
+          combined.includes('ai & ml') ||
+          combined.includes('+ai') ||
+          combined.includes('+ ai') ||
+          combined.includes('plus ai') ||
+          combined.includes('and ai') ||
+          combined.includes('coding + ai') ||
+          /\bai\b/i.test(subj) ||
+          /\bai\b/i.test(batchName)
+        ) {
+          courseDistribution.aiCoding.count++;
+          if (isActive) courseDistribution.aiCoding.activeCount++;
+          matched = true;
+        }
+
+        // 5. Python
+        if (combined.includes('python')) {
+          courseDistribution.python.count++;
+          if (isActive) courseDistribution.python.activeCount++;
+          matched = true;
+        }
+
+        // 6. App Development
+        if (
+          combined.includes('app dev') ||
+          combined.includes('app development') ||
+          combined.includes('flutter') ||
+          combined.includes('mobile app')
+        ) {
+          courseDistribution.appDevelopment.count++;
+          if (isActive) courseDistribution.appDevelopment.activeCount++;
+          matched = true;
+        }
+
+        if (!matched) {
+          courseDistribution.other.count++;
+          if (isActive) courseDistribution.other.activeCount++;
+        }
+      }
+    }
+
     const result = {
       totalTeachers,
       totalBatches,
@@ -216,6 +321,7 @@ export const getDashboardStats = async (req: any, res: Response) => {
       hoursScheduled: Math.round(hoursScheduled),
       weekData,
       liveTeachers,
+      courseDistribution,
     };
 
     serverCache.set(cacheKey, result, 30_000);

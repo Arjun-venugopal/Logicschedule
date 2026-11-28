@@ -3,11 +3,30 @@
 import { useState, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { useSearchStore } from "@/store/searchStore";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/axios";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { Users, BookOpen, Clock, AlertCircle, TrendingUp, Calendar, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import {
+  Users,
+  BookOpen,
+  Clock,
+  AlertCircle,
+  TrendingUp,
+  Calendar,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Sparkles,
+  Code2,
+  Bot,
+  Brain,
+  Terminal,
+  Smartphone,
+  Layers,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 
 const ActiveBatchesAnalyticsModal = dynamic(
@@ -28,6 +47,7 @@ const WeeklyClassesChart = dynamic(
 );
 export default function DashboardPage() {
   const { user } = useAuthStore();
+  const { setSearchQuery } = useSearchStore();
   const router = useRouter();
 
   useEffect(() => {
@@ -47,6 +67,117 @@ export default function DashboardPage() {
     refetchOnWindowFocus: false,
     refetchInterval: false, // Manual refresh via Refresh button to preserve quota
   });
+
+  const handleCourseFilterClick = (searchFilter: string) => {
+    setSearchQuery(searchFilter);
+    router.push("/dashboard/students");
+  };
+
+  const courseCards = useMemo(() => {
+    const cd = stats?.courseDistribution;
+    if (!cd) return [];
+
+    const total = cd.totalStudents || 1;
+
+    return [
+      {
+        key: "earlyLogic",
+        title: "EarlyLogic",
+        badge: "Age 4 - 7",
+        count: cd.earlyLogic?.count ?? 0,
+        activeCount: cd.earlyLogic?.activeCount ?? 0,
+        pct: Math.round(((cd.earlyLogic?.count ?? 0) / total) * 100),
+        icon: Sparkles,
+        searchFilter: "Early",
+        borderColor: "border-purple-500/30 hover:border-purple-500/60",
+        bgGradient: "bg-gradient-to-br from-purple-500/10 via-purple-500/5 to-transparent",
+        iconStyle: "bg-purple-500/15 text-purple-400 border border-purple-500/30",
+        barColor: "bg-purple-500",
+        badgeStyle: "bg-purple-500/15 text-purple-300 border border-purple-500/30",
+        desc: "Logic Foundations & Scratch Jr",
+      },
+      {
+        key: "scratch",
+        title: "Scratch",
+        badge: "Age 8 - 15",
+        count: cd.scratch?.count ?? 0,
+        activeCount: cd.scratch?.activeCount ?? 0,
+        pct: Math.round(((cd.scratch?.count ?? 0) / total) * 100),
+        icon: Code2,
+        searchFilter: "Scratch",
+        borderColor: "border-amber-500/30 hover:border-amber-500/60",
+        bgGradient: "bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent",
+        iconStyle: "bg-amber-500/15 text-amber-400 border border-amber-500/30",
+        barColor: "bg-amber-500",
+        badgeStyle: "bg-amber-500/15 text-amber-300 border border-amber-500/30",
+        desc: "Visual Blocks & Game Design",
+      },
+      {
+        key: "robotics",
+        title: "Robotics",
+        badge: "Hardware",
+        count: cd.robotics?.count ?? 0,
+        activeCount: cd.robotics?.activeCount ?? 0,
+        pct: Math.round(((cd.robotics?.count ?? 0) / total) * 100),
+        icon: Bot,
+        searchFilter: "Robotics",
+        borderColor: "border-blue-500/30 hover:border-blue-500/60",
+        bgGradient: "bg-gradient-to-br from-blue-500/10 via-blue-500/5 to-transparent",
+        iconStyle: "bg-blue-500/15 text-blue-400 border border-blue-500/30",
+        barColor: "bg-blue-500",
+        badgeStyle: "bg-blue-500/15 text-blue-300 border border-blue-500/30",
+        desc: "Circuits, IoT & Sensors",
+      },
+      {
+        key: "aiCoding",
+        title: "AI Coding",
+        badge: "AI & ML",
+        count: cd.aiCoding?.count ?? 0,
+        activeCount: cd.aiCoding?.activeCount ?? 0,
+        pct: Math.round(((cd.aiCoding?.count ?? 0) / total) * 100),
+        icon: Brain,
+        searchFilter: "AI",
+        borderColor: "border-pink-500/30 hover:border-pink-500/60",
+        bgGradient: "bg-gradient-to-br from-pink-500/10 via-pink-500/5 to-transparent",
+        iconStyle: "bg-pink-500/15 text-pink-400 border border-pink-500/30",
+        barColor: "bg-pink-500",
+        badgeStyle: "bg-pink-500/15 text-pink-300 border border-pink-500/30",
+        desc: "Machine Learning & Neural Logic",
+      },
+      {
+        key: "python",
+        title: "Python",
+        badge: "Core Coding",
+        count: cd.python?.count ?? 0,
+        activeCount: cd.python?.activeCount ?? 0,
+        pct: Math.round(((cd.python?.count ?? 0) / total) * 100),
+        icon: Terminal,
+        searchFilter: "Python",
+        borderColor: "border-emerald-500/30 hover:border-emerald-500/60",
+        bgGradient: "bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent",
+        iconStyle: "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30",
+        barColor: "bg-emerald-500",
+        badgeStyle: "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30",
+        desc: "Syntax, Algorithms & Scripting",
+      },
+      {
+        key: "appDevelopment",
+        title: "App Development",
+        badge: "Apps & UI",
+        count: cd.appDevelopment?.count ?? 0,
+        activeCount: cd.appDevelopment?.activeCount ?? 0,
+        pct: Math.round(((cd.appDevelopment?.count ?? 0) / total) * 100),
+        icon: Smartphone,
+        searchFilter: "App",
+        borderColor: "border-cyan-500/30 hover:border-cyan-500/60",
+        bgGradient: "bg-gradient-to-br from-cyan-500/10 via-cyan-500/5 to-transparent",
+        iconStyle: "bg-cyan-500/15 text-cyan-400 border border-cyan-500/30",
+        barColor: "bg-cyan-500",
+        badgeStyle: "bg-cyan-500/10 text-cyan-300 border border-cyan-500/20",
+        desc: "Mobile UI & Full-Stack Apps",
+      },
+    ];
+  }, [stats?.courseDistribution]);
 
   const statCards = useMemo(() => [
     ...(isAdmin ? [{
@@ -173,6 +304,126 @@ export default function DashboardPage() {
           );
         })}
       </div>
+
+      {/* Course & Age Group Student Breakdown (Admin) */}
+      {isAdmin && (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="bg-neutral-900 border border-neutral-800 rounded-xl sm:rounded-2xl p-4 sm:p-5 space-y-3.5 shadow-sm"
+        >
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-3 border-b border-neutral-800">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <div className="w-8 h-8 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                <Layers className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-sm sm:text-base font-bold text-white">
+                    Student Enrollment by Course &amp; Age Group
+                  </h2>
+                  {stats?.courseDistribution && (
+                    <>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                        {stats.courseDistribution.totalStudents} Enrolled
+                      </span>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                        {stats.courseDistribution.totalActiveStudents} Active
+                      </span>
+                    </>
+                  )}
+                </div>
+                <p className="text-[11px] text-neutral-400 mt-0.5">
+                  Click any learning track to view and filter enrolled students
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap self-start sm:self-auto">
+              {stats?.courseDistribution?.other?.count > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleCourseFilterClick("")}
+                  className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-neutral-800/80 border border-neutral-700 text-neutral-300 hover:text-white hover:bg-neutral-800 transition-colors cursor-pointer"
+                  title="Students without an assigned course or batch"
+                >
+                  {stats.courseDistribution.other.count} Unassigned
+                </button>
+              )}
+              <Link
+                href="/dashboard/students"
+                className="text-xs text-amber-400 hover:text-amber-300 font-semibold flex items-center gap-1 hover:underline"
+              >
+                <span>View All Students</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+            {isLoading ? (
+              Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="p-3.5 rounded-xl bg-neutral-950/60 border border-neutral-800/80 animate-pulse h-32"
+                />
+              ))
+            ) : (
+              courseCards.map((card) => {
+                const IconComponent = card.icon;
+                return (
+                  <div
+                    key={card.key}
+                    onClick={() => handleCourseFilterClick(card.searchFilter)}
+                    className={`p-3.5 rounded-xl border ${card.borderColor} ${card.bgGradient} transition-all cursor-pointer group flex flex-col justify-between gap-3 relative overflow-hidden`}
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2 mb-2">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${card.iconStyle}`}>
+                          <IconComponent className="w-4 h-4" />
+                        </div>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md border shrink-0 ${card.badgeStyle}`}>
+                          {card.badge}
+                        </span>
+                      </div>
+                      <h3 className="text-xs font-bold text-white group-hover:text-amber-400 transition-colors truncate">
+                        {card.title}
+                      </h3>
+                      <p className="text-[10px] text-neutral-400 line-clamp-1 mt-0.5">
+                        {card.desc}
+                      </p>
+                    </div>
+
+                    <div className="space-y-1.5 pt-1 border-t border-neutral-800/60">
+                      <div className="flex items-baseline justify-between">
+                        <span className="text-xl sm:text-2xl font-extrabold text-white">
+                          {card.count}
+                        </span>
+                        <span className="text-[10px] font-semibold text-emerald-400">
+                          {card.activeCount} active
+                        </span>
+                      </div>
+                      <div className="w-full bg-neutral-800 h-1 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${card.barColor} transition-all duration-500`}
+                          style={{ width: `${Math.max(4, card.pct)}%` }}
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-[10px] text-neutral-500 font-medium">
+                        <span>{card.pct}% of students</span>
+                        <span className="text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                          View →
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Charts + Live Status */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 min-w-0">
